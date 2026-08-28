@@ -1,1 +1,6 @@
-
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- في الوضع الليلي يندمج شريط الحالة وشريط التنقل مع خلفية التطبيق الداكنة -->
+    <color name="status_bar_scrim">@color/brand_background_dark</color>
+    <color name="nav_bar_scrim">@color/brand_background_dark</color>
+</resources>
