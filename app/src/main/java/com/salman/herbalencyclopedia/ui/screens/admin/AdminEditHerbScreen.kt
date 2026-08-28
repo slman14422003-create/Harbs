@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -48,7 +49,7 @@ fun AdminEditHerbScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassTopBar(
                 title = { Text(if (existingHerb == null) "إضافة عشبة" else "تعديل عشبة") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

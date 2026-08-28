@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +33,7 @@ fun AdminListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassTopBar(
                 title = { Text("لوحة تحكم الأدمن") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
