@@ -1,9 +1,11 @@
 package com.salman.herbalencyclopedia.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -11,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FormatSize
@@ -19,10 +22,13 @@ import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -41,10 +47,12 @@ fun SettingsScreen(
     darkMode: Boolean?,
     dynamicColor: Boolean,
     fontScale: Int,
+    themePalette: com.salman.herbalencyclopedia.ui.theme.ThemePalette,
     onBack: () -> Unit,
     onDarkModeChange: (Boolean?) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
     onFontScaleChange: (Int) -> Unit,
+    onThemePaletteChange: (com.salman.herbalencyclopedia.ui.theme.ThemePalette) -> Unit,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
@@ -55,7 +63,7 @@ fun SettingsScreen(
             GlassTopBar(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
                 }
@@ -78,6 +86,12 @@ fun SettingsScreen(
                         subtitle = "استخدام ألوان الخلفية (Material You)",
                         checked = dynamicColor,
                         onCheckedChange = onDynamicColorChange
+                    )
+                    SettingsDivider()
+                    PaletteRow(
+                        enabled = !dynamicColor,
+                        selected = themePalette,
+                        onSelect = onThemePaletteChange
                     )
                     SettingsDivider()
                     FontScaleRow(fontScale = fontScale, onFontScaleChange = onFontScaleChange)
@@ -286,6 +300,75 @@ private fun FontScaleRow(fontScale: Int, onFontScaleChange: (Int) -> Unit) {
             valueRange = 0f..2f,
             steps = 1
         )
+    }
+}
+
+@Composable
+private fun PaletteRow(
+    enabled: Boolean,
+    selected: ThemePalette,
+    onSelect: (ThemePalette) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(icon = Icons.Filled.Palette, tint = Color(0xFFAD1457))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("لوحة الألوان", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (enabled) "اختر لون الهوية اليدوي" else "متاحة عند إيقاف الألوان الديناميكية",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(if (enabled) 1f else 0.4f),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ThemePalette.entries.forEach { palette ->
+                PaletteSwatch(
+                    palette = palette,
+                    selected = enabled && palette == selected,
+                    enabled = enabled,
+                    onClick = { onSelect(palette) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaletteSwatch(
+    palette: ThemePalette,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(palette.swatch)
+            .border(
+                width = if (selected) 3.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.onSurface else Color.White.copy(alpha = 0.35f),
+                shape = CircleShape
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = palette.label,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }
 
