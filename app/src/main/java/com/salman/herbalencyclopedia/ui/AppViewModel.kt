@@ -116,4 +116,30 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
     }
+    fun addCategory(name: String, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch { runCatching { container.herbRepository.addCategory(name) }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+    }
+
+    fun deleteCategory(id: String, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch { runCatching { container.herbRepository.deleteCategory(id) }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+    }
+
+    fun deleteAllHerbs(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch { runCatching { container.herbRepository.deleteAllHerbs() }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+    }
+
+    fun deleteAllData(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch { runCatching { container.herbRepository.deleteAllData() }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+    }
+
+    fun clearFavorites() { viewModelScope.launch { container.preferencesRepository.clearFavorites() } }
+
+    fun restoreBackup(json: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch { runCatching { container.herbRepository.restoreBackup(json) }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+    }
+
+    fun testConnection(onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch { runCatching { container.herbRepository.testConnection() }.onSuccess { onResult(true, "الاتصال يعمل بشكل طبيعي") }.onFailure { onResult(false, it.localizedMessage) } }
+    }
+
 }
