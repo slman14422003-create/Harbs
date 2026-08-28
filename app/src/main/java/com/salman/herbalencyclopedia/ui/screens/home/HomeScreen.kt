@@ -20,6 +20,7 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.CategoryCard
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.ErrorView
+import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.LoadingView
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,7 +41,8 @@ fun HomeScreen(
 ) {
     Scaffold(
         topBar = {
-            LargeTopAppBar(
+            GlassTopBar(
+                large = true,
                 title = { Column { Text("موسوعة الأعشاب الطبية", style = MaterialTheme.typography.headlineMedium); Text("اكتشف الأعشاب وفوائدها", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
                 actions = {
                     IconButton(onClick = onSearchClick) {
