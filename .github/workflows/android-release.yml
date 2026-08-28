@@ -3,8 +3,6 @@ name: Build APK and Release
 on:
   push:
     branches: [ main, master ]
-    paths-ignore:
-      - 'version.json'
   workflow_dispatch: {}
 
 permissions:
@@ -32,14 +30,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.10.2
+          gradle-version: 8.9
 
       - name: Resolve app version
         id: appver
         run: |
-          if [ -f version.json ]; then
-            VNAME=$(grep -o '"version":[[:space:]]*"[^"]*"' version.json | head -1 | sed -E 's/.*"([0-9a-zA-Z.]+)"$/\1/')
-          fi
+          VNAME=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | head -1 | sed -E 's/.*"(.*)"/\1/')
           VNAME=${VNAME:-1.0.0}
           VCODE=${{ github.run_number }}
           echo "version_name=$VNAME" >> "$GITHUB_OUTPUT"
@@ -54,7 +50,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          KS_PATH="$GITHUB_WORKSPACE/android/app/release.keystore.jks"
+          KS_PATH="$GITHUB_WORKSPACE/app/release.keystore.jks"
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Using keystore supplied via repository secrets (stable signing across releases)."
             echo "$KEYSTORE_BASE64" | base64 -d > "$KS_PATH"
@@ -85,12 +81,12 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.key_alias }}
           RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.key_password }}
         run: |
-          gradle -p android :app:assembleRelease --no-daemon --stacktrace
+          gradle :app:assembleRelease --no-daemon --stacktrace
 
       - name: Locate APK
         id: apk
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "Found APK: $APK_PATH"
 
