@@ -1,1 +1,103 @@
+name: Build APK and Release
 
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'version.json'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Resolve app version
+        id: appver
+        run: |
+          if [ -f version.json ]; then
+            VNAME=$(grep -o '"version":[[:space:]]*"[^"]*"' version.json | head -1 | sed -E 's/.*"([0-9a-zA-Z.]+)"$/\1/')
+          fi
+          VNAME=${VNAME:-1.0.0}
+          VCODE=${{ github.run_number }}
+          echo "version_name=$VNAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VCODE" >> "$GITHUB_OUTPUT"
+          echo "Building version $VNAME ($VCODE)"
+
+      - name: Prepare signing keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KS_PATH="$GITHUB_WORKSPACE/android/app/release.keystore.jks"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using keystore supplied via repository secrets (stable signing across releases)."
+            echo "$KEYSTORE_BASE64" | base64 -d > "$KS_PATH"
+            echo "store_password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
+            echo "key_alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
+            echo "key_password=$KEY_PASSWORD" >> "$GITHUB_OUTPUT"
+          else
+            echo "No ANDROID_KEYSTORE_BASE64 secret found - generating a throwaway keystore for this build only."
+            echo "::warning::No signing secrets configured. Each release will be signed with a NEW key, so users must uninstall the previous version before installing an update. Add ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD secrets for stable signing."
+            keytool -genkeypair -v \
+              -keystore "$KS_PATH" \
+              -alias herbal \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass herbal123 -keypass herbal123 \
+              -dname "CN=Herbal Encyclopedia, OU=App, O=Salman, L=City, ST=State, C=US"
+            echo "store_password=herbal123" >> "$GITHUB_OUTPUT"
+            echo "key_alias=herbal" >> "$GITHUB_OUTPUT"
+            echo "key_password=herbal123" >> "$GITHUB_OUTPUT"
+          fi
+          echo "store_file=$KS_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        env:
+          APP_VERSION_CODE: ${{ steps.appver.outputs.version_code }}
+          APP_VERSION_NAME: ${{ steps.appver.outputs.version_name }}
+          RELEASE_STORE_FILE: ${{ steps.keystore.outputs.store_file }}
+          RELEASE_STORE_PASSWORD: ${{ steps.keystore.outputs.store_password }}
+          RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.key_alias }}
+          RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.key_password }}
+        run: |
+          gradle -p android :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          echo "Found APK: $APK_PATH"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.appver.outputs.version_name }}-${{ steps.appver.outputs.version_code }}
+          name: الإصدار ${{ steps.appver.outputs.version_name }} (build ${{ steps.appver.outputs.version_code }})
+          generate_release_notes: true
+          files: ${{ steps.apk.outputs.path }}
