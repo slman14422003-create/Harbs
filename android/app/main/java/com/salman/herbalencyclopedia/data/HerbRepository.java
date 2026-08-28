@@ -1,5 +1,6 @@
 package com.salman.herbalencyclopedia.data;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -34,6 +35,7 @@ public class HerbRepository {
 
     private List<Herb> cachedHerbs = Collections.emptyList();
     private List<Category> cachedCategories = Collections.emptyList();
+    private volatile boolean lastLoadServedFromLocalCache = false;
 
     private HerbRepository() {}
 
@@ -75,6 +77,62 @@ public class HerbRepository {
                 mainHandler.post(() -> callback.onError(message));
             }
         });
+    }
+
+    /**
+     * نفس loadAll لكن مع تخزين مؤقت محلي (بديل native لِ
+     * loadDataFromLocalCache/saveDataToLocalCache من نسخة الويب القديمة):
+     * - عند النجاح: يحفظ النسخة في الكاش المحلي ويحدّث "آخر تحديث".
+     * - عند فشل الشبكة: يسقط تلقائياً إلى آخر نسخة محفوظة محلياً بدل عرض
+     *   خطأ فارغ، تماماً كما كان "العمل دون اتصال" يعمل في نسخة الويب.
+     */
+    public void loadAllWithCache(Context context, Callback<List<Herb>> callback) {
+        Context appContext = context.getApplicationContext();
+        LocalCacheStore cache = LocalCacheStore.getInstance(appContext);
+
+        executor.execute(() -> {
+            try {
+                List<Category> categories = fetchCategories();
+                List<Herb> herbs = fetchHerbs();
+
+                cachedCategories = categories;
+                cachedHerbs = herbs;
+                cache.save(herbs, categories);
+                lastLoadServedFromLocalCache = false;
+
+                mainHandler.post(() -> callback.onSuccess(herbs));
+            } catch (IOException e) {
+                if (cache.hasCache()) {
+                    List<Category> categories = cache.loadCategories();
+                    List<Herb> herbs = cache.loadHerbs();
+                    cachedCategories = categories;
+                    cachedHerbs = herbs;
+                    lastLoadServedFromLocalCache = true;
+                    mainHandler.post(() -> callback.onSuccess(herbs));
+                } else {
+                    String message = e.getMessage() != null ? e.getMessage() : "تعذّر تحميل البيانات";
+                    mainHandler.post(() -> callback.onError(message));
+                }
+            }
+        });
+    }
+
+    /** يعيد آخر بيانات محفوظة محلياً فوراً (بدون شبكة)، لعرضها أثناء الجلب. */
+    public boolean loadFromCacheOnly(Context context) {
+        LocalCacheStore cache = LocalCacheStore.getInstance(context.getApplicationContext());
+        if (!cache.hasCache()) return false;
+        cachedCategories = cache.loadCategories();
+        cachedHerbs = cache.loadHerbs();
+        return true;
+    }
+
+    public long lastUpdateMillis(Context context) {
+        return LocalCacheStore.getInstance(context.getApplicationContext()).getLastUpdateMillis();
+    }
+
+    /** true إن كانت آخر عملية loadAllWithCache نجحت من الكاش المحلي بسبب فشل الشبكة. */
+    public boolean wasLastLoadServedFromLocalCache() {
+        return lastLoadServedFromLocalCache;
     }
 
     private List<Category> fetchCategories() throws IOException {
