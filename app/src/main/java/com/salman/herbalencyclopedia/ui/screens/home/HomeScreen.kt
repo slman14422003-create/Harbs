@@ -20,6 +20,8 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.CategoryCard
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.ErrorView
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
+import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.LoadingView
 
@@ -45,13 +47,19 @@ fun HomeScreen(
                 large = true,
                 title = { Column { Text("موسوعة الأعشاب الطبية", style = MaterialTheme.typography.headlineMedium); Text("اكتشف الأعشاب وفوائدها", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
                 actions = {
-                    IconButton(onClick = onSearchClick) {
+                    GlassIconButton(onClick = onSearchClick, modifier = Modifier.padding(end = 6.dp)) {
                         Icon(Icons.Filled.Search, contentDescription = "بحث")
                     }
+                    GlassIconButton(onClick = onFavoritesClick, modifier = Modifier.padding(end = 6.dp)) {
+                        Icon(Icons.Filled.Favorite, contentDescription = "المفضلة")
+                    }
                     if (isAdmin) {
-                        IconButton(onClick = onAdminClick) {
+                        GlassIconButton(onClick = onAdminClick, modifier = Modifier.padding(end = 6.dp)) {
                             Icon(Icons.Filled.AdminPanelSettings, contentDescription = "لوحة التحكم")
                         }
+                    }
+                    GlassIconButton(onClick = onSettingsClick, modifier = Modifier.padding(end = 4.dp)) {
+                        Icon(Icons.Filled.Settings, contentDescription = "الإعدادات")
                     }
                 }
             )
@@ -59,8 +67,20 @@ fun HomeScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = onSearchClick, label = { Text("بحث") }, leadingIcon = { Icon(Icons.Filled.Search, null) })
-                AssistChip(onClick = onCompareClick, label = { Text("مقارنة") }, leadingIcon = { Icon(Icons.Filled.Balance, null) })
+                GlassOutlinedButton(
+                    onClick = onSearchClick,
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Filled.Search, null, modifier = Modifier.size(18.dp))
+                    Text("بحث")
+                }
+                GlassOutlinedButton(
+                    onClick = onCompareClick,
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Filled.Balance, null, modifier = Modifier.size(18.dp))
+                    Text("مقارنة")
+                }
             }
             when {
             isLoading -> LoadingView()
