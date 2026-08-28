@@ -48,16 +48,10 @@ fun HomeScreen(
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Filled.Search, contentDescription = "بحث")
                     }
-                    IconButton(onClick = onFavoritesClick) {
-                        Icon(Icons.Filled.Favorite, contentDescription = "المفضلة")
-                    }
                     if (isAdmin) {
                         IconButton(onClick = onAdminClick) {
                             Icon(Icons.Filled.AdminPanelSettings, contentDescription = "لوحة التحكم")
                         }
-                    }
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Filled.Settings, contentDescription = "الإعدادات")
                     }
                 }
             )
@@ -66,7 +60,6 @@ fun HomeScreen(
         Column(Modifier.padding(padding).fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = onSearchClick, label = { Text("بحث") }, leadingIcon = { Icon(Icons.Filled.Search, null) })
-                AssistChip(onClick = onFavoritesClick, label = { Text("مفضلة") }, leadingIcon = { Icon(Icons.Filled.Favorite, null) })
                 AssistChip(onClick = onCompareClick, label = { Text("مقارنة") }, leadingIcon = { Icon(Icons.Filled.Balance, null) })
             }
             when {
