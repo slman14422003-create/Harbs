@@ -5,7 +5,6 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 
-import androidx.appcompat.app.AppCompatActivity;
 
 import com.salman.herbalencyclopedia.data.HerbRepository;
 import com.salman.herbalencyclopedia.databinding.ActivityCompareBinding;
@@ -15,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** مقارنة عشبتين جنباً إلى جنب - بديل أصلي لصفحة compare.html القديمة. */
-public class CompareActivity extends AppCompatActivity {
+public class CompareActivity extends BaseActivity {
 
     private ActivityCompareBinding binding;
     private final List<Herb> herbs = new ArrayList<>();

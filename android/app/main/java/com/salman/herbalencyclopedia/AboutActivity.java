@@ -2,12 +2,11 @@ package com.salman.herbalencyclopedia;
 
 import android.os.Bundle;
 
-import androidx.appcompat.app.AppCompatActivity;
 
 import com.salman.herbalencyclopedia.databinding.ActivityAboutBinding;
 
 /** شاشة "حول / الخصوصية / المساعدة" - نص أصلي عادي بدل صفحات HTML الثلاث القديمة. */
-public class AboutActivity extends AppCompatActivity {
+public class AboutActivity extends BaseActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

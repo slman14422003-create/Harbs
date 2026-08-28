@@ -8,7 +8,6 @@ import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.salman.herbalencyclopedia.adapter.HerbAdapter;
@@ -25,7 +24,7 @@ import java.util.Set;
  * شاشة "المفضلة" - تعرض فقط الأعشاب التي أضافها المستخدم للمفضلة.
  * إعادة تنفيذ أصلية لميزة showBookmarksModal/clearBookmarks من نسخة الويب القديمة.
  */
-public class BookmarksActivity extends AppCompatActivity {
+public class BookmarksActivity extends BaseActivity {
 
     private ActivityBookmarksBinding binding;
     private HerbAdapter adapter;

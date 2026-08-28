@@ -1,6 +1,8 @@
 package com.salman.herbalencyclopedia;
 
+import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -8,7 +10,6 @@ import android.view.View;
 import android.widget.Toast;
 import androidx.appcompat.widget.SearchView;
 
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
@@ -20,11 +21,14 @@ import com.google.android.material.chip.Chip;
 import com.salman.herbalencyclopedia.adapter.HerbAdapter;
 import com.salman.herbalencyclopedia.data.BookmarkManager;
 import com.salman.herbalencyclopedia.data.HerbRepository;
+import com.salman.herbalencyclopedia.data.SettingsManager;
 import com.salman.herbalencyclopedia.databinding.ActivityMainBinding;
 import com.salman.herbalencyclopedia.model.Category;
 import com.salman.herbalencyclopedia.model.Herb;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -33,7 +37,7 @@ import java.util.Locale;
  * وبلا أي ملفات HTML أو CSS. تعرض قائمة الأعشاب مباشرة من Firestore،
  * مع بحث فوري وفلترة حسب التصنيف.
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends BaseActivity {
 
     private ActivityMainBinding binding;
     private HerbAdapter adapter;
@@ -59,6 +63,17 @@ public class MainActivity extends AppCompatActivity {
         setupSwipeRefresh();
         setupRetry();
 
+        // يعرض آخر نسخة محفوظة محلياً فوراً (إن وُجدت) قبل انتظار الشبكة،
+        // بديل native لِـ loadDataFromLocalCache القديمة.
+        if (allHerbs.isEmpty() && HerbRepository.getInstance().loadFromCacheOnly(this)) {
+            allHerbs.addAll(HerbRepository.getInstance().getCachedHerbs());
+            buildCategoryChips();
+            applyFilters();
+            showContent();
+            updateLastUpdateBadge();
+        }
+
+        registerVisit();
         loadData();
     }
 
@@ -119,11 +134,71 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.action_bookmarks) {
+        int id = item.getItemId();
+        if (id == R.id.action_bookmarks) {
             startActivity(new Intent(this, BookmarksActivity.class));
+            return true;
+        } else if (id == R.id.action_advanced_search) {
+            startActivity(new Intent(this, AdvancedSearchActivity.class));
+            return true;
+        } else if (id == R.id.action_theme_toggle) {
+            SettingsManager.getInstance(this).toggleDarkMode();
+            recreate();
+            return true;
+        } else if (id == R.id.action_font_size) {
+            onFontSizeToggle();
+            return true;
+        } else if (id == R.id.action_stats) {
+            showStatsDialog();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    /** مطابق لِـ fontSizeToggleBtn.click في النسخة القديمة (cycleFontSize). */
+    private void onFontSizeToggle() {
+        SettingsManager settings = SettingsManager.getInstance(this);
+        String next = settings.cycleFontSize();
+        Toast.makeText(this, getString(R.string.font_size_changed, settings.fontSizeLabel(next)), Toast.LENGTH_SHORT).show();
+        recreate();
+    }
+
+    /** مطابق لِـ visitor_count في localStorage (تسجيل الزيارة عند فتح التطبيق). */
+    private void registerVisit() {
+        SharedPreferences prefs = getSharedPreferences("herb_stats", MODE_PRIVATE);
+        int visits = prefs.getInt("visitor_count", 0) + 1;
+        prefs.edit().putInt("visitor_count", visits).apply();
+    }
+
+    /** يدمج showVisitorStats() و showVisitorCategories() القديمتين بحوار واحد. */
+    private void showStatsDialog() {
+        SharedPreferences prefs = getSharedPreferences("herb_stats", MODE_PRIVATE);
+        int visits = prefs.getInt("visitor_count", 1);
+        List<Category> categories = HerbRepository.getInstance().getCachedCategories();
+        int bookmarkCount = BookmarkManager.getInstance(this).count();
+
+        StringBuilder message = new StringBuilder();
+        message.append(getString(R.string.stats_visits_format, visits)).append("\n");
+        message.append(getString(R.string.stats_herbs_format, allHerbs.size())).append("\n");
+        message.append(getString(R.string.stats_categories_format, categories.size())).append("\n");
+        message.append(getString(R.string.stats_bookmarks_format, bookmarkCount));
+
+        if (!categories.isEmpty()) {
+            message.append("\n\n").append(getString(R.string.stats_by_category_title));
+            for (Category category : categories) {
+                int count = 0;
+                for (Herb herb : allHerbs) {
+                    if (category.getId().equals(herb.getCategoryId())) count++;
+                }
+                message.append("\n").append(getString(R.string.stats_category_row_format, category.getName(), count));
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.stats_title)
+                .setMessage(message.toString())
+                .setPositiveButton(R.string.dialog_ok, null)
+                .show();
     }
 
     private void setupSearch() {
@@ -153,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadData() {
         showLoading();
-        HerbRepository.getInstance().loadAll(new HerbRepository.Callback<List<Herb>>() {
+        HerbRepository.getInstance().loadAllWithCache(this, new HerbRepository.Callback<List<Herb>>() {
             @Override
             public void onSuccess(List<Herb> herbs) {
                 binding.swipeRefresh.setRefreshing(false);
@@ -162,6 +237,13 @@ public class MainActivity extends AppCompatActivity {
                 buildCategoryChips();
                 applyFilters();
                 showContent();
+                updateLastUpdateBadge();
+                if (HerbRepository.getInstance().wasLastLoadServedFromLocalCache()) {
+                    com.google.android.material.snackbar.Snackbar
+                            .make(binding.getRoot(), R.string.offline_using_cache,
+                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                            .show();
+                }
             }
 
             @Override
@@ -170,6 +252,17 @@ public class MainActivity extends AppCompatActivity {
                 showError(message);
             }
         });
+    }
+
+    /** مطابق لِـ updateLastUpdateBadge() القديمة، مبني على الكاش المحلي الفعلي. */
+    private void updateLastUpdateBadge() {
+        long millis = HerbRepository.getInstance().lastUpdateMillis(this);
+        if (millis <= 0) {
+            binding.lastUpdateBadge.setText(R.string.last_update_never);
+            return;
+        }
+        String formatted = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.forLanguageTag("ar")).format(new Date(millis));
+        binding.lastUpdateBadge.setText(getString(R.string.last_update_format, formatted));
     }
 
     private void buildCategoryChips() {
