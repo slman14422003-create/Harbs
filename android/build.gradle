@@ -1,5 +1,0 @@
-// Top-level build file: declares plugin versions once so submodules
-// (e.g. :app) can apply them without repeating the version.
-plugins {
-    id "com.android.application" version "8.7.3" apply false
-}
