@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -27,7 +28,7 @@ fun SettingsScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassTopBar(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
