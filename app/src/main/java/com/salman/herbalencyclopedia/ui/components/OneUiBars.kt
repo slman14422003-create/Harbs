@@ -61,15 +61,20 @@ fun GlassTopBar(
     large: Boolean = false,
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
-    val surface = MaterialTheme.colorScheme.surface
+    // بطاقة زجاجية عائمة بزوايا سفلية مستديرة وظل خفيف، بدل الشريط المسطّح
+    // الملتصق بحافة الشاشة، لإعطاء إحساس بالعمق يميّز الشريط عن المحتوى تحته.
+    val container = MaterialTheme.colorScheme.surfaceContainer
     val glassBrush = Brush.verticalGradient(
-        colors = listOf(surface.copy(alpha = 0.95f), surface.copy(alpha = 0.82f))
+        colors = listOf(container.copy(alpha = 0.98f), container.copy(alpha = 0.88f))
     )
-    val hairline = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
+    val hairline = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+    val barShape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp)
 
     Box(
         modifier
             .fillMaxWidth()
+            .shadow(elevation = 6.dp, shape = barShape, clip = false)
+            .clip(barShape)
             .background(glassBrush)
             .drawBehind {
                 drawLine(

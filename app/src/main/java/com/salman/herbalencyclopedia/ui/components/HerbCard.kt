@@ -60,7 +60,7 @@ fun HerbCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = onToggleFavorite) {
+            GlassIconButton(onClick = onToggleFavorite, size = 38.dp) {
                 Icon(
                     imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = null,
