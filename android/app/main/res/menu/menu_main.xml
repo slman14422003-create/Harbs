@@ -8,4 +8,24 @@
         android:title="@string/bookmarks_title"
         app:showAsAction="always" />
 
+    <item
+        android:id="@+id/action_advanced_search"
+        android:title="@string/action_advanced_search"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_theme_toggle"
+        android:title="@string/action_theme_toggle"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_font_size"
+        android:title="@string/action_font_size"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_stats"
+        android:title="@string/action_stats"
+        app:showAsAction="never" />
+
 </menu>
