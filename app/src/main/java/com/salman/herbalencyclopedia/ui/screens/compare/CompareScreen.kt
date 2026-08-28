@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
+import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import kotlinx.coroutines.launch
 
@@ -35,7 +37,7 @@ fun CompareScreen(herbs: List<Herb>, onBack: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             GlassTopBar(title = { Text("مقارنة الأعشاب") }, navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
+                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
             }, actions = {
                 if (selected.isNotEmpty()) TextButton(onClick = { selectedIds = emptyList() }) { Text("مسح") }
             })
@@ -67,7 +69,7 @@ fun CompareScreen(herbs: List<Herb>, onBack: () -> Unit) {
                         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(herb.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                IconButton(onClick = { selectedIds = selectedIds - herb.id }) { Icon(Icons.Filled.Close, "إزالة") }
+                                GlassIconButton(onClick = { selectedIds = selectedIds - herb.id }) { Icon(Icons.Filled.Close, "إزالة") }
                             }
                             CompareRow("الفوائد", herb.benefits)
                             CompareRow("التحذيرات", herb.warnings)
@@ -77,7 +79,7 @@ fun CompareScreen(herbs: List<Herb>, onBack: () -> Unit) {
                         }
                     }
                 }
-                OutlinedButton(
+                GlassOutlinedButton(
                     onClick = {
                         val shareText = buildCompareShareText(selected)
                         val sendIntent = Intent(Intent.ACTION_SEND).apply {
