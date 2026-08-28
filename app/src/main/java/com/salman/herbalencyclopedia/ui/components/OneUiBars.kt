@@ -2,6 +2,8 @@ package com.salman.herbalencyclopedia.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -173,7 +175,7 @@ private fun OneUiFloatingNavItem(item: OneUiNavItem, selected: Boolean, onClick:
             .clip(CircleShape)
             .clickable(onClick = onClick)
             .background(background, CircleShape)
-            .animateContentSize()
+            .animateContentSize(animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing))
             .padding(horizontal = if (selected) 18.dp else 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -181,8 +183,8 @@ private fun OneUiFloatingNavItem(item: OneUiNavItem, selected: Boolean, onClick:
         Icon(item.icon, contentDescription = if (!selected) item.label else null, tint = content, modifier = Modifier.size(23.dp))
         AnimatedVisibility(
             visible = selected,
-            enter = fadeIn() + expandHorizontally(),
-            exit = fadeOut() + shrinkHorizontally()
+            enter = fadeIn(tween(120)) + expandHorizontally(tween(160, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(90)) + shrinkHorizontally(tween(120, easing = FastOutSlowInEasing))
         ) {
             Text(item.label, color = content, fontWeight = FontWeight.SemiBold)
         }
