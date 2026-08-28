@@ -1,0 +1,22 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Gradle wrapper jar is normally committed, but if you regenerate the
+# wrapper via Android Studio these paths stay ignored:
+!gradle/wrapper/gradle-wrapper.jar
+
+# Never commit signing material
+*.jks
+*.keystore
+release.keystore.jks
+
+# Never commit real Firebase Android config if you later add one
+app/google-services.json
