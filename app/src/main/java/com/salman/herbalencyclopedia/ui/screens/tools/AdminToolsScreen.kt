@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,7 +29,7 @@ fun AdminToolsScreen(categories: List<Category>, herbs: List<Herb>, onBack: () -
     }
     var categoryName by remember { mutableStateOf("") }
     var confirmAction by remember { mutableStateOf<String?>(null) }
-    Scaffold(topBar = { TopAppBar(title = { Text("أدوات الإدارة") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) }) { padding ->
+    Scaffold(topBar = { GlassTopBar(title = { Text("أدوات الإدارة") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text("الصيانة والمزامنة", style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", onRefresh) }
