@@ -7,15 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.AppViewModelFactory
 import com.salman.herbalencyclopedia.ui.navigation.HerbalNavGraph
-import com.salman.herbalencyclopedia.ui.screens.splash.SplashScreen
 import com.salman.herbalencyclopedia.ui.theme.HerbalEncyclopediaTheme
 
 class MainActivity : ComponentActivity() {
@@ -34,16 +31,10 @@ class MainActivity : ComponentActivity() {
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
             HerbalEncyclopediaTheme(darkTheme = useDark, dynamicColor = dynamicColorPref, fontScale = fontScale) {
-                var showSplash by remember { mutableStateOf(true) }
-
-                if (showSplash) {
-                    SplashScreen(onFinished = { showSplash = false })
-                } else {
-                    HerbalNavGraph(
-                        appViewModel = appViewModel,
-                        preferencesRepository = container.preferencesRepository
-                    )
-                }
+                HerbalNavGraph(
+                    appViewModel = appViewModel,
+                    preferencesRepository = container.preferencesRepository
+                )
             }
         }
     }
