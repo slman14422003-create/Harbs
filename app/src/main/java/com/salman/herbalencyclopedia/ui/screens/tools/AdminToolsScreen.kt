@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -29,7 +30,7 @@ fun AdminToolsScreen(categories: List<Category>, herbs: List<Herb>, onBack: () -
     }
     var categoryName by remember { mutableStateOf("") }
     var confirmAction by remember { mutableStateOf<String?>(null) }
-    Scaffold(topBar = { GlassTopBar(title = { Text("أدوات الإدارة") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) }) { padding ->
+    Scaffold(topBar = { GlassTopBar(title = { Text("أدوات الإدارة") }, navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text("الصيانة والمزامنة", style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", onRefresh) }
@@ -41,7 +42,7 @@ fun AdminToolsScreen(categories: List<Category>, herbs: List<Herb>, onBack: () -
             item { AdminButton(Icons.Filled.Link, "نسخ رابط التطبيق", "نسخ رابط المشروع إلى الحافظة", { context.getSystemService(Context.CLIPBOARD_SERVICE).let { (it as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("app", "https://github.com/")); } }) }
             item { Text("التصنيفات", style = MaterialTheme.typography.titleLarge) }
             item { OutlinedTextField(categoryName, { categoryName = it }, label = { Text("اسم تصنيف جديد") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { TextButton(enabled = categoryName.isNotBlank(), onClick = { onAddCategory(categoryName.trim()); categoryName = "" }) { Text("إضافة") } }) }
-            items(categories, key = { it.id }) { c -> ListItem(headlineContent = { Text(c.name) }, supportingContent = { Text("${herbs.count { it.categoryId == c.id }} عشبة") }, trailingContent = { IconButton(onClick = { confirmAction = "category:${c.id}" }) { Icon(Icons.Filled.Delete, "حذف", tint = MaterialTheme.colorScheme.error) } }) }
+            items(categories, key = { it.id }) { c -> ListItem(headlineContent = { Text(c.name) }, supportingContent = { Text("${herbs.count { it.categoryId == c.id }} عشبة") }, trailingContent = { GlassIconButton(onClick = { confirmAction = "category:${c.id}" }) { Icon(Icons.Filled.Delete, "حذف", tint = MaterialTheme.colorScheme.error) } }) }
             item { Text("إجراءات خطرة", style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.DeleteSweep, "مسح جميع الأعشاب", "حذف كل الأعشاب من Firestore", { confirmAction = "herbs" }, danger = true) }
             item { AdminButton(Icons.Filled.DeleteForever, "حذف كل البيانات", "حذف الأعشاب والتصنيفات", { confirmAction = "all" }, danger = true) }
