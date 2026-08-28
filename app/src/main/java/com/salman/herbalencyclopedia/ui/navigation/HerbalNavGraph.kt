@@ -13,6 +13,8 @@ import androidx.navigation.*
 import androidx.navigation.compose.*
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
+import com.salman.herbalencyclopedia.ui.components.OneUiFloatingNavBar
+import com.salman.herbalencyclopedia.ui.components.OneUiNavItem
 import com.salman.herbalencyclopedia.ui.screens.admin.*
 import com.salman.herbalencyclopedia.ui.screens.allherbs.AllHerbsScreen
 import com.salman.herbalencyclopedia.ui.screens.auth.LoginScreen
@@ -38,13 +40,27 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val current = backStack?.destination?.route
     val topRoutes = setOf(Screen.Home.route, Screen.AllHerbs.route, Screen.Favorites.route, Screen.Settings.route)
     val scope = rememberCoroutineScope()
+    val bottomNavItems = remember {
+        listOf(
+            OneUiNavItem("الرئيسية", Icons.Filled.Home, Screen.Home.route),
+            OneUiNavItem("الأعشاب", Icons.Filled.MenuBook, Screen.AllHerbs.route),
+            OneUiNavItem("المفضلة", Icons.Filled.Favorite, Screen.Favorites.route),
+            OneUiNavItem("الإعدادات", Icons.Filled.Settings, Screen.Settings.route)
+        )
+    }
 
     Scaffold(bottomBar = {
-        if (current in topRoutes) NavigationBar {
-            NavItem("الرئيسية", Icons.Filled.Home, Screen.Home.route, current, navController)
-            NavItem("الأعشاب", Icons.Filled.MenuBook, Screen.AllHerbs.route, current, navController)
-            NavItem("المفضلة", Icons.Filled.Favorite, Screen.Favorites.route, current, navController)
-            NavItem("الإعدادات", Icons.Filled.Settings, Screen.Settings.route, current, navController)
+        if (current in topRoutes) {
+            OneUiFloatingNavBar(
+                items = bottomNavItems,
+                currentRoute = current,
+                onItemClick = { item ->
+                    navController.navigate(item.route) {
+                        popUpTo(Screen.Home.route)
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
     }) { inner ->
         Box(Modifier.padding(inner).fillMaxSize()) {
@@ -66,5 +82,3 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         }
     }
 }
-
-@Composable private fun RowScope.NavItem(label:String, icon:androidx.compose.ui.graphics.vector.ImageVector, route:String, current:String?, nav:NavHostController) { NavigationBarItem(selected=current==route,onClick={nav.navigate(route){popUpTo(Screen.Home.route);launchSingleTop=true}},icon={Icon(icon,null)},label={Text(label)}) }
