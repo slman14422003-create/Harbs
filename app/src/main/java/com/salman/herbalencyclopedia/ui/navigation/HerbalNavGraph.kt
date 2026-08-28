@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.navigation.*
 import androidx.navigation.compose.*
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
@@ -58,7 +59,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.CategoryHerbs.route, arguments=listOf(navArgument("categoryId"){type=NavType.StringType},navArgument("categoryName"){type=NavType.StringType})) { e -> val id=e.arguments?.getString("categoryId") ?: ""; val name=e.arguments?.getString("categoryName") ?: ""; CategoryHerbsScreen(name, uiState.herbs.filter { it.categoryId==id }, favoriteIds, {navController.popBackStack()}, {h->navController.navigate(Screen.HerbDetail.createRoute(h.id))}, appViewModel::toggleFavorite) }
                 composable(Screen.HerbDetail.route, arguments=listOf(navArgument("herbId"){type=NavType.StringType})) { e -> uiState.herbs.firstOrNull { it.id==e.arguments?.getString("herbId") }?.let { h -> HerbDetailScreen(h, h.id in favoriteIds, {navController.popBackStack()}, {appViewModel.toggleFavorite(h.id)}) } }
                 composable(Screen.Login.route) { LoginScreen({navController.popBackStack()}, appViewModel::login, appViewModel::register) {navController.popBackStack()} }
-                composable(Screen.Admin.route) { AdminListScreen(uiState.herbs, {navController.popBackStack()}, {navController.navigate(Screen.AdminEdit.createRoute(Screen.AdminEdit.NEW))}, {h->navController.navigate(Screen.AdminEdit.createRoute(h.id))}, {h->appViewModel.deleteHerb(h.id)}) { navController.navigate(Screen.AdminTools.route) } }
+                composable(Screen.Admin.route) { AdminListScreen(uiState.herbs, {navController.popBackStack()}, {navController.navigate(Screen.AdminEdit.createRoute(Screen.AdminEdit.NEW))}, {h->navController.navigate(Screen.AdminEdit.createRoute(h.id))}, {h->appViewModel.deleteHerb(h.id) { _, _ -> }}) { navController.navigate(Screen.AdminTools.route) } }
                 composable(Screen.AdminTools.route) { AdminToolsScreen(uiState.categories, uiState.herbs, {navController.popBackStack()}, appViewModel::refresh, {n->appViewModel.addCategory(n)}, {id->appViewModel.deleteCategory(id)}, {appViewModel.deleteAllHerbs()}, {appViewModel.deleteAllData()}, {appViewModel.testConnection {ok,msg-> /* result shown by app state; keep UI non-blocking */ }}, {appViewModel.clearFavorites()}, {json->appViewModel.restoreBackup(json){_,_->}}) }
                 composable(Screen.AdminEdit.route, arguments=listOf(navArgument("herbId"){type=NavType.StringType})) { e -> val id=e.arguments?.getString("herbId"); val existing=uiState.herbs.firstOrNull {it.id==id}; AdminEditHerbScreen(existing, uiState.categories, {navController.popBackStack()}, {h,cb->if(existing==null) appViewModel.addHerb(h,cb) else appViewModel.updateHerb(h,cb)}) }
             }
