@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,7 +25,8 @@ fun AdminListScreen(
     onBack: () -> Unit,
     onAddNew: () -> Unit,
     onEdit: (Herb) -> Unit,
-    onDelete: (Herb) -> Unit
+    onDelete: (Herb) -> Unit,
+    onTools: () -> Unit
 ) {
     var pendingDelete by remember { mutableStateOf<Herb?>(null) }
 
@@ -40,9 +42,12 @@ fun AdminListScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = onAddNew, icon = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExtendedFloatingActionButton(onClick = onTools, icon = { Icon(Icons.Filled.Settings, null) }, text = { Text("أدوات") })
+                ExtendedFloatingActionButton(onClick = onAddNew, icon = {
                 Icon(Icons.Filled.Add, contentDescription = null)
             }, text = { Text("إضافة عشبة") })
+            }
         }
     ) { padding ->
         LazyColumn(
