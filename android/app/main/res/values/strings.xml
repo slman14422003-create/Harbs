@@ -23,6 +23,20 @@
     <string name="compare_title">مقارنة الأعشاب</string>
     <string name="compare_need_two">يلزم توفر عشبتين على الأقل لإجراء مقارنة. حاول إعادة التحميل من الشاشة الرئيسية.</string>
 
+    <string name="action_bookmark">إضافة للمفضلة</string>
+    <string name="action_bookmark_remove">إزالة من المفضلة</string>
+    <string name="action_share">مشاركة</string>
+    <string name="bookmark_added">تمت إضافة \"%1$s\" إلى المفضلة</string>
+    <string name="bookmark_removed">تمت إزالة \"%1$s\" من المفضلة</string>
+    <string name="bookmarks_title">المفضلة</string>
+    <string name="bookmarks_empty">لا توجد أعشاب في المفضلة بعد.\nاضغط على أيقونة المفضلة بجانب أي عشبة لإضافتها هنا.</string>
+    <string name="clear_bookmarks">مسح المفضلة</string>
+    <string name="clear_bookmarks_confirm_title">مسح المفضلة</string>
+    <string name="clear_bookmarks_confirm_message">هل تريد حذف كل الأعشاب من المفضلة؟</string>
+    <string name="bookmarks_cleared">تم مسح المفضلة</string>
+    <string name="share_herb_format">%1$s\n\n💚 الفوائد: %2$s\n⚠️ التحذيرات: %3$s\n🍵 طريقة الاستخدام: %4$s\n\nمن تطبيق موسوعة الأعشاب الطبية</string>
+    <string name="share_via">مشاركة عبر</string>
+
     <string name="about_title">حول التطبيق</string>
     <string name="about_body">موسوعة الأعشاب الطبية تطبيق أندرويد أصلي (Java) يعرض معلومات عن الأعشاب الطبية: الفوائد، التحذيرات، الأضرار، وطريقة الاستخدام لكل عشبة، بالإضافة إلى ميزة مقارنة عشبتين جنباً إلى جنب.\n\nالمعلومات الواردة في هذا التطبيق لأغراض تعليمية عامة فقط، ولا تُغني عن استشارة طبيب أو مختص قبل استخدام أي عشبة، خصوصاً في حال وجود حمل أو رضاعة أو أمراض مزمنة أو تداخل مع أدوية أخرى.\n\nالتطبيق لا يجمع بيانات شخصية حساسة، ويستخدم الإنترنت فقط لجلب قائمة الأعشاب والتصنيفات وتحديثها.</string>
 </resources>
