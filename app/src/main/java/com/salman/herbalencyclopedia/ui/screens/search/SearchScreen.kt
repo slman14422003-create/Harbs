@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -54,7 +55,7 @@ fun SearchScreen(
                             .focusRequester(focusRequester),
                         trailingIcon = {
                             if (query.isNotEmpty()) {
-                                IconButton(onClick = { query = "" }) {
+                                GlassIconButton(onClick = { query = "" }) {
                                     Icon(Icons.Filled.Clear, contentDescription = "مسح")
                                 }
                             }
@@ -62,7 +63,7 @@ fun SearchScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
                 }
