@@ -54,7 +54,7 @@
 
     <TextView
         android:id="@+id/herbCount"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:paddingStart="16dp"
@@ -63,8 +63,21 @@
         android:textSize="13sp"
         app:layout_constraintTop_toBottomOf="@id/categoryScroll"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         tools:text="24 عشبة" />
+
+    <TextView
+        android:id="@+id/lastUpdateBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:textColor="@color/brand_primary_dark"
+        android:textSize="11sp"
+        android:alpha="0.7"
+        app:layout_constraintTop_toBottomOf="@id/categoryScroll"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="آخر تحديث: 10:24" />
 
     <androidx.constraintlayout.widget.Group
         android:id="@+id/contentGroup"
