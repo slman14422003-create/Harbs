@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,7 +27,7 @@ fun LoginScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassTopBar(
                 title = { Text(if (isRegisterMode) "إنشاء حساب" else "تسجيل الدخول") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
