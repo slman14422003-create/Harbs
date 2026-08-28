@@ -9,6 +9,8 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.Shapes
+import androidx.compose.ui.unit.dp
 
 private val LightColors = lightColorScheme(
     primary = LeafGreen40,
@@ -30,6 +32,7 @@ private val DarkColors = darkColorScheme(
 fun HerbalEncyclopediaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    fontScale: Int = 0,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -42,7 +45,14 @@ fun HerbalEncyclopediaTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = HerbalTypography,
+        typography = HerbalTypography.scaled(fontScale),
+        shapes = Shapes(
+            extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            small = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            medium = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+            large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+        ),
         content = content
     )
 }

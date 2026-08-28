@@ -17,3 +17,10 @@ val HerbalTypography = Typography(
     bodyMedium = TextStyle(fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 22.sp),
     labelLarge = TextStyle(fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp)
 )
+
+
+fun Typography.scaled(level: Int): Typography {
+    val factor = when (level.coerceIn(0,2)) { 1 -> 1.15f; 2 -> 1.30f; else -> 1f }
+    fun TextStyle.s() = copy(fontSize = fontSize * factor, lineHeight = lineHeight * factor)
+    return copy(headlineLarge=headlineLarge.s(), headlineMedium=headlineMedium.s(), titleLarge=titleLarge.s(), titleMedium=titleMedium.s(), bodyLarge=bodyLarge.s(), bodyMedium=bodyMedium.s(), labelLarge=labelLarge.s())
+}
