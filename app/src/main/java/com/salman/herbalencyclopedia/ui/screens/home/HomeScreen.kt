@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -34,12 +35,13 @@ fun HomeScreen(
     onSearchClick: () -> Unit,
     onFavoritesClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onAdminClick: () -> Unit
+    onAdminClick: () -> Unit,
+    onCompareClick: () -> Unit
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("موسوعة الأعشاب الطبية") },
+            LargeTopAppBar(
+                title = { Column { Text("موسوعة الأعشاب الطبية", style = MaterialTheme.typography.headlineMedium); Text("اكتشف الأعشاب وفوائدها", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Filled.Search, contentDescription = "بحث")
@@ -59,15 +61,19 @@ fun HomeScreen(
             )
         }
     ) { padding ->
-        when {
-            isLoading -> LoadingView(modifier = Modifier.padding(padding))
-            error != null -> ErrorView(message = error, onRetry = onRetry, modifier = Modifier.padding(padding))
-            categories.isEmpty() -> EmptyView(message = "لا توجد تصنيفات بعد", modifier = Modifier.padding(padding))
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = onSearchClick, label = { Text("بحث") }, leadingIcon = { Icon(Icons.Filled.Search, null) })
+                AssistChip(onClick = onFavoritesClick, label = { Text("مفضلة") }, leadingIcon = { Icon(Icons.Filled.Favorite, null) })
+                AssistChip(onClick = onCompareClick, label = { Text("مقارنة") }, leadingIcon = { Icon(Icons.Filled.Balance, null) })
+            }
+            when {
+            isLoading -> LoadingView()
+            error != null -> ErrorView(message = error, onRetry = onRetry)
+            categories.isEmpty() -> EmptyView(message = "لا توجد تصنيفات بعد")
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -83,4 +89,5 @@ fun HomeScreen(
             }
         }
     }
+}
 }
