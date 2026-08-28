@@ -26,9 +26,10 @@ class MainActivity : ComponentActivity() {
             val appViewModel: AppViewModel = viewModel(factory = AppViewModelFactory(container))
             val darkModePref by container.preferencesRepository.darkMode.collectAsState(initial = null)
             val dynamicColorPref by container.preferencesRepository.dynamicColor.collectAsState(initial = true)
+            val fontScale by container.preferencesRepository.fontScale.collectAsState(initial = 0)
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
-            HerbalEncyclopediaTheme(darkTheme = useDark, dynamicColor = dynamicColorPref) {
+            HerbalEncyclopediaTheme(darkTheme = useDark, dynamicColor = dynamicColorPref, fontScale = fontScale) {
                 HerbalNavGraph(
                     appViewModel = appViewModel,
                     preferencesRepository = container.preferencesRepository
