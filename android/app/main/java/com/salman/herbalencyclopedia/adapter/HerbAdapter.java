@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.adapter;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -14,6 +15,7 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.bumptech.glide.request.RequestOptions;
 import com.salman.herbalencyclopedia.R;
+import com.salman.herbalencyclopedia.data.BookmarkManager;
 import com.salman.herbalencyclopedia.model.Herb;
 
 import java.util.ArrayList;
@@ -25,11 +27,26 @@ public class HerbAdapter extends RecyclerView.Adapter<HerbAdapter.HerbViewHolder
         void onHerbClick(Herb herb);
     }
 
+    /** استدعاء عند الضغط على زر المفضلة داخل بطاقة عشبة. */
+    public interface OnBookmarkClickListener {
+        void onBookmarkClick(Herb herb);
+    }
+
     private final List<Herb> items = new ArrayList<>();
     private final OnHerbClickListener listener;
+    private OnBookmarkClickListener bookmarkListener;
 
     public HerbAdapter(OnHerbClickListener listener) {
         this.listener = listener;
+    }
+
+    public void setOnBookmarkClickListener(OnBookmarkClickListener bookmarkListener) {
+        this.bookmarkListener = bookmarkListener;
+    }
+
+    /** يعيد رسم أيقونات المفضلة فقط (بعد تبديل حالة عشبة) دون إعادة تحميل كامل القائمة. */
+    public void refreshBookmarkIcons() {
+        notifyItemRangeChanged(0, items.size());
     }
 
     /** يستبدل القائمة الحالية بأخرى جديدة (نتيجة بحث/فلترة) مع حساب الفروقات فقط. */
@@ -50,7 +67,7 @@ public class HerbAdapter extends RecyclerView.Adapter<HerbAdapter.HerbViewHolder
 
     @Override
     public void onBindViewHolder(@NonNull HerbViewHolder holder, int position) {
-        holder.bind(items.get(position), listener);
+        holder.bind(items.get(position), listener, bookmarkListener);
     }
 
     @Override
@@ -62,15 +79,17 @@ public class HerbAdapter extends RecyclerView.Adapter<HerbAdapter.HerbViewHolder
         private final ImageView image;
         private final TextView name;
         private final TextView preview;
+        private final ImageButton bookmarkButton;
 
         HerbViewHolder(@NonNull View itemView) {
             super(itemView);
             image = itemView.findViewById(R.id.herbImage);
             name = itemView.findViewById(R.id.herbName);
             preview = itemView.findViewById(R.id.herbPreview);
+            bookmarkButton = itemView.findViewById(R.id.bookmarkButton);
         }
 
-        void bind(Herb herb, OnHerbClickListener listener) {
+        void bind(Herb herb, OnHerbClickListener listener, OnBookmarkClickListener bookmarkListener) {
             name.setText(herb.getName());
             String previewText = herb.previewText();
             preview.setText(previewText.isEmpty() ? "—" : previewText);
@@ -87,6 +106,12 @@ public class HerbAdapter extends RecyclerView.Adapter<HerbAdapter.HerbViewHolder
 
             itemView.setOnClickListener(v -> {
                 if (listener != null) listener.onHerbClick(herb);
+            });
+
+            boolean bookmarked = BookmarkManager.getInstance(itemView.getContext()).isBookmarked(herb.getId());
+            bookmarkButton.setImageResource(bookmarked ? R.drawable.ic_bookmark_filled : R.drawable.ic_bookmark_outline);
+            bookmarkButton.setOnClickListener(v -> {
+                if (bookmarkListener != null) bookmarkListener.onBookmarkClick(herb);
             });
         }
     }
