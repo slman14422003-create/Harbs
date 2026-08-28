@@ -2,6 +2,7 @@ package com.salman.herbalencyclopedia.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -20,6 +21,7 @@ class PreferencesRepository(private val context: Context) {
         val FAVORITES = stringSetPreferencesKey("favorite_herb_ids")
         val DARK_MODE = booleanPreferencesKey("dark_mode")
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val FONT_SCALE = intPreferencesKey("font_scale")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -33,6 +35,8 @@ class PreferencesRepository(private val context: Context) {
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map {
         it[Keys.USE_DYNAMIC_COLOR] ?: true
     }
+
+    val fontScale: Flow<Int> = context.dataStore.data.map { it[Keys.FONT_SCALE] ?: 0 }
 
     suspend fun toggleFavorite(herbId: String) {
         context.dataStore.edit { prefs ->
@@ -50,4 +54,7 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setDynamicColor(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.USE_DYNAMIC_COLOR] = enabled }
     }
+
+    suspend fun setFontScale(level: Int) { context.dataStore.edit { it[Keys.FONT_SCALE] = level.coerceIn(0, 2) } }
+    suspend fun clearFavorites() { context.dataStore.edit { it[Keys.FAVORITES] = emptySet() } }
 }

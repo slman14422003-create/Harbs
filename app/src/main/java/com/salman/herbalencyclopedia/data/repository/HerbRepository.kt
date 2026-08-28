@@ -57,4 +57,56 @@ class HerbRepository(
     suspend fun deleteHerb(id: String) {
         db.collection("herbs").document(id).delete().await()
     }
+
+    suspend fun addCategory(name: String) {
+        db.collection("categories").add(hashMapOf("name" to name)).await()
+    }
+
+    suspend fun updateCategory(id: String, name: String) {
+        db.collection("categories").document(id).update("name", name).await()
+    }
+
+    suspend fun deleteCategory(id: String) {
+        db.collection("categories").document(id).delete().await()
+    }
+
+    suspend fun deleteAllHerbs() {
+        val docs = db.collection("herbs").get().await().documents
+        docs.chunked(450).forEach { chunk ->
+            val batch = db.batch(); chunk.forEach { batch.delete(it.reference) }; batch.commit().await()
+        }
+    }
+
+    suspend fun deleteAllData() {
+        deleteAllHerbs()
+        val docs = db.collection("categories").get().await().documents
+        docs.chunked(450).forEach { chunk ->
+            val batch = db.batch(); chunk.forEach { batch.delete(it.reference) }; batch.commit().await()
+        }
+    }
+
+    suspend fun testConnection(): Boolean {
+        db.collection("categories").limit(1).get().await()
+        return true
+    }
+    suspend fun restoreBackup(json: String) {
+        val root = org.json.JSONObject(json)
+        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>>>()
+        val categories = root.optJSONArray("categories") ?: org.json.JSONArray()
+        for (i in 0 until categories.length()) {
+            val o = categories.getJSONObject(i); val id = o.optString("id")
+            if (id.isNotBlank()) operations += db.collection("categories").document(id) to hashMapOf("name" to o.optString("name"), "icon" to o.optString("icon").ifBlank { null })
+        }
+        val herbs = root.optJSONArray("herbs") ?: org.json.JSONArray()
+        for (i in 0 until herbs.length()) {
+            val o = herbs.getJSONObject(i); val id = o.optString("id")
+            if (id.isNotBlank()) operations += db.collection("herbs").document(id) to hashMapOf("name" to o.optString("name"), "category_id" to o.optString("categoryId").ifBlank { null }, "benefits" to o.optString("benefits"), "warnings" to o.optString("warnings"), "harms" to o.optString("harms"), "usage" to o.optString("usage"), "notes" to o.optString("notes"), "image_url" to o.optString("imageUrl").ifBlank { null })
+        }
+        operations.chunked(450).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { (ref, data) -> batch.set(ref, data) }
+            batch.commit().await()
+        }
+    }
+
 }
