@@ -37,6 +37,41 @@
     <string name="share_herb_format">%1$s\n\n💚 الفوائد: %2$s\n⚠️ التحذيرات: %3$s\n🍵 طريقة الاستخدام: %4$s\n\nمن تطبيق موسوعة الأعشاب الطبية</string>
     <string name="share_via">مشاركة عبر</string>
 
+    <string name="action_theme_toggle">الوضع الليلي/النهاري</string>
+    <string name="action_font_size">حجم الخط</string>
+    <string name="action_advanced_search">بحث متقدم</string>
+    <string name="action_stats">إحصائيات</string>
+    <string name="font_size_changed">✅ تم تغيير حجم الخط إلى %1$s</string>
+    <string name="last_update_format">آخر تحديث: %1$s</string>
+    <string name="last_update_never">لم يتم التحديث بعد</string>
+    <string name="offline_using_cache">تعذّر الاتصال بالشبكة، يتم عرض آخر نسخة محفوظة</string>
+
+    <string name="adv_search_title">بحث متقدم</string>
+    <string name="adv_search_query_hint">أدخل كلمة البحث…</string>
+    <string name="adv_search_query_label">كلمة البحث</string>
+    <string name="adv_search_category_label">التصنيف</string>
+    <string name="adv_search_field_label">البحث في</string>
+    <string name="adv_search_field_name">الاسم فقط</string>
+    <string name="adv_search_field_benefits">الفوائد فقط</string>
+    <string name="adv_search_field_warnings">التحذيرات فقط</string>
+    <string name="adv_search_field_all">جميع الحقول</string>
+    <string name="adv_search_case_sensitive">حساسية الأحرف</string>
+    <string name="adv_search_exact_match">تطابق تام</string>
+    <string name="adv_search_button">بحث</string>
+    <string name="adv_search_empty_query">الرجاء إدخال كلمة البحث</string>
+    <string name="adv_search_no_results">❌ لا توجد نتائج</string>
+    <string name="adv_search_results_format">نتائج البحث (%1$d)</string>
+    <string name="adv_search_history_title">عمليات بحث سابقة</string>
+    <string name="adv_search_clear_history">مسح السجل</string>
+
+    <string name="stats_title">📊 إحصائيات سريعة</string>
+    <string name="stats_visits_format">👥 عدد زياراتك: %1$d</string>
+    <string name="stats_herbs_format">🌿 عدد الأعشاب: %1$d</string>
+    <string name="stats_categories_format">📂 عدد التصنيفات: %1$d</string>
+    <string name="stats_bookmarks_format">🔖 الإشارات: %1$d</string>
+    <string name="stats_by_category_title">📂 التصنيفات</string>
+    <string name="stats_category_row_format">📁 %1$s (%2$d عشبة)</string>
+
     <string name="about_title">حول التطبيق</string>
     <string name="about_body">موسوعة الأعشاب الطبية تطبيق أندرويد أصلي (Java) يعرض معلومات عن الأعشاب الطبية: الفوائد، التحذيرات، الأضرار، وطريقة الاستخدام لكل عشبة، بالإضافة إلى ميزة مقارنة عشبتين جنباً إلى جنب.\n\nالمعلومات الواردة في هذا التطبيق لأغراض تعليمية عامة فقط، ولا تُغني عن استشارة طبيب أو مختص قبل استخدام أي عشبة، خصوصاً في حال وجود حمل أو رضاعة أو أمراض مزمنة أو تداخل مع أدوية أخرى.\n\nالتطبيق لا يجمع بيانات شخصية حساسة، ويستخدم الإنترنت فقط لجلب قائمة الأعشاب والتصنيفات وتحديثها.</string>
 </resources>
