@@ -12,13 +12,18 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsScreen(
     isLoggedIn: Boolean,
+    isAdmin: Boolean,
     darkMode: Boolean?,
     dynamicColor: Boolean,
+    fontScale: Int,
     onBack: () -> Unit,
     onDarkModeChange: (Boolean?) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
+    onFontScaleChange: (Int) -> Unit,
     onLoginClick: () -> Unit,
-    onLogoutClick: () -> Unit
+    onLogoutClick: () -> Unit,
+    onHelpClick: () -> Unit,
+    onAdminToolsClick: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -60,12 +65,21 @@ fun SettingsScreen(
                 Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("حجم النص", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("عادي", "كبير", "أكبر").forEachIndexed { index, label ->
+                    FilterChip(selected = fontScale == index, onClick = { onFontScaleChange(index) }, label = { Text(label) })
+                }
+            }
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))
 
             Text("الحساب", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onHelpClick, modifier = Modifier.fillMaxWidth()) { Text("المساعدة") }
+            if (isAdmin) OutlinedButton(onClick = onAdminToolsClick, modifier = Modifier.fillMaxWidth()) { Text("أدوات الإدارة") }
             if (isLoggedIn) {
                 OutlinedButton(onClick = onLogoutClick, modifier = Modifier.fillMaxWidth()) {
                     Text("تسجيل الخروج")
