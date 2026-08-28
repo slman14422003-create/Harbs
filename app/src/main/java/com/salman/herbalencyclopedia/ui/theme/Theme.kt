@@ -12,18 +12,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
-private val LightColors = lightColorScheme(
-    primary = LeafGreen40,
-    secondary = LeafGreenGrey40,
-    tertiary = Earth40,
+private fun lightSchemeFor(palette: ThemePalette) = lightColorScheme(
+    primary = palette.light40,
+    secondary = palette.secondary40,
+    tertiary = palette.tertiary40,
     background = SurfaceLight,
     surface = SurfaceLight
 )
 
-private val DarkColors = darkColorScheme(
-    primary = LeafGreen80,
-    secondary = LeafGreenGrey80,
-    tertiary = Earth80,
+private fun darkSchemeFor(palette: ThemePalette) = darkColorScheme(
+    primary = palette.light80,
+    secondary = palette.secondary80,
+    tertiary = palette.tertiary80,
     background = SurfaceDark,
     surface = SurfaceDark
 )
@@ -32,6 +32,7 @@ private val DarkColors = darkColorScheme(
 fun HerbalEncyclopediaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    palette: ThemePalette = ThemePalette.LEAF,
     fontScale: Int = 0,
     content: @Composable () -> Unit
 ) {
@@ -39,8 +40,8 @@ fun HerbalEncyclopediaTheme(
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        darkTheme -> DarkColors
-        else -> LightColors
+        darkTheme -> darkSchemeFor(palette)
+        else -> lightSchemeFor(palette)
     }
 
     MaterialTheme(
