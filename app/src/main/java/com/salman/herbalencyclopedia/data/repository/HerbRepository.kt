@@ -25,7 +25,7 @@ class HerbRepository(
         db.collection("categories").get().await().toObjects(Category::class.java)
 
     suspend fun addHerb(herb: Herb) {
-        val data = hashMapOf(
+        val data: HashMap<String, Any> = hashMapOf(
             "name" to herb.name,
             "category_id" to herb.categoryId,
             "benefits" to herb.benefits.ifBlank { "—" },
@@ -40,7 +40,7 @@ class HerbRepository(
     }
 
     suspend fun updateHerb(herb: Herb) {
-        val data = hashMapOf(
+        val data: HashMap<String, Any> = hashMapOf(
             "name" to herb.name,
             "category_id" to herb.categoryId,
             "benefits" to herb.benefits.ifBlank { "—" },
