@@ -1,12 +1,17 @@
 package com.salman.herbalencyclopedia;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.bumptech.glide.request.RequestOptions;
+import com.salman.herbalencyclopedia.data.BookmarkManager;
 import com.salman.herbalencyclopedia.data.HerbRepository;
 import com.salman.herbalencyclopedia.databinding.ActivityHerbDetailBinding;
 import com.salman.herbalencyclopedia.model.Herb;
@@ -17,6 +22,9 @@ public class HerbDetailActivity extends AppCompatActivity {
     public static final String EXTRA_HERB = "extra_herb";
 
     private ActivityHerbDetailBinding binding;
+    private BookmarkManager bookmarkManager;
+    private Herb herb;
+    private Menu optionsMenu;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -24,7 +32,9 @@ public class HerbDetailActivity extends AppCompatActivity {
         binding = ActivityHerbDetailBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        Herb herb = (Herb) getIntent().getSerializableExtra(EXTRA_HERB);
+        bookmarkManager = BookmarkManager.getInstance(this);
+
+        herb = (Herb) getIntent().getSerializableExtra(EXTRA_HERB);
         if (herb == null) {
             finish();
             return;
@@ -37,6 +47,61 @@ public class HerbDetailActivity extends AppCompatActivity {
         binding.toolbar.setNavigationOnClickListener(v -> finish());
 
         bind(herb);
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_herb_detail, menu);
+        optionsMenu = menu;
+        updateBookmarkIcon();
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_bookmark) {
+            toggleBookmark();
+            return true;
+        } else if (id == R.id.action_share) {
+            shareHerb();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void toggleBookmark() {
+        boolean nowBookmarked = bookmarkManager.toggle(herb.getId());
+        updateBookmarkIcon();
+        String message = getString(nowBookmarked ? R.string.bookmark_added : R.string.bookmark_removed, herb.getName());
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateBookmarkIcon() {
+        if (optionsMenu == null) return;
+        MenuItem bookmarkItem = optionsMenu.findItem(R.id.action_bookmark);
+        if (bookmarkItem == null) return;
+        boolean bookmarked = bookmarkManager.isBookmarked(herb.getId());
+        bookmarkItem.setIcon(bookmarked ? R.drawable.ic_bookmark_filled : R.drawable.ic_bookmark_outline);
+        bookmarkItem.setTitle(bookmarked ? R.string.action_bookmark_remove : R.string.action_bookmark);
+    }
+
+    /** مشاركة نص العشبة عبر أي تطبيق مثبت (واتساب، رسائل، إلخ) - بديل أصلي لميزة shareAppBtn/printHerbDetail. */
+    private void shareHerb() {
+        String benefits = valueOrDash(herb.getBenefits());
+        String warnings = valueOrDash(herb.getWarnings());
+        String usage = valueOrDash(herb.getUsage());
+        String text = getString(R.string.share_herb_format, herb.getName(), benefits, warnings, usage);
+
+        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+        shareIntent.setType("text/plain");
+        shareIntent.putExtra(Intent.EXTRA_SUBJECT, herb.getName());
+        shareIntent.putExtra(Intent.EXTRA_TEXT, text);
+        startActivity(Intent.createChooser(shareIntent, getString(R.string.share_via)));
+    }
+
+    private String valueOrDash(String value) {
+        return (value == null || value.trim().isEmpty()) ? getString(R.string.value_not_available) : value.trim();
     }
 
     private void bind(Herb herb) {

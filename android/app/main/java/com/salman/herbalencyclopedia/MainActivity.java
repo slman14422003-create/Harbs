@@ -2,7 +2,10 @@ package com.salman.herbalencyclopedia;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.Toast;
 import androidx.appcompat.widget.SearchView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.google.android.material.chip.Chip;
 import com.salman.herbalencyclopedia.adapter.HerbAdapter;
+import com.salman.herbalencyclopedia.data.BookmarkManager;
 import com.salman.herbalencyclopedia.data.HerbRepository;
 import com.salman.herbalencyclopedia.databinding.ActivityMainBinding;
 import com.salman.herbalencyclopedia.model.Category;
@@ -58,6 +62,14 @@ public class MainActivity extends AppCompatActivity {
         loadData();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (adapter != null && !allHerbs.isEmpty()) {
+            adapter.refreshBookmarkIcons();
+        }
+    }
+
     private void setupEdgeToEdge() {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout, (view, insets) -> {
@@ -87,8 +99,31 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(HerbDetailActivity.EXTRA_HERB, herb);
             startActivity(intent);
         });
+        adapter.setOnBookmarkClickListener(this::onBookmarkToggled);
         binding.herbList.setLayoutManager(new LinearLayoutManager(this));
         binding.herbList.setAdapter(adapter);
+    }
+
+    private void onBookmarkToggled(Herb herb) {
+        boolean nowBookmarked = BookmarkManager.getInstance(this).toggle(herb.getId());
+        adapter.refreshBookmarkIcons();
+        String message = getString(nowBookmarked ? R.string.bookmark_added : R.string.bookmark_removed, herb.getName());
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == R.id.action_bookmarks) {
+            startActivity(new Intent(this, BookmarksActivity.class));
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     private void setupSearch() {
