@@ -12,6 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassButton
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
+import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -52,7 +55,7 @@ fun AdminEditHerbScreen(
             GlassTopBar(
                 title = { Text(if (existingHerb == null) "إضافة عشبة" else "تعديل عشبة") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
                 }
@@ -123,14 +126,14 @@ fun AdminEditHerbScreen(
             )
             Text("صورة العشبة", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { imagePicker.launch("image/*") }) { Text("اختيار صورة") }
-                if (imageUrl.isNotBlank()) OutlinedButton(onClick = { imageUrl = "" }) { Text("مسح") }
+                GlassButton(onClick = { imagePicker.launch("image/*") }) { Text("اختيار صورة") }
+                if (imageUrl.isNotBlank()) GlassOutlinedButton(onClick = { imageUrl = "" }) { Text("مسح") }
             }
             if (imageUrl.isNotBlank()) AsyncImage(model = imageUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().height(180.dp))
 
             errorMessage?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
-            Button(
+            GlassButton(
                 onClick = {
                     isSaving = true
                     errorMessage = null

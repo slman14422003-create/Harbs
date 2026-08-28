@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,7 +37,7 @@ fun AdminListScreen(
             GlassTopBar(
                 title = { Text("لوحة تحكم الأدمن") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
                 }
@@ -73,10 +74,10 @@ fun AdminListScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = { onEdit(herb) }) {
+                        GlassIconButton(onClick = { onEdit(herb) }) {
                             Icon(Icons.Filled.Edit, contentDescription = "تعديل")
                         }
-                        IconButton(onClick = { pendingDelete = herb }) {
+                        GlassIconButton(onClick = { pendingDelete = herb }) {
                             Icon(
                                 Icons.Filled.Delete,
                                 contentDescription = "حذف",
