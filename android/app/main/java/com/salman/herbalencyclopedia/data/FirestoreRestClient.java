@@ -59,8 +59,12 @@ public final class FirestoreRestClient {
             JSONObject page = get(urlBuilder.toString());
             JSONArray docsArray = page.optJSONArray("documents");
             if (docsArray != null) {
-                for (int i = 0; i < docsArray.length(); i++) {
-                    documents.add(docsArray.getJSONObject(i));
+                try {
+                    for (int i = 0; i < docsArray.length(); i++) {
+                        documents.add(docsArray.getJSONObject(i));
+                    }
+                } catch (org.json.JSONException e) {
+                    throw new IOException("تعذّر قراءة مستندات الاستجابة", e);
                 }
             }
             pageToken = page.optString("nextPageToken", null);
