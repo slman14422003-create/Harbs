@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -22,6 +24,7 @@ class PreferencesRepository(private val context: Context) {
         val DARK_MODE = booleanPreferencesKey("dark_mode")
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val FONT_SCALE = intPreferencesKey("font_scale")
+        val THEME_PALETTE = stringPreferencesKey("theme_palette")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -37,6 +40,10 @@ class PreferencesRepository(private val context: Context) {
     }
 
     val fontScale: Flow<Int> = context.dataStore.data.map { it[Keys.FONT_SCALE] ?: 0 }
+
+    val themePalette: Flow<ThemePalette> = context.dataStore.data.map {
+        ThemePalette.fromId(it[Keys.THEME_PALETTE])
+    }
 
     suspend fun toggleFavorite(herbId: String) {
         context.dataStore.edit { prefs ->
@@ -56,5 +63,8 @@ class PreferencesRepository(private val context: Context) {
     }
 
     suspend fun setFontScale(level: Int) { context.dataStore.edit { it[Keys.FONT_SCALE] = level.coerceIn(0, 2) } }
+    suspend fun setThemePalette(palette: ThemePalette) {
+        context.dataStore.edit { prefs -> prefs[Keys.THEME_PALETTE] = palette.name }
+    }
     suspend fun clearFavorites() { context.dataStore.edit { it[Keys.FAVORITES] = emptySet() } }
 }
