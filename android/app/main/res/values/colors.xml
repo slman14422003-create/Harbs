@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#2E7D32</color>
+    <color name="brand_primary_dark">#1B5E20</color>
+    <color name="brand_background">#FEF9E6</color>
+    <color name="brand_background_dark">#1A1A2E</color>
+    <color name="ic_launcher_background">#2E7D32</color>
+    <color name="white">#FFFFFF</color>
+
+    <!-- ألوان الخلفية الصلبة خلف أشرطة النظام الشفافة (edge-to-edge) -->
+    <color name="status_bar_scrim">@color/brand_primary</color>
+    <color name="nav_bar_scrim">@color/brand_background</color>
+</resources>

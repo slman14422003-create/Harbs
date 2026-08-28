@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">موسوعة الأعشاب الطبية</string>
+    <string name="exit_confirm">اضغط رجوع مرة أخرى للخروج</string>
+    <string name="no_internet_title">تعذّر الاتصال بالإنترنت. تحقق من الشبكة وحاول مرة أخرى</string>
+    <string name="retry">إعادة المحاولة</string>
+    <string name="dialog_ok">موافق</string>
+    <string name="dialog_cancel">إلغاء</string>
+
+    <string name="search_hint">ابحث عن عشبة أو فائدة…</string>
+    <string name="category_all">الكل</string>
+    <string name="category_unknown">غير مصنّف</string>
+    <string name="herb_count_format">%1$d عشبة</string>
+    <string name="empty_search">لا توجد نتائج مطابقة لبحثك</string>
+
+    <string name="section_benefits">💚 الفوائد</string>
+    <string name="section_warnings">⚠️ التحذيرات</string>
+    <string name="section_harms">⚡ الأضرار</string>
+    <string name="section_usage">🍵 طريقة الاستخدام</string>
+    <string name="section_notes">📝 ملاحظات</string>
+    <string name="value_not_available">—</string>
+
+    <string name="compare_title">مقارنة الأعشاب</string>
+    <string name="compare_need_two">يلزم توفر عشبتين على الأقل لإجراء مقارنة. حاول إعادة التحميل من الشاشة الرئيسية.</string>
+
+    <string name="about_title">حول التطبيق</string>
+    <string name="about_body">موسوعة الأعشاب الطبية تطبيق أندرويد أصلي (Java) يعرض معلومات عن الأعشاب الطبية: الفوائد، التحذيرات، الأضرار، وطريقة الاستخدام لكل عشبة، بالإضافة إلى ميزة مقارنة عشبتين جنباً إلى جنب.\n\nالمعلومات الواردة في هذا التطبيق لأغراض تعليمية عامة فقط، ولا تُغني عن استشارة طبيب أو مختص قبل استخدام أي عشبة، خصوصاً في حال وجود حمل أو رضاعة أو أمراض مزمنة أو تداخل مع أدوية أخرى.\n\nالتطبيق لا يجمع بيانات شخصية حساسة، ويستخدم الإنترنت فقط لجلب قائمة الأعشاب والتصنيفات وتحديثها.</string>
+</resources>
