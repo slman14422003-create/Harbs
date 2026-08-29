@@ -21,6 +21,7 @@ fun FavoritesScreen(
 ) {
     // Bottom-nav root destination — no back arrow, same as HomeScreen.
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = { GlassTopBar(large = true, title = { Text("المفضلة") }) }
     ) { padding ->
         if (favoriteHerbs.isEmpty()) {
