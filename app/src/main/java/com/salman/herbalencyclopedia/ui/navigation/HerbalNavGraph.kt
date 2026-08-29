@@ -76,7 +76,32 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         }
     }) { inner ->
         Box(Modifier.padding(inner).fillMaxSize()) {
-            NavHost(navController, Screen.Splash.route) {
+            NavHost(
+                navController,
+                Screen.Splash.route,
+                enterTransition = {
+                    androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
+                        androidx.compose.animation.slideInHorizontally(
+                            com.salman.herbalencyclopedia.ui.theme.AppMotion.silky()
+                        ) { it / 6 }
+                },
+                exitTransition = {
+                    androidx.compose.animation.fadeOut(
+                        com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(
+                            com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick
+                        )
+                    )
+                },
+                popEnterTransition = {
+                    androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth())
+                },
+                popExitTransition = {
+                    androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
+                        androidx.compose.animation.slideOutHorizontally(
+                            com.salman.herbalencyclopedia.ui.theme.AppMotion.silky()
+                        ) { it / 6 }
+                }
+            ) {
                 composable(Screen.Splash.route) {
                     SplashScreen(onFinished = {
                         navController.navigate(Screen.Home.route) {
