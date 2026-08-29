@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,6 +16,8 @@ import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.AppViewModelFactory
 import com.salman.herbalencyclopedia.ui.navigation.HerbalNavGraph
 import com.salman.herbalencyclopedia.ui.theme.HerbalEncyclopediaTheme
+import com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode
+import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,6 +36,9 @@ class MainActivity : ComponentActivity() {
             val themePalette by container.preferencesRepository.themePalette.collectAsState(
                 initial = com.salman.herbalencyclopedia.ui.theme.ThemePalette.LEAF
             )
+            val performanceMode by container.preferencesRepository.performanceMode.collectAsState(
+                initial = PerformanceMode.HIGH_QUALITY
+            )
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
             SideEffect {
@@ -49,10 +55,18 @@ class MainActivity : ComponentActivity() {
                 palette = themePalette,
                 fontScale = fontScale
             ) {
-                HerbalNavGraph(
-                    appViewModel = appViewModel,
-                    preferencesRepository = container.preferencesRepository
-                )
+                // بدون هذا، اختيار "اقتصادي" من الإعدادات كان يُحفظ في
+                // DataStore فقط دون أي أثر فعلي: LocalPerformanceMode لم
+                // يكن يُزوَّد (provide) بالقيمة الحقيقية في أي مكان بالتطبيق،
+                // فكانت كل مكوّنات الزجاج السائل (LiquidGlassSurface وغيرها)
+                // تقرأ دائماً القيمة الافتراضية HIGH_QUALITY بغض النظر عن
+                // اختيار المستخدم — هذا هو إصلاح "الزر الاقتصادي".
+                CompositionLocalProvider(LocalPerformanceMode provides performanceMode) {
+                    HerbalNavGraph(
+                        appViewModel = appViewModel,
+                        preferencesRepository = container.preferencesRepository
+                    )
+                }
             }
         }
     }
