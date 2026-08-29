@@ -176,7 +176,7 @@ private fun OneUiFloatingNavItem(
             tint = content,
             modifier = Modifier
                 .size(22.dp)
-                .graphicsLayer { scaleX = iconScale; scaleY = iconScale }
+                .graphicsLayer(scaleX = iconScale, scaleY = iconScale)
         )
         androidx.compose.animation.AnimatedVisibility(
             visible = selected,
