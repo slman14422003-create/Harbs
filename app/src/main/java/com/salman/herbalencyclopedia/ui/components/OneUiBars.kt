@@ -2,7 +2,6 @@ package com.salman.herbalencyclopedia.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -143,12 +142,12 @@ private fun OneUiFloatingNavItem(
 ) {
     val background by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        animationSpec = tween(180),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick),
         label = "navBackground"
     )
     val content by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(180),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick),
         label = "navContent"
     )
     // نبضة خفيفة على الأيقونة عند الاختيار بدل التبديل المفاجئ.
