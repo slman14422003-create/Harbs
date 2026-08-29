@@ -32,6 +32,7 @@ fun HelpScreen(onBack: () -> Unit) {
         "هل المعلومات الطبية بديل عن الطبيب؟" to "لا. الموسوعة مرجع معلوماتي وليست بديلاً عن استشارة الطبيب أو الصيدلي."
     )
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
                 title = { Text("المساعدة") },
