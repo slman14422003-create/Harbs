@@ -3,10 +3,7 @@ package com.salman.herbalencyclopedia.ui.screens.favorites
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
-import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -19,21 +16,12 @@ import com.salman.herbalencyclopedia.ui.components.HerbCard
 @Composable
 fun FavoritesScreen(
     favoriteHerbs: List<Herb>,
-    onBack: () -> Unit,
     onHerbClick: (Herb) -> Unit,
     onToggleFavorite: (String) -> Unit
 ) {
+    // Bottom-nav root destination — no back arrow, same as HomeScreen.
     Scaffold(
-        topBar = {
-            GlassTopBar(
-                title = { Text("المفضلة") },
-                navigationIcon = {
-                    GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
-                    }
-                }
-            )
-        }
+        topBar = { GlassTopBar(large = true, title = { Text("المفضلة") }) }
     ) { padding ->
         if (favoriteHerbs.isEmpty()) {
             EmptyView(message = "لم تُضِف أي عشبة إلى المفضلة بعد", modifier = Modifier.padding(padding))
