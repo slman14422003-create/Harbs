@@ -64,6 +64,7 @@ fun AdminToolsScreen(
     var categoryName by remember { mutableStateOf("") }
     var confirmAction by remember { mutableStateOf<String?>(null) }
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = { GlassTopBar(title = { Text("أدوات الإدارة") }, navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
