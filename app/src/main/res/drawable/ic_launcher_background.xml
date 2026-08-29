@@ -1,26 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    خلفية الأيقونة المتكيّفة (Adaptive Icon): إضاءة نهارية دافئة خلف
-    الشجرة — تدرّج شعاعي من أصفر-أخضر فاتح بالمنتصف (إحساس ضوء شمس)
-    إلى أخضر زيتوني عميق بالأطراف، بدل التدرّج الزجاجي الغامق السابق.
+    خلفية الأيقونة المتكيّفة (Adaptive Icon) — أسلوب Material 3 /
+    Material You الحديث (Android 16): لون واحد مسطّح بلا أي تدرّج أو
+    لمعان، تون فاتح هادئ من نفس عائلة لون الورقة الأمامية، بحيث تبدو
+    الأيقونة "مسطّحة جريئة" بدل الإحساس الزجاجي/الكلاسيكي القديم.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <path android:pathData="M0,0h108v108h-108z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="radial"
-                android:centerX="54"
-                android:centerY="38"
-                android:gradientRadius="92"
-                android:startColor="#F1F8E9"
-                android:centerColor="#AED581"
-                android:endColor="#33691E" />
-        </aapt:attr>
-    </path>
+    <path
+        android:pathData="M0,0h108v108h-108z"
+        android:fillColor="#E3F1E1" />
 </vector>
