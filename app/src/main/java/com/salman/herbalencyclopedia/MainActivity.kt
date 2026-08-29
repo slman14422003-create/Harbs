@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appViewModel: AppViewModel = viewModel(factory = AppViewModelFactory(container))
             val darkModePref by container.preferencesRepository.darkMode.collectAsState(initial = null)
-            val dynamicColorPref by container.preferencesRepository.dynamicColor.collectAsState(initial = true)
+            val dynamicColorPref by container.preferencesRepository.dynamicColor.collectAsState(initial = false)
             val fontScale by container.preferencesRepository.fontScale.collectAsState(initial = 0)
             val themePalette by container.preferencesRepository.themePalette.collectAsState(
                 initial = com.salman.herbalencyclopedia.ui.theme.ThemePalette.LEAF
