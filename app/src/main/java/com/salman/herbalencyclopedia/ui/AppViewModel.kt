@@ -1,14 +1,19 @@
 package com.salman.herbalencyclopedia.ui
 
+import android.app.DownloadManager
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
+import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +30,23 @@ data class UiState(
     val error: String? = null
 )
 
+/** State of an in-app "check for updates" action (see [AppViewModel.checkForUpdate]). */
+sealed class UpdateCheckState {
+    data object Idle : UpdateCheckState()
+    data object Checking : UpdateCheckState()
+    data object UpToDate : UpdateCheckState()
+    data class Available(val info: AppUpdateInfo) : UpdateCheckState()
+    data class Error(val message: String) : UpdateCheckState()
+}
+
+/** State of the APK download that follows a detected update (see [AppViewModel.downloadUpdate]). */
+sealed class UpdateDownloadState {
+    data object Idle : UpdateDownloadState()
+    data class Downloading(val progress: Int) : UpdateDownloadState()
+    data object ReadyToInstall : UpdateDownloadState()
+    data class Failed(val message: String) : UpdateDownloadState()
+}
+
 class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UiState())
@@ -37,6 +59,112 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         private set
     var isAdmin by mutableStateOf(container.authRepository.isAdmin)
         private set
+
+    // ---------------------------------------------------------------------
+    // In-app updates (check GitHub Release -> download -> install)
+    // ---------------------------------------------------------------------
+
+    private val _updateState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+    val updateState: StateFlow<UpdateCheckState> = _updateState.asStateFlow()
+
+    private val _downloadState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
+    val downloadState: StateFlow<UpdateDownloadState> = _downloadState.asStateFlow()
+
+    private val _updateConfig = MutableStateFlow(AppUpdateConfig())
+    val updateConfigState: StateFlow<AppUpdateConfig> = _updateConfig.asStateFlow()
+
+    private var activeDownloadId: Long? = null
+
+    /** Reads the app's own installed version and checks the configured GitHub repo for a newer release. */
+    fun checkForUpdate(context: Context) {
+        if (_updateState.value == UpdateCheckState.Checking) return
+        viewModelScope.launch {
+            _updateState.value = UpdateCheckState.Checking
+            val pkgInfo = runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }.getOrNull()
+            val versionName = pkgInfo?.versionName ?: "0.0.0"
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                (pkgInfo?.longVersionCode ?: 0L).toInt()
+            } else {
+                @Suppress("DEPRECATION") (pkgInfo?.versionCode ?: 0)
+            }
+            val result = runCatching { container.updateRepository.checkForUpdate(versionCode, versionName) }
+            _updateState.value = result.fold(
+                onSuccess = { info -> if (info != null) UpdateCheckState.Available(info) else UpdateCheckState.UpToDate },
+                onFailure = { e -> UpdateCheckState.Error(e.localizedMessage ?: "تعذّر التحقق من التحديثات") }
+            )
+        }
+    }
+
+    /** Downloads the update APK with the system DownloadManager, tracking progress until it's ready to install. */
+    fun downloadUpdate(context: Context, info: AppUpdateInfo) {
+        viewModelScope.launch {
+            _downloadState.value = UpdateDownloadState.Downloading(0)
+            val id = try {
+                container.updateRepository.startDownload(context, info)
+            } catch (e: Exception) {
+                _downloadState.value = UpdateDownloadState.Failed(e.localizedMessage ?: "تعذّر بدء التنزيل")
+                return@launch
+            }
+            activeDownloadId = id
+            while (true) {
+                val status = container.updateRepository.queryStatus(context, id)
+                when (status.status) {
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        _downloadState.value = UpdateDownloadState.ReadyToInstall
+                        return@launch
+                    }
+                    DownloadManager.STATUS_FAILED -> {
+                        _downloadState.value = UpdateDownloadState.Failed("فشل تنزيل التحديث، تحقق من الاتصال وحاول مرة أخرى")
+                        return@launch
+                    }
+                    else -> {
+                        val pct = if (status.totalBytes > 0) ((status.downloadedBytes * 100) / status.totalBytes).toInt() else 0
+                        _downloadState.value = UpdateDownloadState.Downloading(pct.coerceIn(0, 100))
+                    }
+                }
+                delay(400)
+            }
+        }
+    }
+
+    /** Launches the package installer for the already-downloaded update, asking for install permission first if needed. */
+    fun installUpdate(context: Context) {
+        val id = activeDownloadId ?: return
+        if (!container.updateRepository.canInstallPackages(context)) {
+            container.updateRepository.openInstallPermissionSettings(context)
+            return
+        }
+        container.updateRepository.installApk(context, id)
+    }
+
+    /** Resets the update flow back to its initial state (e.g. after a dismissal). */
+    fun resetUpdateFlow() {
+        _updateState.value = UpdateCheckState.Idle
+        _downloadState.value = UpdateDownloadState.Idle
+        activeDownloadId = null
+    }
+
+    /** Loads the current admin-editable update settings, for [AdminUpdateScreen]. */
+    fun loadUpdateConfig() {
+        viewModelScope.launch {
+            _updateConfig.value = runCatching { container.updateRepository.fetchConfig() }
+                .getOrDefault(AppUpdateConfig())
+        }
+    }
+
+    /** Saves admin-editable update settings (GitHub repo, override link/notes, mandatory-update threshold). */
+    fun saveUpdateConfig(config: AppUpdateConfig, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            runCatching { container.updateRepository.saveConfig(config) }
+                .onSuccess {
+                    _updateConfig.value = config
+                    onResult(true, "تم حفظ إعدادات التحديث")
+                }
+                .onFailure { onResult(false, it.localizedMessage ?: "حدث خطأ أثناء الحفظ") }
+        }
+    }
 
     init {
         // Live sync: stay subscribed to Firestore for as long as the app is alive, so
