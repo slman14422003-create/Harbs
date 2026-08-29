@@ -43,7 +43,11 @@ fun GlassTopBar(
             .fillMaxWidth()
             .shadow(8.dp, shape, clip = false),
         tint = surface,
-        borderAlpha = 0.16f
+        borderAlpha = 0.16f,
+        // الشريط العلوي ثابت وظاهر طول الوقت بكل الشاشات؛ لمعان لانهائي
+        // يلمع ويعيد نفسه من الصفر باستمرار عليه يبدو مزعجاً بدل "حي" —
+        // بعكس زر عائم صغير يظهر لثوانٍ. لذلك يُطفأ هنا.
+        sheen = false
     ) {
         if (large) {
             LargeTopAppBar(
