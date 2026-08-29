@@ -39,7 +39,8 @@ fun AdminToolsScreen(
     onDeleteAllData: ((Boolean, String?) -> Unit) -> Unit,
     onTestConnection: ((Boolean, String?) -> Unit) -> Unit,
     onClearFavorites: () -> Unit,
-    onRestoreBackup: (String, (Boolean, String?) -> Unit) -> Unit
+    onRestoreBackup: (String, (Boolean, String?) -> Unit) -> Unit,
+    onUpdateSettingsClick: () -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -77,6 +78,7 @@ fun AdminToolsScreen(
             item { AdminButton(Icons.Filled.TableChart, "تصدير CSV", "تصدير جميع الأعشاب كملف نصي CSV", { shareText(context, "herbs.csv", csvText(herbs)) }) }
             item { AdminButton(Icons.Filled.Share, "مشاركة التطبيق", "فتح مشاركة النظام", { shareApp(context) }) }
             item { AdminButton(Icons.Filled.Link, "نسخ رابط التطبيق", "نسخ رابط المشروع إلى الحافظة", { context.getSystemService(Context.CLIPBOARD_SERVICE).let { (it as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("app", "https://github.com/")); }; notify(true, "تم نسخ الرابط") }) }
+            item { AdminButton(Icons.Filled.SystemUpdate, "إعدادات التحديثات", "تعديل مستودع ورابط وملاحظات التحديث", onUpdateSettingsClick) }
             item { Text("التصنيفات", style = MaterialTheme.typography.titleLarge) }
             item {
                 OutlinedTextField(
