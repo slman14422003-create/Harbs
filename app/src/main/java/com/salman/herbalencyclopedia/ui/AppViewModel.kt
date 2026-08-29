@@ -30,7 +30,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     val favoriteIds: StateFlow<Set<String>> = container.preferencesRepository.favoriteIds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    var isLoggedIn by mutableStateOf(container.authRepository.currentUser != null)
+    var isLoggedIn by mutableStateOf(container.authRepository.isAdmin)
         private set
     var isAdmin by mutableStateOf(container.authRepository.isAdmin)
         private set
@@ -68,12 +68,6 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun register(email: String, password: String, onResult: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
-            val result = container.authRepository.register(email, password)
-            onResult(result.success, result.message)
-        }
-    }
 
     fun logout() {
         container.authRepository.logout()
