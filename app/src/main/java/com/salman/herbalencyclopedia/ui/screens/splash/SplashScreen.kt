@@ -1,7 +1,7 @@
 package com.salman.herbalencyclopedia.ui.screens.splash
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
+import com.salman.herbalencyclopedia.ui.theme.AppMotion
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -59,7 +59,7 @@ fun SplashScreen(onFinished: () -> Unit) {
 
     val iconScale by animateFloatAsState(
         targetValue = if (stage >= 1) 1f else 0.6f,
-        animationSpec = tween(700, easing = FastOutSlowInEasing),
+        animationSpec = tween(700, easing = AppMotion.Smooth),
         label = "logoScale"
     )
 
@@ -67,7 +67,7 @@ fun SplashScreen(onFinished: () -> Unit) {
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.35f,
         targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(1400, easing = AppMotion.Smooth), RepeatMode.Reverse),
         label = "glowAlpha"
     )
 
@@ -127,7 +127,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = stage >= 1,
-                    enter = fadeIn(tween(550)) + scaleIn(tween(700, easing = FastOutSlowInEasing), initialScale = 0.6f)
+                    enter = fadeIn(tween(550)) + scaleIn(tween(700, easing = AppMotion.Smooth), initialScale = 0.6f)
                 ) {
                     Box(
                         modifier = Modifier
@@ -154,7 +154,7 @@ fun SplashScreen(onFinished: () -> Unit) {
 
             AnimatedVisibility(
                 visible = stage >= 2,
-                enter = fadeIn(tween(600)) + slideInVertically(tween(600, easing = FastOutSlowInEasing)) { it / 3 }
+                enter = fadeIn(tween(600)) + slideInVertically(tween(600, easing = AppMotion.Smooth)) { it / 3 }
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
@@ -206,7 +206,7 @@ private fun LoadingDots() {
                 initialValue = 0.3f,
                 targetValue = 1f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(600, delayMillis = index * 160, easing = FastOutSlowInEasing),
+                    animation = tween(600, delayMillis = index * 160, easing = AppMotion.Smooth),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "dotAlpha$index"
