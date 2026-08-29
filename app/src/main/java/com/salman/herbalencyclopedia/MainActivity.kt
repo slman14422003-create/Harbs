@@ -5,10 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.AppViewModelFactory
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val container = (application as HerbalApp).container
 
@@ -30,7 +32,19 @@ class MainActivity : ComponentActivity() {
             val fontScale by container.preferencesRepository.fontScale.collectAsState(initial = 0)
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
-            HerbalEncyclopediaTheme(darkTheme = useDark, dynamicColor = dynamicColorPref, fontScale = fontScale) {
+            SideEffect {
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = !useDark
+                controller.isAppearanceLightNavigationBars = !useDark
+            }
+
+            HerbalEncyclopediaTheme(
+                darkTheme = useDark,
+                dynamicColor = dynamicColorPref,
+                fontScale = fontScale
+            ) {
                 HerbalNavGraph(
                     appViewModel = appViewModel,
                     preferencesRepository = container.preferencesRepository
