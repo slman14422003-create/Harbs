@@ -51,7 +51,7 @@ object AppMotion {
      * كلها تُعيد الرسم لمدة طويلة عند كل ضغطة — وهذا أصل مشكلة الأداء.
      * هذا النابض يستقر خلال ~150-200ms تقريباً بلا نطّة ملحوظة.
      */
-    fun <T> snappy() = spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumHigh)
+    fun <T> snappy() = spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 1200f)
 }
 
 /**
