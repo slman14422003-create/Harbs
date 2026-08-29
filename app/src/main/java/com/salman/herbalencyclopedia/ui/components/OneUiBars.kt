@@ -123,20 +123,26 @@ private fun OneUiFloatingNavItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    // كل خصائص التبديل هنا (اللون، حجم الأيقونة، اتساع الكبسولة، ظهور
+    // النص) تستخدم الآن نفس النابض السريع snappy() أو مدداً قصيرة
+    // متقاربة، بدل خليط سابق من ألوان بتوين 220ms مع أشكال/أيقونة بنابض
+    // بطيء يستغرق ~800ms — فيصل الشريط لوضعه النهائي بسرعة وبتناسق
+    // (كل الخصائص تستقر معاً تقريباً)، بدل إحساس التأخر والتفكك، وبتكلفة
+    // إعادة رسم أقصر بكثير لكل ضغطة.
     val background by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(140),
         label = "navBackground"
     )
     val content by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(140),
         label = "navContent"
     )
     // نبضة خفيفة على الأيقونة عند الاختيار بدل التبديل المفاجئ.
     val iconScale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (selected) 1.12f else 1f,
-        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy(),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy(),
         label = "navIconScale"
     )
 
@@ -147,7 +153,7 @@ private fun OneUiFloatingNavItem(
             .background(background, CircleShape)
             // العرض يتوسّع/يتقلّص بسلاسة عند ظهور/اختفاء التسمية بدل القفز
             // المباشر بين حالتي "أيقونة فقط" و"أيقونة + نص".
-            .animateContentSize(animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy())
+            .animateContentSize(animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy())
             .padding(horizontal = if (selected) 16.dp else 13.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -162,10 +168,10 @@ private fun OneUiFloatingNavItem(
         )
         androidx.compose.animation.AnimatedVisibility(
             visible = selected,
-            enter = androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
-                androidx.compose.animation.expandHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy()),
-            exit = androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
-                androidx.compose.animation.shrinkHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy())
+            enter = androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(140)) +
+                androidx.compose.animation.expandHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy()),
+            exit = androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(100)) +
+                androidx.compose.animation.shrinkHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy())
         ) {
             Text(item.label, color = content, fontWeight = FontWeight.SemiBold)
         }
