@@ -60,7 +60,11 @@ fun AdminListScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(herbs, key = { it.id }) { herb ->
-                Card(shape = RoundedCornerShape(16.dp)) {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
