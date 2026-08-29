@@ -1,8 +1,11 @@
 package com.salman.herbalencyclopedia
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.salman.herbalencyclopedia.data.image.DataUriFetcher
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 
 /**
@@ -17,7 +20,7 @@ import com.salman.herbalencyclopedia.data.repository.AppContainer
  * setup for the generated google-services.json + the
  * com.google.gms.google-services plugin.
  */
-class HerbalApp : Application() {
+class HerbalApp : Application(), ImageLoaderFactory {
 
     lateinit var container: AppContainer
         private set
@@ -37,6 +40,16 @@ class HerbalApp : Application() {
         if (FirebaseApp.getApps(this).isEmpty()) {
             FirebaseApp.initializeApp(this, options)
         }
+    }
+
+    // بدون هذا، Coil (v2.x) لا يعرف كيف يقرأ روابط data: (base64) —
+    // فيرجّع لكل AsyncImage بالتطبيق صورة فاشلة/فارغة لأي عشبة صورتها
+    // مخزّنة كـ base64. Coil يستخدم هذا الـ ImageLoader تلقائياً لأن
+    // Application هنا تُنفّذ ImageLoaderFactory.
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components { add(DataUriFetcher.Factory()) }
+            .build()
     }
 
     companion object {
