@@ -17,4 +17,5 @@ sealed class Screen(val route: String) {
     data object Admin : Screen("admin")
     data object AdminEdit : Screen("admin/edit/{herbId}") { const val NEW = "new"; fun createRoute(herbId: String) = "admin/edit/$herbId" }
     data object AdminTools : Screen("admin/tools")
+    data object AdminUpdate : Screen("admin/update")
 }
