@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -149,18 +151,40 @@ private fun OneUiFloatingNavItem(
         animationSpec = tween(180),
         label = "navContent"
     )
+    // نبضة خفيفة على الأيقونة عند الاختيار بدل التبديل المفاجئ.
+    val iconScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (selected) 1.12f else 1f,
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy(),
+        label = "navIconScale"
+    )
 
     Row(
         modifier = Modifier
             .clip(CircleShape)
             .clickable(onClick = onClick)
             .background(background, CircleShape)
+            // العرض يتوسّع/يتقلّص بسلاسة عند ظهور/اختفاء التسمية بدل القفز
+            // المباشر بين حالتي "أيقونة فقط" و"أيقونة + نص".
+            .animateContentSize(animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy())
             .padding(horizontal = if (selected) 16.dp else 13.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(item.icon, contentDescription = item.label, tint = content, modifier = Modifier.size(22.dp))
-        if (selected) {
+        Icon(
+            item.icon,
+            contentDescription = item.label,
+            tint = content,
+            modifier = Modifier
+                .size(22.dp)
+                .graphicsLayer { scaleX = iconScale; scaleY = iconScale }
+        )
+        androidx.compose.animation.AnimatedVisibility(
+            visible = selected,
+            enter = androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
+                androidx.compose.animation.expandHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy()),
+            exit = androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
+                androidx.compose.animation.shrinkHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.bouncy())
+        ) {
             Text(item.label, color = content, fontWeight = FontWeight.SemiBold)
         }
     }

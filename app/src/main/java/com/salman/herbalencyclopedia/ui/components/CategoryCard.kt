@@ -1,15 +1,19 @@
 package com.salman.herbalencyclopedia.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -17,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Category
+import com.salman.herbalencyclopedia.ui.theme.rememberPressScale
 
 /**
  * قبل هذا التعديل كانت كل بطاقة تصنيف تعرض نفس الأيقونة (Eco) بنفس
@@ -66,9 +71,12 @@ fun CategoryCard(
 ) {
     val shape = RoundedCornerShape(26.dp)
     val accent = colorFor(category)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressScale by rememberPressScale(interactionSource, pressedScale = 0.95f)
     Card(
         onClick = onClick,
-        modifier = modifier.aspectRatio(1f),
+        interactionSource = interactionSource,
+        modifier = modifier.scale(pressScale).aspectRatio(1f),
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)

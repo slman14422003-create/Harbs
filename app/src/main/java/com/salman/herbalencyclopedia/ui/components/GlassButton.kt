@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -16,13 +17,17 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.ui.theme.rememberPressScale
 
 /**
  * مجموعة أزرار موحّدة على طراز "الكبسولة الزجاجية" (Glass Capsule) المستخدم
@@ -52,11 +57,17 @@ fun GlassButton(
         Brush.verticalGradient(listOf(disabledContainer, disabledContainer))
     }
     val borderColor = Color.White.copy(alpha = if (enabled) 0.18f else 0.06f)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressScale by rememberPressScale(interactionSource)
 
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 50.dp).shadow(if (enabled) 3.dp else 0.dp, CircleShape),
+        interactionSource = interactionSource,
+        modifier = modifier
+            .scale(pressScale)
+            .heightIn(min = 50.dp)
+            .shadow(if (enabled) 3.dp else 0.dp, CircleShape),
         shape = CircleShape,
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else disabledContent
@@ -88,11 +99,17 @@ fun GlassOutlinedButton(
     val surface = MaterialTheme.colorScheme.surfaceContainerHigh
     val glassBrush = Brush.verticalGradient(listOf(surface.copy(alpha = 0.55f), surface.copy(alpha = 0.30f)))
     val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = if (enabled) 0.35f else 0.12f)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressScale by rememberPressScale(interactionSource)
 
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 50.dp).shadow(if (enabled) 3.dp else 0.dp, CircleShape),
+        interactionSource = interactionSource,
+        modifier = modifier
+            .scale(pressScale)
+            .heightIn(min = 50.dp)
+            .shadow(if (enabled) 3.dp else 0.dp, CircleShape),
         shape = CircleShape,
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.38f)
@@ -128,11 +145,14 @@ fun GlassIconButton(
         listOf(containerColor.copy(alpha = 0.85f), containerColor.copy(alpha = 0.60f))
     )
     val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressScale by rememberPressScale(interactionSource)
 
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.size(size),
+        interactionSource = interactionSource,
+        modifier = modifier.scale(pressScale).size(size),
         shape = CircleShape,
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.38f)
