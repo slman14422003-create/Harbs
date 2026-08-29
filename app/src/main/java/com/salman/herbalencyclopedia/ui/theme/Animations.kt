@@ -10,8 +10,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.graphicsLayer
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 /**
  * مصدر واحد لكل مدد وأنماط الحركة (easing) المستخدمة بالتطبيق.
@@ -72,4 +81,37 @@ fun rememberPressScale(
         animationSpec = AppMotion.bouncy(),
         label = "pressScale"
     )
+}
+
+/**
+ * حركة ظهور متتابعة (Staggered Entrance) لعناصر الشبكات/القوائم: كل
+ * عنصر يتلاشى للظهور وينزلق للأعلى قليلاً، بتأخير يتناسب مع [index]
+ * كي تظهر البطاقات الواحدة تلو الأخرى بدل ظهورها كلها دفعة واحدة —
+ * وتشتغل *مرة واحدة فقط* عند دخول الشاشة (بلا أي تكرار لانهائي)، على
+ * عكس تأثير اللمعان الزجاجي المستمر الذي لا يناسب بطاقات كثيرة معاً.
+ */
+fun Modifier.staggeredEntrance(
+    index: Int,
+    stepMillis: Long = 45L,
+    maxDelayMillis: Long = 360L
+): Modifier = composed {
+    var visible by remember(index) { mutableStateOf(false) }
+    LaunchedEffect(index) {
+        delay(minOf(index * stepMillis, maxDelayMillis))
+        visible = true
+    }
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = AppMotion.smooth<Float>(AppMotion.Standard),
+        label = "entranceAlpha"
+    )
+    val slide by animateFloatAsState(
+        targetValue = if (visible) 0f else 22f,
+        animationSpec = AppMotion.smooth<Float>(AppMotion.Standard),
+        label = "entranceSlide"
+    )
+    this.graphicsLayer {
+        this.alpha = alpha
+        translationY = slide.dp.toPx()
+    }
 }
