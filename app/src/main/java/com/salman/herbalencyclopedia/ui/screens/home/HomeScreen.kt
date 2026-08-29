@@ -7,9 +7,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Balance
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,19 +45,10 @@ fun HomeScreen(
                 large = true,
                 title = { Column { Text("موسوعة الأعشاب الطبية", style = MaterialTheme.typography.headlineMedium); Text("اكتشف الأعشاب وفوائدها", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
                 actions = {
-                    GlassIconButton(onClick = onSearchClick, modifier = Modifier.padding(end = 6.dp)) {
-                        Icon(Icons.Filled.Search, contentDescription = "بحث")
-                    }
-                    GlassIconButton(onClick = onFavoritesClick, modifier = Modifier.padding(end = 6.dp)) {
-                        Icon(Icons.Filled.Favorite, contentDescription = "المفضلة")
-                    }
                     if (isAdmin) {
-                        GlassIconButton(onClick = onAdminClick, modifier = Modifier.padding(end = 6.dp)) {
+                        GlassIconButton(onClick = onAdminClick, modifier = Modifier.padding(end = 4.dp)) {
                             Icon(Icons.Filled.AdminPanelSettings, contentDescription = "لوحة التحكم")
                         }
-                    }
-                    GlassIconButton(onClick = onSettingsClick, modifier = Modifier.padding(end = 4.dp)) {
-                        Icon(Icons.Filled.Settings, contentDescription = "الإعدادات")
                     }
                 }
             )
