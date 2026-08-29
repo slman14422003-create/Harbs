@@ -59,6 +59,7 @@ fun AdminEditHerbScreen(
     val selectedCategoryName = categories.firstOrNull { it.id == categoryId }?.name ?: "بدون تصنيف"
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
                 title = { Text(if (existingHerb == null) "إضافة عشبة" else "تعديل عشبة") },

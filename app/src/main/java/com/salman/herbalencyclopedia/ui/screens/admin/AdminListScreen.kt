@@ -33,6 +33,7 @@ fun AdminListScreen(
     var pendingDelete by remember { mutableStateOf<Herb?>(null) }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
                 title = { Text("لوحة تحكم الأدمن") },
