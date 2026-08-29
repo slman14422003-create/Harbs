@@ -24,18 +24,29 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material3.*
+import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
+import com.salman.herbalencyclopedia.ui.UpdateCheckState
+import com.salman.herbalencyclopedia.ui.UpdateDownloadState
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -53,6 +64,8 @@ fun SettingsScreen(
     fontScale: Int,
     themePalette: com.salman.herbalencyclopedia.ui.theme.ThemePalette,
     performanceMode: PerformanceMode,
+    updateState: UpdateCheckState,
+    downloadState: UpdateDownloadState,
     onBack: () -> Unit,
     onDarkModeChange: (Boolean?) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
@@ -62,8 +75,19 @@ fun SettingsScreen(
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
-    onAdminToolsClick: () -> Unit
+    onAdminToolsClick: () -> Unit,
+    onCheckForUpdate: (android.content.Context) -> Unit,
+    onDownloadUpdate: (android.content.Context, AppUpdateInfo) -> Unit,
+    onInstallUpdate: (android.content.Context) -> Unit
 ) {
+    val context = LocalContext.current
+    val currentVersionName = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+            .getOrNull() ?: "—"
+    }
+    LaunchedEffect(Unit) {
+        if (updateState == UpdateCheckState.Idle) onCheckForUpdate(context)
+    }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
@@ -110,6 +134,19 @@ fun SettingsScreen(
                     PerformanceModeSelector(
                         selected = performanceMode,
                         onSelect = onPerformanceModeChange
+                    )
+                }
+            }
+
+            item {
+                SettingsSection(title = "التحديثات") {
+                    UpdateRow(
+                        currentVersionName = currentVersionName,
+                        updateState = updateState,
+                        downloadState = downloadState,
+                        onCheckForUpdate = { onCheckForUpdate(context) },
+                        onDownloadUpdate = { info -> onDownloadUpdate(context, info) },
+                        onInstallUpdate = { onInstallUpdate(context) }
                     )
                 }
             }
@@ -484,5 +521,140 @@ private fun ActionRow(
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
+    }
+}
+
+@Composable
+private fun UpdateRow(
+    currentVersionName: String,
+    updateState: UpdateCheckState,
+    downloadState: UpdateDownloadState,
+    onCheckForUpdate: () -> Unit,
+    onDownloadUpdate: (AppUpdateInfo) -> Unit,
+    onInstallUpdate: () -> Unit
+) {
+    Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(icon = Icons.Filled.SystemUpdate, tint = Color(0xFF1565C0))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("تحديث التطبيق", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "الإصدار الحالي: $currentVersionName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        when (updateState) {
+            is UpdateCheckState.Idle -> {
+                OutlinedButton(onClick = onCheckForUpdate, modifier = Modifier.fillMaxWidth()) {
+                    Text("التحقق من التحديثات")
+                }
+            }
+            is UpdateCheckState.Checking -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("جارٍ التحقق من وجود تحديث...", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            is UpdateCheckState.UpToDate -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("التطبيق محدّث لأحدث إصدار", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onCheckForUpdate) { Text("إعادة التحقق") }
+                }
+            }
+            is UpdateCheckState.Error -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(updateState.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onCheckForUpdate) { Text("إعادة المحاولة") }
+                }
+            }
+            is UpdateCheckState.Available -> {
+                val info = updateState.info
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                        .padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "يتوفر تحديث جديد: v${info.versionName}",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (info.mandatory) {
+                            Text(
+                                "إجباري",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    if (info.releaseNotes.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            info.releaseNotes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    when (downloadState) {
+                        is UpdateDownloadState.Idle -> {
+                            Button(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
+                                Text("تنزيل وتثبيت التحديث")
+                            }
+                        }
+                        is UpdateDownloadState.Downloading -> {
+                            Column {
+                                LinearProgressIndicator(
+                                    progress = { downloadState.progress / 100f },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text("جارٍ التنزيل... ${downloadState.progress}%", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        is UpdateDownloadState.ReadyToInstall -> {
+                            Button(
+                                onClick = onInstallUpdate,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                            ) {
+                                Icon(Icons.Filled.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("تثبيت الآن")
+                            }
+                        }
+                        is UpdateDownloadState.Failed -> {
+                            Column {
+                                Text(
+                                    downloadState.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("إعادة المحاولة")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
