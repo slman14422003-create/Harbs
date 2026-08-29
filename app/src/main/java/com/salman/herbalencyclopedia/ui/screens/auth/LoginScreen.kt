@@ -35,7 +35,7 @@ fun LoginScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
                 title = { Text("دخول المسؤول") },
