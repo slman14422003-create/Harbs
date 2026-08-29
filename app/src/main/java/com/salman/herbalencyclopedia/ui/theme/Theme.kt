@@ -10,14 +10,16 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Shapes
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp\nimport androidx.compose.ui.graphics.Color
 
 private fun lightSchemeFor(palette: ThemePalette) = lightColorScheme(
     primary = palette.light40,
     secondary = palette.secondary40,
     tertiary = palette.tertiary40,
     background = SurfaceLight,
-    surface = SurfaceLight
+    surface = SurfaceLight,
+    surfaceVariant = Color(0xFFE9EFE6),
+    outline = Color(0xFF7A8676)
 )
 
 private fun darkSchemeFor(palette: ThemePalette) = darkColorScheme(
@@ -25,7 +27,9 @@ private fun darkSchemeFor(palette: ThemePalette) = darkColorScheme(
     secondary = palette.secondary80,
     tertiary = palette.tertiary80,
     background = SurfaceDark,
-    surface = SurfaceDark
+    surface = SurfaceDark,
+    surfaceVariant = Color(0xFF3B403A),
+    outline = Color(0xFF9AA497)
 )
 
 @Composable
