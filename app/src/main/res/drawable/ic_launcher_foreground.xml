@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    مقدّمة الأيقونة المتكيّفة: شجرة حقيقية الشكل بدل ورقة العشب
-    الزجاجية المجرّدة السابقة — جذع بنّي متدرّج + تاج مورق مبني من
-    عدة كتل دائرية متراكبة (خلفية أغمق، أمامية أفتح) لإحساس عمق
-    وحجم طبيعي، مع بقعة ضوء وبضع لمسات أوراق صغيرة للتفاصيل.
+    مقدّمة الأيقونة المتكيّفة: كتاب جلدي مغلق تخرج من بين صفحاته ورقة/عشبة
+    خضراء صغيرة كإشارة مرجعية (بدل شجرة كاملة) — تعبير أوضح عن "موسوعة"
+    (كتاب) تحتوي معرفة عن "الأعشاب" (الورقة)، بطبقة زجاج سائل فوق الغلاف
+    (شعاع لمعان قطري + نقطتا توهّج) تربط أيقونة التطبيق بهوية الزجاج
+    السائل المستخدمة داخله (شريط علوي/أزرار/بطاقات).
+    كل المجموعة تُمال قليلاً (-6°) لإحساس ثلاثي الأبعاد أكثر حيوية من
+    شكل مسطّح تماماً.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,52 +14,57 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- الجذع -->
-    <path
-        android:pathData="M50,62 L58,62 L60,93 L48,93 Z"
-        android:fillColor="#6D4C41" />
-    <!-- ظل جانبي على الجذع لإحساس أسطواني -->
-    <path
-        android:pathData="M55,64 L58,64 L59,91 L56,91 Z"
-        android:fillColor="#4E342E"
-        android:fillAlpha="0.55" />
+    <group
+        android:pivotX="54"
+        android:pivotY="57"
+        android:rotation="-6">
 
-    <!-- كتلتا التاج الخلفيتان (أغمق، تعطين عمق خلف الكتلة الرئيسية) -->
-    <path
-        android:pathData="M20,46 a17,17 0 1,0 34,0 a17,17 0 1,0 -34,0"
-        android:fillColor="#2E7D32" />
-    <path
-        android:pathData="M54,46 a17,17 0 1,0 34,0 a17,17 0 1,0 -34,0"
-        android:fillColor="#2E7D32" />
+        <!-- الورقة الخضراء الخارجة من بين الصفحات (تُرسم أولاً كي يغطي
+             الكتاب قاعدتها فتبدو وكأنها مغروزة داخله فعلاً). -->
+        <path
+            android:pathData="M54,4 C61,14 66,24 54,34 C42,24 47,14 54,4 Z"
+            android:fillColor="#66BB6A" />
+        <path
+            android:pathData="M54,8 L54,31"
+            android:strokeColor="#2E7D32"
+            android:strokeWidth="1.3"
+            android:fillColor="#00000000" />
 
-    <!-- الكتلة الرئيسية العلوية للتاج -->
-    <path
-        android:pathData="M33,31 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0"
-        android:fillColor="#388E3C" />
+        <!-- ظل سمك الكتاب (يعطي إحساس صفحات/غلاف مجلّد من الخلف). -->
+        <path
+            android:pathData="M35,27 L79,27 a6,6 0 0 1 6,6 L85,85 a6,6 0 0 1 -6,6 L35,91 a6,6 0 0 1 -6,-6 L29,33 a6,6 0 0 1 6,-6 Z"
+            android:fillColor="#4E342E" />
 
-    <!-- كتلتا التاج الأماميتان السفليتان (أفتح، أقرب للناظر) -->
-    <path
-        android:pathData="M28,58 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0"
-        android:fillColor="#43A047" />
-    <path
-        android:pathData="M50,58 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0"
-        android:fillColor="#43A047" />
+        <!-- الغلاف الجلدي الرئيسي. -->
+        <path
+            android:pathData="M32,24 L76,24 a6,6 0 0 1 6,6 L82,82 a6,6 0 0 1 -6,6 L32,88 a6,6 0 0 1 -6,-6 L26,30 a6,6 0 0 1 6,-6 Z"
+            android:fillColor="#6D4C41" />
 
-    <!-- بقعة ضوء أعلى يسار التاج -->
-    <path
-        android:pathData="M36,24 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
-        android:fillColor="#9CCC65"
-        android:fillAlpha="0.55" />
+        <!-- ظل داخلي عند حافة الغلاف اليسرى (خط التجليد/الشيرازة). -->
+        <path
+            android:pathData="M28,24.6 a5.6,5.6 0 0 0 -2.6,5.4 L26,64 L34,64 L34,24 Z"
+            android:fillColor="#4E342E"
+            android:fillAlpha="0.45" />
 
-    <!-- لمسات أوراق صغيرة للتفاصيل -->
-    <path android:pathData="M56,16 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" android:fillColor="#A5D6A7" android:fillAlpha="0.6" />
-    <path android:pathData="M72.5,38.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#A5D6A7" android:fillAlpha="0.5" />
-    <path android:pathData="M28.5,50.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#A5D6A7" android:fillAlpha="0.5" />
+        <!-- شريط حواف الصفحات على الجانب الأيمن. -->
+        <path
+            android:pathData="M73,27 L78,27 a2,2 0 0 1 2,2 L80,83 a2,2 0 0 1 -2,2 L73,85 Z"
+            android:fillColor="#FFF3E0" />
 
-    <!-- شعاع "زجاج سائل" مائل فوق التاج — يربط أيقونة التطبيق بهوية
-         الزجاج السائل المستخدمة داخل التطبيق (شريط علوي/أزرار/بطاقات). -->
-    <path
-        android:pathData="M24,40 C34,26 52,18 70,20 L62,32 C48,32 36,38 30,50 Z"
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.16" />
+        <!-- شعاع لمعان زجاجي قطري فوق الغلاف. -->
+        <path
+            android:pathData="M28,40 L50,24 L80,30 L58,48 Z"
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.18" />
+
+        <!-- نقطتا توهّج زجاجي صغيرتان. -->
+        <path
+            android:pathData="M64,34 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.43" />
+        <path
+            android:pathData="M70.5,41 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.35" />
+    </group>
 </vector>
