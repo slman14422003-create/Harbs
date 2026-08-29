@@ -46,6 +46,7 @@ fun HerbDetailScreen(
     ).filter { it.content.isNotBlank() && it.content != "—" }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
                 title = { Text(herb.name) },
