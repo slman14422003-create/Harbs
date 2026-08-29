@@ -91,12 +91,36 @@ class UpdateRepository(
             if (repo.isBlank()) return@withContext null
 
             val release = fetchLatestRelease(repo)
-            val remoteVersionName = config.overrideVersionName
-                ?: release?.tagName?.removePrefix("v")?.removePrefix("V")
+            // This project's release workflow tags releases as "v<versionName>-<versionCode>"
+            // (see .github/workflows/android-release.yml), e.g. "v2.0.0-42". Split those apart
+            // so "42" is compared as the actual build number, not as a 4th version segment —
+            // treating it as part of the version text made the app think an update was always
+            // available, even right after installing that exact release.
+            val parsedVersionName: String?
+            val parsedVersionCode: Int?
+            if (release != null) {
+                val parsed = parseTag(release.tagName)
+                parsedVersionName = parsed.first
+                parsedVersionCode = parsed.second
+            } else {
+                parsedVersionName = null
+                parsedVersionCode = null
+            }
+
+            val remoteVersionName = config.overrideVersionName ?: parsedVersionName
             if (remoteVersionName.isNullOrBlank()) return@withContext null
 
             val mandatory = config.minVersionCode > 0 && currentVersionCode < config.minVersionCode
-            val newer = isVersionNewer(remoteVersionName, currentVersionName)
+
+            val newer = when {
+                // Admin forced a specific version label: nothing numeric to trust, compare as text.
+                config.overrideVersionName != null -> isVersionNewer(remoteVersionName, currentVersionName)
+                // Normal case: the tag carries a real build number, so compare it directly against
+                // the installed versionCode. This is exact — no guessing from a version string.
+                parsedVersionCode != null -> currentVersionCode < parsedVersionCode
+                // Fallback for a differently-named tag with no numeric build suffix.
+                else -> isVersionNewer(remoteVersionName, currentVersionName)
+            }
             if (!newer && !mandatory) return@withContext null
 
             val downloadUrl = config.overrideDownloadUrl
@@ -112,6 +136,20 @@ class UpdateRepository(
                 mandatory = mandatory
             )
         }
+
+    /**
+     * Splits a release tag into (versionName, versionCode).
+     * "v2.0.0-42" -> ("2.0.0", 42). "v2.0.0" (no numeric build suffix) -> ("2.0.0", null).
+     */
+    private fun parseTag(tag: String): Pair<String, Int?> {
+        val withoutV = tag.trim().removePrefix("v").removePrefix("V")
+        val lastDash = withoutV.lastIndexOf('-')
+        if (lastDash != -1) {
+            val code = withoutV.substring(lastDash + 1).toIntOrNull()
+            if (code != null) return withoutV.substring(0, lastDash) to code
+        }
+        return withoutV to null
+    }
 
     private data class ReleaseData(val tagName: String, val body: String, val htmlUrl: String, val apkUrl: String?)
 
