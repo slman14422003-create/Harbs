@@ -22,15 +22,15 @@ import androidx.compose.runtime.getValue
  * كل شاشة تخترع أرقامها الخاصة، فتصير الحركة متناسقة وسلسة بكل مكان.
  */
 object AppMotion {
-    /** منحنى سلس ومريح للعين، يُستخدم افتراضياً لمعظم الحركات. */
-    val Smooth: Easing = FastOutSlowInEasing
+    /** منحنى ناعم بدايةً ونهايةً، أهدأ من الافتراضي — يُستخدم لمعظم الحركات. */
+    val Smooth: Easing = CubicBezierEasing(0.33f, 0f, 0.13f, 1f)
 
-    /** منحنى أكثر نعومة بالبداية والنهاية، مناسب لانتقالات الشاشات الكبيرة. */
-    val Silky: Easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+    /** منحنى حريري بطيء الإقلاع/الهبوط، مناسب لانتقالات الشاشات الكبيرة. */
+    val Silky: Easing = CubicBezierEasing(0.16f, 1f, 0.22f, 1f)
 
-    const val Quick = 180
-    const val Standard = 320
-    const val Slow = 480
+    const val Quick = 220
+    const val Standard = 380
+    const val Slow = 560
 
     fun <T> smooth(durationMillis: Int = Standard) =
         tween<T>(durationMillis = durationMillis, easing = Smooth)
@@ -38,8 +38,9 @@ object AppMotion {
     fun <T> silky(durationMillis: Int = Slow) =
         tween<T>(durationMillis = durationMillis, easing = Silky)
 
-    /** نابض موحّد لكل الحركات "الحيّة" (ضغط زر، تبديل شريط سفلي...) بدل tween الثابت. */
-    fun <T> bouncy() = spring<T>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+    /** نابض موحّد لكل الحركات "الحيّة" (ضغط زر، تبديل شريط سفلي...) — تصادم/ارتداد
+     *  خفيف جداً وحركة أهدأ بدل النط الملحوظ، فيبقى الإحساس ناعم ومريح. */
+    fun <T> bouncy() = spring<T>(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
 }
 
 /**
@@ -52,7 +53,7 @@ object AppMotion {
 @Composable
 fun rememberPressScale(
     interactionSource: MutableInteractionSource,
-    pressedScale: Float = 0.95f
+    pressedScale: Float = 0.97f
 ): State<Float> {
     val isPressed by interactionSource.collectIsPressedAsState()
     return animateFloatAsState(
