@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
             val darkModePref by container.preferencesRepository.darkMode.collectAsState(initial = null)
             val dynamicColorPref by container.preferencesRepository.dynamicColor.collectAsState(initial = true)
             val fontScale by container.preferencesRepository.fontScale.collectAsState(initial = 0)
+            val themePalette by container.preferencesRepository.themePalette.collectAsState(
+                initial = com.salman.herbalencyclopedia.ui.theme.ThemePalette.LEAF
+            )
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
             SideEffect {
@@ -43,6 +46,7 @@ class MainActivity : ComponentActivity() {
             HerbalEncyclopediaTheme(
                 darkTheme = useDark,
                 dynamicColor = dynamicColorPref,
+                palette = themePalette,
                 fontScale = fontScale
             ) {
                 HerbalNavGraph(
