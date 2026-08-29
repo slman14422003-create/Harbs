@@ -91,7 +91,8 @@ fun SearchScreen(
                         herb = herb,
                         isFavorite = herb.id in favoriteIds,
                         onClick = { onHerbClick(herb) },
-                        onToggleFavorite = { onToggleFavorite(herb.id) }
+                        onToggleFavorite = { onToggleFavorite(herb.id) },
+                        modifier = Modifier.animateItem()
                     )
                 }
             }
