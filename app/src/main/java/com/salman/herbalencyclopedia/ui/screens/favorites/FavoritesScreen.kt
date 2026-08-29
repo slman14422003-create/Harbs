@@ -38,7 +38,8 @@ fun FavoritesScreen(
                         herb = herb,
                         isFavorite = true,
                         onClick = { onHerbClick(herb) },
-                        onToggleFavorite = { onToggleFavorite(herb.id) }
+                        onToggleFavorite = { onToggleFavorite(herb.id) },
+                        modifier = Modifier.animateItem()
                     )
                 }
             }
