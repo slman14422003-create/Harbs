@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -25,6 +26,7 @@ class PreferencesRepository(private val context: Context) {
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val FONT_SCALE = intPreferencesKey("font_scale")
         val THEME_PALETTE = stringPreferencesKey("theme_palette")
+        val PERFORMANCE_MODE = stringPreferencesKey("performance_mode")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -43,6 +45,11 @@ class PreferencesRepository(private val context: Context) {
 
     val themePalette: Flow<ThemePalette> = context.dataStore.data.map {
         ThemePalette.fromId(it[Keys.THEME_PALETTE])
+    }
+
+    /** وضع الأداء (عالي الجودة/اقتصادي) — يتحكم بالزجاج السائل والتمويه وثقل الحركات. */
+    val performanceMode: Flow<PerformanceMode> = context.dataStore.data.map {
+        PerformanceMode.fromId(it[Keys.PERFORMANCE_MODE])
     }
 
     suspend fun toggleFavorite(herbId: String) {
@@ -67,4 +74,8 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.THEME_PALETTE] = palette.name }
     }
     suspend fun clearFavorites() { context.dataStore.edit { it[Keys.FAVORITES] = emptySet() } }
+
+    suspend fun setPerformanceMode(mode: PerformanceMode) {
+        context.dataStore.edit { prefs -> prefs[Keys.PERFORMANCE_MODE] = mode.name }
+    }
 }
