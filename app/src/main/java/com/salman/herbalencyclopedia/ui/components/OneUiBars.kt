@@ -35,30 +35,15 @@ fun GlassTopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     val surface = MaterialTheme.colorScheme.surfaceContainerHigh
-    val border = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
     val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
 
-    Box(
+    LiquidGlassSurface(
+        shape = shape,
         modifier = modifier
             .fillMaxWidth()
-            .shadow(8.dp, shape, clip = false)
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        surface.copy(alpha = 0.98f),
-                        surface.copy(alpha = 0.90f)
-                    )
-                )
-            )
-            .drawBehind {
-                drawLine(
-                    color = border,
-                    start = Offset(0f, size.height - 1.dp.toPx()),
-                    end = Offset(size.width, size.height - 1.dp.toPx()),
-                    strokeWidth = 1.dp.toPx()
-                )
-            }
+            .shadow(8.dp, shape, clip = false),
+        tint = surface,
+        borderAlpha = 0.16f
     ) {
         if (large) {
             LargeTopAppBar(
@@ -109,26 +94,24 @@ fun OneUiFloatingNavBar(
             .padding(horizontal = 18.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier
-                .shadow(16.dp, shape, clip = false)
-                .clip(shape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(container.copy(alpha = 0.98f), container.copy(alpha = 0.92f))
-                    )
-                )
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f), shape)
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
+        LiquidGlassSurface(
+            shape = shape,
+            modifier = Modifier.shadow(16.dp, shape, clip = false),
+            tint = container,
+            borderAlpha = 0.16f
         ) {
-            items.forEach { item ->
-                OneUiFloatingNavItem(
-                    item = item,
-                    selected = item.route == currentRoute,
-                    onClick = { onItemClick(item) }
-                )
+            Row(
+                modifier = Modifier.padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items.forEach { item ->
+                    OneUiFloatingNavItem(
+                        item = item,
+                        selected = item.route == currentRoute,
+                        onClick = { onItemClick(item) }
+                    )
+                }
             }
         }
     }

@@ -1,8 +1,6 @@
 package com.salman.herbalencyclopedia.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -30,11 +27,12 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.theme.rememberPressScale
 
 /**
- * مجموعة أزرار موحّدة على طراز "الكبسولة الزجاجية" (Glass Capsule) المستخدم
- * في One UI 8.5: خلفية متدرّجة شبه شفافة، حواف مستديرة بالكامل (كبسولة)،
- * وحدّ رفيع يعطي إحساس الزجاج. هذه المكوّنات بديل مباشر لأزرار Material3
- * القياسية (Button / OutlinedButton / IconButton) لتوحيد شكل الأزرار في
- * التطبيق بالكامل.
+ * مجموعة أزرار موحّدة على طراز "الزجاج السائل" (Liquid Glass): خلفية
+ * زجاجية بطبقات حقيقية (تمويه + توهّج + لمعان متحرك عبر [LiquidGlassSurface])
+ * بدل تدرّج شفاف بسيط، بحواف مستديرة بالكامل (كبسولة). هذه المكوّنات بديل
+ * مباشر لأزرار Material3 القياسية (Button / OutlinedButton / IconButton)
+ * لتوحيد شكل الأزرار في التطبيق بالكامل، وتحترم وضع الأداء المختار من
+ * الإعدادات تلقائياً عبر LiquidGlassSurface.
  */
 
 /** زر أساسي مملوء بكبسولة زجاجية بلون الهوية (primary). */
@@ -51,12 +49,6 @@ fun GlassButton(
 ) {
     val disabledContainer = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
     val disabledContent = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-    val glassBrush = if (enabled) {
-        Brush.verticalGradient(listOf(containerColor.copy(alpha = 0.96f), containerColor.copy(alpha = 0.84f)))
-    } else {
-        Brush.verticalGradient(listOf(disabledContainer, disabledContainer))
-    }
-    val borderColor = Color.White.copy(alpha = if (enabled) 0.18f else 0.06f)
     val interactionSource = remember { MutableInteractionSource() }
     val pressScale by rememberPressScale(interactionSource)
 
@@ -72,15 +64,30 @@ fun GlassButton(
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else disabledContent
     ) {
-        Row(
-            modifier = Modifier
-                .background(glassBrush)
-                .border(BorderStroke(1.dp, borderColor), CircleShape)
-                .padding(contentPadding),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            content()
+        if (enabled) {
+            LiquidGlassSurface(
+                shape = CircleShape,
+                modifier = Modifier,
+                tint = containerColor
+            ) {
+                Row(
+                    modifier = Modifier.padding(contentPadding),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    content()
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .background(disabledContainer)
+                    .padding(contentPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                content()
+            }
         }
     }
 }
@@ -97,8 +104,6 @@ fun GlassOutlinedButton(
     content: @Composable RowScope.() -> Unit
 ) {
     val surface = MaterialTheme.colorScheme.surfaceContainerHigh
-    val glassBrush = Brush.verticalGradient(listOf(surface.copy(alpha = 0.55f), surface.copy(alpha = 0.30f)))
-    val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = if (enabled) 0.35f else 0.12f)
     val interactionSource = remember { MutableInteractionSource() }
     val pressScale by rememberPressScale(interactionSource)
 
@@ -114,15 +119,18 @@ fun GlassOutlinedButton(
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.38f)
     ) {
-        Row(
-            modifier = Modifier
-                .background(glassBrush)
-                .border(BorderStroke(1.dp, borderColor), CircleShape)
-                .padding(contentPadding),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
+        LiquidGlassSurface(
+            shape = CircleShape,
+            tint = surface,
+            borderAlpha = 0.16f
         ) {
-            content()
+            Row(
+                modifier = Modifier.padding(contentPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                content()
+            }
         }
     }
 }
@@ -141,10 +149,6 @@ fun GlassIconButton(
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
     content: @Composable () -> Unit
 ) {
-    val glassBrush = Brush.verticalGradient(
-        listOf(containerColor.copy(alpha = 0.85f), containerColor.copy(alpha = 0.60f))
-    )
-    val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
     val interactionSource = remember { MutableInteractionSource() }
     val pressScale by rememberPressScale(interactionSource)
 
@@ -157,15 +161,19 @@ fun GlassIconButton(
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.38f)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(glassBrush)
-                .border(BorderStroke(1.dp, borderColor), CircleShape),
-            contentAlignment = Alignment.Center
+        LiquidGlassSurface(
+            shape = CircleShape,
+            modifier = Modifier.fillMaxSize(),
+            tint = containerColor,
+            borderAlpha = 0.14f
         ) {
-            androidx.compose.runtime.CompositionLocalProvider(LocalContentColor provides (if (enabled) contentColor else contentColor.copy(alpha = 0.38f))) {
-                content()
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalContentColor provides (if (enabled) contentColor else contentColor.copy(alpha = 0.38f))) {
+                    content()
+                }
             }
         }
     }
