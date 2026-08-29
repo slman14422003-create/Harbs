@@ -52,4 +52,11 @@
     <path android:pathData="M56,16 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" android:fillColor="#A5D6A7" android:fillAlpha="0.6" />
     <path android:pathData="M72.5,38.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#A5D6A7" android:fillAlpha="0.5" />
     <path android:pathData="M28.5,50.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#A5D6A7" android:fillAlpha="0.5" />
+
+    <!-- شعاع "زجاج سائل" مائل فوق التاج — يربط أيقونة التطبيق بهوية
+         الزجاج السائل المستخدمة داخل التطبيق (شريط علوي/أزرار/بطاقات). -->
+    <path
+        android:pathData="M24,40 C34,26 52,18 70,20 L62,32 C48,32 36,38 30,50 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.16" />
 </vector>
