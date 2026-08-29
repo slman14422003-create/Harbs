@@ -11,6 +11,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # لا يمكن استخدام "secrets" مباشرة داخل أي شرط if: (قيد من GitHub
+      # Actions نفسه، يسبب خطأ "Unrecognized named-value: 'secrets'").
+      # لذلك نمرر النتيجة كمتغير env هنا، ونستخدم env.HAS_KEYSTORE_SECRET
+      # بدل secrets.ANDROID_KEYSTORE_BASE64 داخل أي if: أدناه.
+      HAS_KEYSTORE_SECRET: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Checkout repository
@@ -63,7 +69,7 @@ jobs:
 
       - name: Restore cached fallback keystore
         id: keystore-cache
-        if: ${{ !secrets.ANDROID_KEYSTORE_BASE64 }}
+        if: ${{ env.HAS_KEYSTORE_SECRET != 'true' }}
         uses: actions/cache@v4
         with:
           path: app/fallback.keystore.jks
@@ -113,7 +119,7 @@ jobs:
           ls -la "$KS_PATH"
 
       - name: Save fallback keystore to cache
-        if: ${{ !secrets.ANDROID_KEYSTORE_BASE64 && steps.keystore-cache.outputs.cache-hit != 'true' }}
+        if: ${{ env.HAS_KEYSTORE_SECRET != 'true' && steps.keystore-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: app/fallback.keystore.jks
