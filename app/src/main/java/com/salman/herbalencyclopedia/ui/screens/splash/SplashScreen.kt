@@ -56,6 +56,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun SplashScreen(onFinished: () -> Unit) {
     var stage by remember { mutableStateOf(0) }
+    val highQuality = com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode.current.isHighQuality
 
     val iconScale by animateFloatAsState(
         targetValue = if (stage >= 1) 1f else 0.6f,
@@ -63,13 +64,19 @@ fun SplashScreen(onFinished: () -> Unit) {
         label = "logoScale"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "glow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = AppMotion.Smooth), RepeatMode.Reverse),
-        label = "glowAlpha"
-    )
+    // التوهّج العضوي المتنفس حركة لانهائية — تُستبعد في الوضع الاقتصادي
+    // فتبقى شاشة البداية خفيفة تماماً على الأجهزة الضعيفة.
+    val glowAlpha = if (highQuality) {
+        val infiniteTransition = rememberInfiniteTransition(label = "glow")
+        val animated by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.6f,
+            animationSpec = infiniteRepeatable(tween(1400, easing = AppMotion.Smooth), RepeatMode.Reverse),
+            label = "glowAlpha"
+        )
+        animated
+        // ملاحظة: نُبقي القيمة كـ State مقروءة أدناه بنفس الاسم.
+    } else 0.4f
 
     LaunchedEffect(Unit) {
         stage = 1
@@ -129,23 +136,21 @@ fun SplashScreen(onFinished: () -> Unit) {
                     visible = stage >= 1,
                     enter = fadeIn(tween(550)) + scaleIn(tween(700, easing = AppMotion.Smooth), initialScale = 0.6f)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(108.dp)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.80f))
-                                ),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
+                    com.salman.herbalencyclopedia.ui.components.LiquidGlassSurface(
+                        shape = CircleShape,
+                        modifier = Modifier.size(108.dp),
+                        tint = Color.White,
+                        glowColor = Color(0xFF9CCC65),
+                        borderAlpha = 0.4f
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Spa,
-                            contentDescription = null,
-                            modifier = Modifier.size(54.dp),
-                            tint = brandGreen
-                        )
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Spa,
+                                contentDescription = null,
+                                modifier = Modifier.size(54.dp),
+                                tint = brandGreen
+                            )
+                        }
                     }
                 }
             }
