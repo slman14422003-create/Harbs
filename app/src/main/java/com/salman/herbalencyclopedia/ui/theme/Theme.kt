@@ -12,11 +12,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
+/**
+ * بدون هذا الحساب، اللوحة المختارة كانت تغيّر primary/secondary/tertiary
+ * فقط، بينما باقي أدوار الألوان (primaryContainer, onPrimaryContainer...)
+ * التي تستخدمها أغلب الكروت والأزرار بالتطبيق تبقى على قيم Material
+ * الافتراضية الأرجوانية — فيبدو التغيير وكأنه "لا يعمل بشكل كامل".
+ * هذه دوال بسيطة تشتق ألوان الـ container من نفس لون اللوحة بدل تركها ثابتة.
+ */
 private fun lightSchemeFor(palette: ThemePalette) = lightColorScheme(
-    primary = palette.light40,
-    secondary = palette.secondary40,
-    tertiary = palette.tertiary40,
+    primary = palette.light40, onPrimary = Color.White,
+    primaryContainer = lerp(palette.light40, Color.White, 0.82f),
+    onPrimaryContainer = lerp(palette.light40, Color.Black, 0.55f),
+    secondary = palette.secondary40, onSecondary = Color.White,
+    secondaryContainer = lerp(palette.secondary40, Color.White, 0.82f),
+    onSecondaryContainer = lerp(palette.secondary40, Color.Black, 0.55f),
+    tertiary = palette.tertiary40, onTertiary = Color.White,
+    tertiaryContainer = lerp(palette.tertiary40, Color.White, 0.82f),
+    onTertiaryContainer = lerp(palette.tertiary40, Color.Black, 0.55f),
     background = SurfaceLight,
     surface = SurfaceLight,
     surfaceVariant = Color(0xFFE9EFE6),
@@ -24,9 +38,15 @@ private fun lightSchemeFor(palette: ThemePalette) = lightColorScheme(
 )
 
 private fun darkSchemeFor(palette: ThemePalette) = darkColorScheme(
-    primary = palette.light80,
-    secondary = palette.secondary80,
-    tertiary = palette.tertiary80,
+    primary = palette.light80, onPrimary = Color.Black,
+    primaryContainer = lerp(palette.light80, Color.Black, 0.55f),
+    onPrimaryContainer = lerp(palette.light80, Color.White, 0.35f),
+    secondary = palette.secondary80, onSecondary = Color.Black,
+    secondaryContainer = lerp(palette.secondary80, Color.Black, 0.55f),
+    onSecondaryContainer = lerp(palette.secondary80, Color.White, 0.35f),
+    tertiary = palette.tertiary80, onTertiary = Color.Black,
+    tertiaryContainer = lerp(palette.tertiary80, Color.Black, 0.55f),
+    onTertiaryContainer = lerp(palette.tertiary80, Color.White, 0.35f),
     background = SurfaceDark,
     surface = SurfaceDark,
     surfaceVariant = Color(0xFF3B403A),
