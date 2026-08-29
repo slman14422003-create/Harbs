@@ -79,6 +79,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         }
     }) { inner ->
         Box(Modifier.padding(inner).fillMaxSize()) {
+            com.salman.herbalencyclopedia.ui.components.AmbientBackground()
             NavHost(
                 navController,
                 Screen.Splash.route,
