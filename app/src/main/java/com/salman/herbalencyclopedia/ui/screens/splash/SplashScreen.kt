@@ -125,7 +125,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                         .scale(iconScale)
                         .background(Color.White.copy(alpha = glowAlpha * 0.25f), CircleShape)
                 )
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = stage >= 1,
                     enter = fadeIn(tween(550)) + scaleIn(tween(700, easing = FastOutSlowInEasing), initialScale = 0.6f)
                 ) {
