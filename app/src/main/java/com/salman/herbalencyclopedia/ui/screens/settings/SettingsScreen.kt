@@ -21,9 +21,13 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -48,11 +52,13 @@ fun SettingsScreen(
     dynamicColor: Boolean,
     fontScale: Int,
     themePalette: com.salman.herbalencyclopedia.ui.theme.ThemePalette,
+    performanceMode: PerformanceMode,
     onBack: () -> Unit,
     onDarkModeChange: (Boolean?) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
     onFontScaleChange: (Int) -> Unit,
     onThemePaletteChange: (com.salman.herbalencyclopedia.ui.theme.ThemePalette) -> Unit,
+    onPerformanceModeChange: (PerformanceMode) -> Unit,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
@@ -95,6 +101,15 @@ fun SettingsScreen(
                     )
                     SettingsDivider()
                     FontScaleRow(fontScale = fontScale, onFontScaleChange = onFontScaleChange)
+                }
+            }
+
+            item {
+                SettingsSection(title = "الأداء") {
+                    PerformanceModeSelector(
+                        selected = performanceMode,
+                        onSelect = onPerformanceModeChange
+                    )
                 }
             }
 
@@ -369,6 +384,76 @@ private fun PaletteSwatch(
                 modifier = Modifier.size(18.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun PerformanceModeSelector(
+    selected: PerformanceMode,
+    onSelect: (PerformanceMode) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(icon = Icons.Filled.Speed, tint = Color(0xFF00897B))
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text("وضع الأداء", fontWeight = FontWeight.SemiBold)
+                Text(
+                    selected.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            PerformanceModeCard(
+                mode = PerformanceMode.HIGH_QUALITY,
+                icon = Icons.Filled.AutoAwesome,
+                selected = selected == PerformanceMode.HIGH_QUALITY,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(PerformanceMode.HIGH_QUALITY) }
+            )
+            PerformanceModeCard(
+                mode = PerformanceMode.ECO,
+                icon = Icons.Filled.BatteryChargingFull,
+                selected = selected == PerformanceMode.ECO,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(PerformanceMode.ECO) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun PerformanceModeCard(
+    mode: PerformanceMode,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+    val content = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(container)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(6.dp))
+        Text(mode.label, fontWeight = FontWeight.SemiBold, color = content, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
