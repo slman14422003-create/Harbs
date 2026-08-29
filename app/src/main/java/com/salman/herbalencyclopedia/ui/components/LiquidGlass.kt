@@ -54,6 +54,11 @@ fun LiquidGlassSurface(
     tint: Color = Color.White,
     glowColor: Color = tint,
     borderAlpha: Float = 0.22f,
+    // بطاقات الشبكات (تصنيفات، أعشاب...) تظهر بالعشرات معاً على نفس
+    // الشاشة؛ شعاع لمعان لانهائي يلمع على كل بطاقة بنفس التوقيت يبدو
+    // متكرراً ومزعجاً بدل "حي". لذلك القيمة الافتراضية مفعّلة (لأزرار/
+    // أشرطة علوية مفردة) لكن تُطفأ صراحة في بطاقات الشبكة.
+    sheen: Boolean = true,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
@@ -96,7 +101,7 @@ fun LiquidGlassSurface(
                 )
         )
 
-        if (highQuality) {
+        if (highQuality && sheen) {
             GlassSheen(modifier = Modifier.matchParentSize())
         }
 

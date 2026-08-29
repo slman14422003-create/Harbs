@@ -91,7 +91,8 @@ fun CategoryCard(
         LiquidGlassSurface(
             shape = shape,
             modifier = Modifier.fillMaxSize(),
-            tint = MaterialTheme.colorScheme.surfaceContainer
+            tint = MaterialTheme.colorScheme.surfaceContainer,
+            sheen = false
         ) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
