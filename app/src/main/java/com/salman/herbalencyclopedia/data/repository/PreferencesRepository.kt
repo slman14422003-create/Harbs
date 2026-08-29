@@ -37,8 +37,14 @@ class PreferencesRepository(private val context: Context) {
         it[Keys.DARK_MODE]
     }
 
+    // الافتراضي false: قبل هذا التعديل كانت الألوان الديناميكية (Material You
+    // المشتقة من خلفية الجهاز) مفعّلة افتراضياً، فتتجاوز أي لوحة ألوان يختارها
+    // المستخدم من الإعدادات بالكامل — كانت تغيير اللوحة يبدو بلا أي أثر لأن
+    // الشرط في HerbalEncyclopediaTheme يعطي أولوية لـ dynamicColor. الآن
+    // يعتمد التطبيق افتراضياً على هويته البصرية الخاصة (اللوحة المختارة)
+    // ويبقى بإمكان المستخدم تفعيل الألوان الديناميكية يدوياً إن أراد.
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map {
-        it[Keys.USE_DYNAMIC_COLOR] ?: true
+        it[Keys.USE_DYNAMIC_COLOR] ?: false
     }
 
     val fontScale: Flow<Int> = context.dataStore.data.map { it[Keys.FONT_SCALE] ?: 0 }
