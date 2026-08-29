@@ -35,24 +35,32 @@ jobs:
       - name: Resolve app version
         id: appver
         run: |
-          VNAME=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | head -1 | sed -E 's/.*"(.*)"/\1/')
+          # محاولة قراءة رقم الإصدار من كلا الصيغتين المدعومتين
+          if [ -f "app/build.gradle.kts" ]; then
+            VNAME=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | head -1 | sed -E 's/.*"(.*)"/\1/')
+          elif [ -f "app/build.gradle" ]; then
+            VNAME=$(grep -o 'versionName "[^"]*"' app/build.gradle | head -1 | sed -E 's/.*"(.*)"/\1/')
+          else
+            echo "::error::Could not find app/build.gradle or app/build.gradle.kts"
+            exit 1
+          fi
+          
           VNAME=${VNAME:-1.0.0}
           VCODE=${{ github.run_number }}
           echo "version_name=$VNAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VCODE" >> "$GITHUB_OUTPUT"
           echo "Building version $VNAME ($VCODE)"
 
-      # بدون هذه الخطوة كان أي بناء بلا أسرار توقيع مُعدّة يولّد مفتاحاً
-      # عشوائياً جديداً في كل تشغيل — فيُوقَّع كل إصدار بمفتاح مختلف عن
-      # سابقه، ويرفض أندرويد تثبيت التحديث فوق النسخة الحالية لدى المستخدم
-      # (INSTALL_FAILED_UPDATE_INCOMPATIBLE) حتى يُزيلها يدوياً أولاً.
-      # الحل الصحيح والدائم هو أسرار GitHub (الخطوة التالية)، لكن كطبقة
-      # حماية إضافية إن لم تُعدَّ بعد: نُخزّن أي مفتاح مولَّد تلقائياً في
-      # ذاكرة تخزين GitHub Actions المؤقتة (cache) بمفتاح ثابت، فيُعاد
-      # استخدام نفس المفتاح في كل تشغيل تالٍ بدل توليد واحد جديد في كل مرة.
-      # ملاحظة: هذه الذاكرة المؤقتة قد تُحذف من GitHub بعد أسابيع من عدم
-      # الاستخدام أو عند امتلاء الحصة — الاعتماد الوحيد المضمون 100% طويل
-      # المدى هو أسرار ANDROID_KEYSTORE_* أدناه.
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Restore cached fallback keystore
         id: keystore-cache
         if: ${{ !secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -60,6 +68,8 @@ jobs:
         with:
           path: app/fallback.keystore.jks
           key: fallback-keystore-v1
+          restore-keys: |
+            fallback-keystore-
 
       - name: Prepare signing keystore
         id: keystore
@@ -69,6 +79,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          # إنشاء مجلد app إذا لم يكن موجوداً
+          mkdir -p app
+          
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Using keystore supplied via repository secrets (stable, permanent signing identity)."
             KS_PATH="$GITHUB_WORKSPACE/app/release.keystore.jks"
@@ -79,9 +92,9 @@ jobs:
           else
             KS_PATH="$GITHUB_WORKSPACE/app/fallback.keystore.jks"
             if [ -f "$KS_PATH" ]; then
-              echo "::warning::No ANDROID_KEYSTORE_BASE64 secret configured. Reusing the cached fallback keystore from a previous run so this update installs over the last one. This cache is NOT guaranteed to persist forever — add ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD secrets as soon as possible for a permanent signing identity."
+              echo "::warning::No ANDROID_KEYSTORE_BASE64 secret configured. Reusing cached fallback keystore."
             else
-              echo "::warning::No ANDROID_KEYSTORE_BASE64 secret configured and no cached fallback keystore found. Generating a NEW one now and caching it for future runs. Add the secrets mentioned above to make this permanent and safe against cache eviction."
+              echo "::warning::No ANDROID_KEYSTORE_BASE64 secret and no cached keystore. Generating new one."
               keytool -genkeypair -v \
                 -keystore "$KS_PATH" \
                 -alias herbal \
@@ -94,6 +107,10 @@ jobs:
             echo "key_password=herbal123" >> "$GITHUB_OUTPUT"
           fi
           echo "store_file=$KS_PATH" >> "$GITHUB_OUTPUT"
+          
+          # عرض معلومات المفتاح للتحقق (بدون كلمات المرور)
+          echo "Keystore prepared at: $KS_PATH"
+          ls -la "$KS_PATH"
 
       - name: Save fallback keystore to cache
         if: ${{ !secrets.ANDROID_KEYSTORE_BASE64 && steps.keystore-cache.outputs.cache-hit != 'true' }}
@@ -101,6 +118,42 @@ jobs:
         with:
           path: app/fallback.keystore.jks
           key: fallback-keystore-v1
+
+      - name: Create signing configuration for Gradle
+        run: |
+          cat > app/signing.gradle << 'EOF'
+          android {
+              signingConfigs {
+                  create("release") {
+                      storeFile = file(System.getenv("RELEASE_STORE_FILE") ?: "fallback.keystore.jks")
+                      storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: "herbal123"
+                      keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: "herbal"
+                      keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "herbal123"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig = signingConfigs.getByName("release")
+                      isMinifyEnabled = false
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+              }
+          }
+          EOF
+          
+          # إضافة التكوين إلى build.gradle إذا لم يكن موجوداً
+          if [ -f "app/build.gradle.kts" ]; then
+            if ! grep -q "apply(from = \"signing.gradle\")" app/build.gradle.kts; then
+              echo "apply(from = \"signing.gradle\")" >> app/build.gradle.kts
+            fi
+          elif [ -f "app/build.gradle" ]; then
+            if ! grep -q "apply from: 'signing.gradle'" app/build.gradle; then
+              echo "apply from: 'signing.gradle'" >> app/build.gradle
+            fi
+          fi
 
       - name: Build release APK and App Bundle
         env:
@@ -111,32 +164,75 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.key_alias }}
           RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.key_password }}
         run: |
-          # APK للتوزيع المباشر/الاختبار (GitHub Release)، وAAB (App Bundle)
-          # لأنه الصيغة التي يتطلبها متجر Play الآن عند الرفع.
-          gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+          # إعطاء صلاحيات التنفيذ لـ gradlew
+          chmod +x gradlew 2>/dev/null || true
+          
+          # بناء APK و App Bundle
+          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+          
+          # التحقق من وجود الملفات المبنية
+          echo "Build outputs:"
+          find app/build -name "*.apk" -o -name "*.aab" | head -10
 
       - name: Locate build outputs
         id: outputs
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -1)
+          # البحث عن أحدث APK و AAB
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
+          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" 2>/dev/null | head -1)
+          
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK found in app/build/outputs/apk/release/"
+            find app/build -name "*.apk" 2>/dev/null || echo "No APK files found anywhere"
+            exit 1
+          fi
+          
+          if [ -z "$AAB_PATH" ]; then
+            echo "::warning::No AAB found in app/build/outputs/bundle/release/"
+          fi
+          
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "aab_path=$AAB_PATH" >> "$GITHUB_OUTPUT"
           echo "Found APK: $APK_PATH"
           echo "Found AAB: $AAB_PATH"
 
+      - name: Upload APK artifact (for direct download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: ${{ steps.outputs.outputs.apk_path }}
+          if-no-files-found: error
+
       - name: Upload App Bundle artifact (for Play Store upload)
+        if: ${{ steps.outputs.outputs.aab_path != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: app-release-bundle
           path: ${{ steps.outputs.outputs.aab_path }}
+          if-no-files-found: warn
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.appver.outputs.version_name }}-${{ steps.appver.outputs.version_code }}
           name: الإصدار ${{ steps.appver.outputs.version_name }} (build ${{ steps.appver.outputs.version_code }})
+          body: |
+            ## 📦 الإصدار ${{ steps.appver.outputs.version_name }}
+            
+            ### ✅ التغييرات:
+            - بناء تلقائي عبر GitHub Actions
+            - رقم الإصدار: ${{ steps.appver.outputs.version_code }}
+            
+            ### 📱 ملفات التحميل:
+            - **APK**: للتثبيت المباشر على الأندرويد
+            - **AAB**: للرفع على متجر Google Play
           generate_release_notes: true
           files: |
             ${{ steps.outputs.outputs.apk_path }}
             ${{ steps.outputs.outputs.aab_path }}
+          fail_on_unmatched_files: true
+
+      - name: Cleanup Gradle cache
+        if: always()
+        run: |
+          rm -rf ~/.gradle/caches/modules-2/files-2.1/* 2>/dev/null || true
