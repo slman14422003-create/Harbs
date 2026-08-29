@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    طبقة "Themed Icon" (أندرويد 13+): شكل واحد بلون واحد، والنظام يطبّق
+    عليه لون الخلفية الديناميكي الذي يختاره المستخدم. بدون هذه الطبقة،
+    الأيقونات المتناسقة (Material You) على شاشة الرئيسية كانت ستستخدم
+    مربّعاً افتراضياً بدل شكل ورقة العشب.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,86 C40,74 28,60 26,44 C24,28 34,17 46,13 C51,25 53,38 53,50 C53,52 53,53 53,55 C58,42 62,32 68,25 C74,18 82,15 88,15 C88,29 85,42 76,51 C68,59 60,63 55,64 C55,71 55,79 54,86 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

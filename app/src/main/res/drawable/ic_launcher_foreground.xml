@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    مقدّمة الأيقونة المتكيّفة بستايل "زجاجي" (glassmorphism): ورقة عشب
+    مبنية من طبقتين شبه شفافتين (لإحساس عمق زجاجي) + شريط لمعان قطري
+    يحاكي انعكاس الضوء + حدّ خارجي رفيع أبيض شبه شفاف (frosted edge).
+    كانت المقدّمة السابقة صورة PNG ثابتة بدقة واحدة لكل كثافة شاشة؛
+    هذه نسخة Vector فتبقى حادّة على أي حجم/كثافة بدون الحاجة لتوليد
+    ملفات PNG منفصلة لكل مجلد mipmap.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- الطبقة الخلفية للورقة: أفتح وأكثر شفافية (عمق زجاجي) -->
+    <path
+        android:pathData="M54,84 C41,73 30,61 27,48 C24,35 30,25 40,19 C51,29 57,40 57,53 C57,65 54,74 54,84 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.20"
+        android:strokeWidth="0.8" />
+
+    <!-- الطبقة الأمامية للورقة: زجاج أكثر كثافة، يحمل الشكل الأساسي -->
+    <path
+        android:pathData="M54,84 C51,68 51,54 56,40 C61,26 74,19 86,19 C86,33 83,46 74,55 C66,63 58,66 54,66 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.92"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.30"
+        android:strokeWidth="0.8" />
+
+    <!-- عرق الورقة الوسطي -->
+    <path
+        android:pathData="M54,82 L54,24"
+        android:strokeColor="#1B5E20"
+        android:strokeAlpha="0.22"
+        android:strokeWidth="1.4"
+        android:fillColor="#00000000" />
+
+    <!-- شريط لمعان قطري (glass shine) أعلى يسار الورقة -->
+    <path
+        android:pathData="M36,30 L46,22 L50,26 L40,34 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.45" />
+    <path
+        android:pathData="M42,40 L49,33 L52,36 L45,43 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.30" />
+</vector>
