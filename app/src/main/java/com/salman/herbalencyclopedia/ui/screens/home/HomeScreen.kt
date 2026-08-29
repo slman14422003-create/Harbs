@@ -100,7 +100,8 @@ fun HomeScreen(
                         CategoryCard(
                             category = category,
                             herbCount = herbs.count { it.categoryId == category.id },
-                            onClick = { onCategoryClick(category) }
+                            onClick = { onCategoryClick(category) },
+                            modifier = Modifier.animateItem()
                         )
                     }
                 }
