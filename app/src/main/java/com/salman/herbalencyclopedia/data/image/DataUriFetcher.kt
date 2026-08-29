@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia.data.image
 
 import android.content.Context
+import android.net.Uri
 import android.util.Base64
 import coil.ImageLoader
 import coil.decode.DataSource
@@ -16,8 +17,12 @@ import okio.Buffer
  * إطلاقاً — هذا الدعم أُضيف فقط لاحقاً بإصدار Coil 3.x. بما أن صور
  * الأعشاب تُخزَّن كـ data URL كاملة داخل مستند Firestore (بدل رفعها
  * لـ Firebase Storage)، بدون هذا الـ Fetcher فإن AsyncImage لا يعرف
- * كيف يقرأ هذا الرابط إطلاقاً ولا يظهر أي شيء — لا بمعاينة اختيار
- * الصورة ولا بعد الحفظ بأي مكان آخر بالتطبيق (بطاقة العشبة، تفاصيلها...).
+ * كيف يقرأ هذا الرابط إطلاقاً ولا يظهر أي شيء.
+ *
+ * ملاحظة مهمة: Coil يحوّل أي String تلقائياً إلى Uri (عبر مُحوِّل
+ * داخلي StringMapper) قبل أن تصل البيانات لأي Fetcher. لذلك يجب أن
+ * يكون هذا الـ Factory من نوع Fetcher.Factory<Uri> وليس
+ * Fetcher.Factory<String> — وإلا فلن يُستدعى إطلاقاً مهما كان صحيحاً.
  */
 class DataUriFetcher(
     private val dataUri: String,
@@ -38,10 +43,12 @@ class DataUriFetcher(
         )
     }
 
-    class Factory : Fetcher.Factory<String> {
-        override fun create(data: String, options: Options, imageLoader: ImageLoader): Fetcher? {
-            if (!data.startsWith("data:") || !data.contains(";base64,")) return null
-            return DataUriFetcher(data, options.context)
+    class Factory : Fetcher.Factory<Uri> {
+        override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
+            val uriString = data.toString()
+            if (data.scheme != "data" || !uriString.contains(";base64,")) return null
+            return DataUriFetcher(uriString, options.context)
         }
     }
 }
+
