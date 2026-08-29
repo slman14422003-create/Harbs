@@ -21,7 +21,7 @@ fun AllHerbsScreen(herbs: List<Herb>, favoriteIds: Set<String>, onHerbClick: (He
     val filtered = herbs.filter { query.isBlank() || it.name.contains(query, true) || it.benefits.contains(query, true) }
     // This screen is a bottom-nav root destination (see HerbalNavGraph), so it
     // intentionally has no back arrow — matches HomeScreen's top bar.
-    Scaffold(topBar = { GlassTopBar(large = true, title = { Text("كل الأعشاب") }) }) { padding ->
+    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, topBar = { GlassTopBar(large = true, title = { Text("كل الأعشاب") }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             OutlinedTextField(
                 value = query,
