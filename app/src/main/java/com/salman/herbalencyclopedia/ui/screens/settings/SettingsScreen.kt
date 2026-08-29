@@ -65,6 +65,7 @@ fun SettingsScreen(
     onAdminToolsClick: () -> Unit
 ) {
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
                 title = { Text("الإعدادات") },
