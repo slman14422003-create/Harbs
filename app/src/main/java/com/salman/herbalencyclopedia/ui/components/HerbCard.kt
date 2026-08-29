@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,44 +38,62 @@ fun HerbCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressScale by rememberPressScale(interactionSource, pressedScale = 0.97f)
-    Card(
+    val shape = RoundedCornerShape(20.dp)
+
+    // بطاقة العشبة أصبحت الآن على طراز الزجاج السائل نفسه المستخدم في
+    // GlassButton بدل Card عادية بخلفية Material3 مسطّحة، لتوحيد الهوية
+    // البصرية مع بقية التطبيق. Surface هنا شفافة وتحمل فقط النقر/الظل،
+    // بينما LiquidGlassSurface يرسم طبقات الزجاج نفسها وتحترم وضع الأداء
+    // (عالي/اقتصادي) تلقائياً.
+    Surface(
         onClick = onClick,
         interactionSource = interactionSource,
-        modifier = modifier.scale(pressScale).fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        modifier = modifier
+            .scale(pressScale)
+            .fillMaxWidth()
+            .shadow(1.dp, shape),
+        shape = shape,
+        color = Color.Transparent
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        LiquidGlassSurface(
+            shape = shape,
+            modifier = Modifier.fillMaxWidth(),
+            tint = MaterialTheme.colorScheme.surfaceContainer
         ) {
-            HerbThumbnail(imageUrl = herb.imageUrl)
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = herb.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = herb.benefits,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            GlassIconButton(onClick = onToggleFavorite, size = 38.dp) {
-                Icon(
-                    imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (isFavorite) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // صورة العشبة محتوى فوق طبقة الزجاج (content) وليست جزءاً
+                // من الطبقة المموَّهة، فتبقى واضحة تماماً وغير متأثرة بالتمويه.
+                HerbThumbnail(imageUrl = herb.imageUrl)
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = herb.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = herb.benefits,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                GlassIconButton(onClick = onToggleFavorite, size = 38.dp) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (isFavorite) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                    )
+                }
             }
         }
     }

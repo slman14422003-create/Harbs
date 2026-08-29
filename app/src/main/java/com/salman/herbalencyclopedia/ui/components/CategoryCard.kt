@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -73,42 +74,56 @@ fun CategoryCard(
     val accent = colorFor(category)
     val interactionSource = remember { MutableInteractionSource() }
     val pressScale by rememberPressScale(interactionSource, pressedScale = 0.95f)
-    Card(
+
+    // نفس أسلوب الزجاج السائل المستخدم في GlassButton وHerbCard: Surface
+    // شفافة تحمل النقر/الظل، وLiquidGlassSurface يرسم طبقات الزجاج نفسها
+    // (تمويه + توهّج + لمعان) وتحترم وضع الأداء تلقائياً.
+    Surface(
         onClick = onClick,
         interactionSource = interactionSource,
-        modifier = modifier.scale(pressScale).aspectRatio(1f),
+        modifier = modifier
+            .scale(pressScale)
+            .aspectRatio(1f)
+            .shadow(1.dp, shape),
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        color = Color.Transparent
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+        LiquidGlassSurface(
+            shape = shape,
+            modifier = Modifier.fillMaxSize(),
+            tint = MaterialTheme.colorScheme.surfaceContainer
         ) {
-            Box(
-                Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(
-                    Brush.linearGradient(
-                        listOf(accent.copy(alpha = 0.22f), accent.copy(alpha = 0.10f))
-                    )
-                ),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(iconFor(category), contentDescription = null, tint = accent)
-            }
-            Column {
-                Text(
-                    category.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "$herbCount عشبة",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // أيقونة التصنيف محتوى فوق طبقة الزجاج (content)، فتبقى
+                // واضحة وغير متأثرة بالتمويه خلفها.
+                Box(
+                    Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(
+                        Brush.linearGradient(
+                            listOf(accent.copy(alpha = 0.22f), accent.copy(alpha = 0.10f))
+                        )
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(iconFor(category), contentDescription = null, tint = accent)
+                }
+                Column {
+                    Text(
+                        category.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "$herbCount عشبة",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
