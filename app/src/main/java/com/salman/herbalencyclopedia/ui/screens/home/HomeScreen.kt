@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.*
+import com.salman.herbalencyclopedia.ui.theme.staggeredEntrance
 import java.util.Calendar
 
 /**
@@ -137,12 +138,17 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(categories, key = { it.id }) { category ->
+                    itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
                         CategoryCard(
                             category = category,
                             herbCount = herbs.count { it.categoryId == category.id },
                             onClick = { onCategoryClick(category) },
-                            modifier = Modifier.animateItem()
+                            // بدل ظهور كل البطاقات دفعة واحدة، كل بطاقة تتلاشى
+                            // وتنزلق للأعلى بعد اللي قبلها بفارق بسيط — مرة
+                            // واحدة عند تحميل الشاشة، بلا أي تكرار لانهائي.
+                            modifier = Modifier
+                                .animateItem()
+                                .staggeredEntrance(index)
                         )
                     }
                 }
