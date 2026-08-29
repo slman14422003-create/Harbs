@@ -55,7 +55,7 @@ fun GlassButton(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 50.dp),
+        modifier = modifier.heightIn(min = 50.dp).shadow(if (enabled) 3.dp else 0.dp, CircleShape),
         shape = CircleShape,
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else disabledContent
@@ -91,7 +91,7 @@ fun GlassOutlinedButton(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 50.dp),
+        modifier = modifier.heightIn(min = 50.dp).shadow(if (enabled) 3.dp else 0.dp, CircleShape),
         shape = CircleShape,
         color = Color.Transparent,
         contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.38f)
