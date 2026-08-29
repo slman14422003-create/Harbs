@@ -34,6 +34,7 @@ fun CompareScreen(herbs: List<Herb>, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             GlassTopBar(title = { Text("مقارنة الأعشاب") }, navigationIcon = {
