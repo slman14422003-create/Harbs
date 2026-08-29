@@ -46,21 +46,42 @@ fun SearchScreen(
         topBar = {
             GlassTopBar(
                 title = {
-                    OutlinedTextField(
+                    // حقل نص شفاف بلا حدود بدل OutlinedTextField الافتراضي:
+                    // قبل هذا التعديل كان الحقل يرسم صندوقاً بحدّه الخاص فوق
+                    // شريط الزجاج السائل (زجاج داخل زجاج)، فيبدو غريباً وغير
+                    // منسجم مع بقية التطبيق. هذا الشكل يذوب داخل الشريط
+                    // العلوي كأنه جزء منه، بأيقونة بحث بادئة توضّح وظيفته
+                    // فوراً.
+                    TextField(
                         value = query,
                         onValueChange = { query = it },
                         placeholder = { Text("ابحث عن عشبة أو فائدة...") },
                         singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
                         trailingIcon = {
                             if (query.isNotEmpty()) {
-                                GlassIconButton(onClick = { query = "" }) {
+                                GlassIconButton(onClick = { query = "" }, size = 34.dp) {
                                     Icon(Icons.Filled.Clear, contentDescription = "مسح")
                                 }
                             }
-                        }
+                        },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            disabledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
                     )
                 },
                 navigationIcon = {
