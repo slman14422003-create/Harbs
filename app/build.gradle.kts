@@ -93,6 +93,11 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
+    // خط عربي مخصص (Tajawal) عبر Google Fonts — يُحمَّل من جهاز المستخدم
+    // وقت التشغيل عبر خدمات Google Play (Downloadable Fonts)، فلا يحتاج
+    // ملف خط داخل المشروع. راجع ui/theme/Type.kt.
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.3")
+
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.1")
 
