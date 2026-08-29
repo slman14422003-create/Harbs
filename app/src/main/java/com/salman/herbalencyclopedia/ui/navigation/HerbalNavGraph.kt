@@ -117,7 +117,40 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.Compare.route) { CompareScreen(uiState.herbs, { navController.popBackStack() }) }
                 composable(Screen.Help.route) { HelpScreen { navController.popBackStack() } }
                 composable(Screen.CategoryHerbs.route, arguments=listOf(navArgument("categoryId"){type=NavType.StringType},navArgument("categoryName"){type=NavType.StringType})) { e -> val id=e.arguments?.getString("categoryId") ?: ""; val name=e.arguments?.getString("categoryName") ?: ""; CategoryHerbsScreen(name, uiState.herbs.filter { it.categoryId==id }, favoriteIds, {navController.popBackStack()}, {h->navController.navigate(Screen.HerbDetail.createRoute(h.id))}, appViewModel::toggleFavorite) }
-                composable(Screen.HerbDetail.route, arguments=listOf(navArgument("herbId"){type=NavType.StringType})) { e -> uiState.herbs.firstOrNull { it.id==e.arguments?.getString("herbId") }?.let { h -> HerbDetailScreen(h, h.id in favoriteIds, {navController.popBackStack()}, {appViewModel.toggleFavorite(h.id)}) } }
+                composable(
+                    Screen.HerbDetail.route,
+                    arguments = listOf(navArgument("herbId") { type = NavType.StringType }),
+                    // دخول/خروج مميّز لتفاصيل العشبة: تكبير من المنتصف + تلاشي
+                    // بدل الانزلاق الأفقي العام، لإحساس "فتح البطاقة" بدل تنقّل عادي.
+                    enterTransition = {
+                        androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
+                            androidx.compose.animation.scaleIn(
+                                com.salman.herbalencyclopedia.ui.theme.AppMotion.silky(),
+                                initialScale = 0.92f
+                            )
+                    },
+                    exitTransition = {
+                        androidx.compose.animation.fadeOut(
+                            com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(
+                                com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick
+                            )
+                        )
+                    },
+                    popEnterTransition = {
+                        androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth())
+                    },
+                    popExitTransition = {
+                        androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
+                            androidx.compose.animation.scaleOut(
+                                com.salman.herbalencyclopedia.ui.theme.AppMotion.silky(),
+                                targetScale = 0.92f
+                            )
+                    }
+                ) { e ->
+                    uiState.herbs.firstOrNull { it.id == e.arguments?.getString("herbId") }?.let { h ->
+                        HerbDetailScreen(h, h.id in favoriteIds, { navController.popBackStack() }, { appViewModel.toggleFavorite(h.id) })
+                    }
+                }
                 composable(Screen.Login.route) { LoginScreen({ navController.popBackStack() }, appViewModel::login) { navController.popBackStack() } }
                 composable(Screen.Admin.route) { if (appViewModel.isAdmin) AdminListScreen(uiState.herbs, {navController.popBackStack()}, {navController.navigate(Screen.AdminEdit.createRoute(Screen.AdminEdit.NEW))}, {h->navController.navigate(Screen.AdminEdit.createRoute(h.id))}, {h->appViewModel.deleteHerb(h.id) { _, _ -> }}) { navController.navigate(Screen.AdminTools.route) } }
                 composable(Screen.AdminTools.route) { if (appViewModel.isAdmin) AdminToolsScreen(uiState.categories, uiState.herbs, {navController.popBackStack()}, appViewModel::refresh, {n,cb->appViewModel.addCategory(n,cb)}, {id,cb->appViewModel.deleteCategory(id,cb)}, {cb->appViewModel.deleteAllHerbs(cb)}, {cb->appViewModel.deleteAllData(cb)}, {cb->appViewModel.testConnection(cb)}, {appViewModel.clearFavorites()}, {json,cb->appViewModel.restoreBackup(json,cb)}) }
