@@ -1,9 +1,11 @@
 package com.salman.herbalencyclopedia.ui.screens.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
@@ -14,10 +16,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.*
+import java.util.Calendar
+
+/**
+ * قبل هذا التعديل كان الشريط العلوي يعرض جملة تعريفية ثابتة لا تتغيّر أبداً
+ * ("معرفة موثوقة • تجربة هادئة • تصميم حديث"). هذه الدالة تستبدلها بتحية
+ * فعلية مبنية على وقت الجهاز، كي يشعر الشريط العلوي بأنه "حي" ومخصص لكل
+ * زيارة بدل شعار تسويقي جامد.
+ */
+private fun greetingForNow(): String {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return if (hour in 5..11) "أهلاً بك، صباح الخير" else "أهلاً بك، مساء الخير"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,13 +57,38 @@ fun HomeScreen(
             GlassTopBar(
                 large = true,
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("موسوعة الأعشاب الطبية", style = MaterialTheme.typography.headlineMedium)
-                        Text(
-                            "معرفة موثوقة • تجربة هادئة • تصميم حديث",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // شارة دائرية بهوية التطبيق (نفس أيقونة شاشة البداية)
+                        // بدل عنوان نصي مجرّد، لإحساس علامة تجارية أوضح.
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Spa,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "موسوعة الأعشاب الطبية",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                greetingForNow(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 },
                 actions = {
