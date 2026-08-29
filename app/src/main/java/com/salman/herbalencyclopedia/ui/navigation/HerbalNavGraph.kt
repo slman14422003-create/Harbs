@@ -26,6 +26,7 @@ import com.salman.herbalencyclopedia.ui.screens.herbdetail.HerbDetailScreen
 import com.salman.herbalencyclopedia.ui.screens.home.HomeScreen
 import com.salman.herbalencyclopedia.ui.screens.search.SearchScreen
 import com.salman.herbalencyclopedia.ui.screens.settings.SettingsScreen
+import com.salman.herbalencyclopedia.ui.screens.splash.SplashScreen
 import com.salman.herbalencyclopedia.ui.screens.tools.AdminToolsScreen
 import kotlinx.coroutines.launch
 
@@ -52,7 +53,15 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         )
     }
 
-    Scaffold(bottomBar = {
+    Scaffold(
+        // كل شاشة تدير حواف نظامها بنفسها: GlassTopBar/TopAppBar يتكفّل بشريط
+        // الحالة العلوي، وOneUiFloatingNavBar يتكفّل بشريط التنقل السفلي عبر
+        // windowInsetsPadding الخاص به. لو ترك Scaffold الخارجي هنا القيمة
+        // الافتراضية (safeDrawing) لحجز مساحة إضافية لنفس الحواف، تظهر فجوة
+        // مزدوجة أعلى/أسفل كل شاشة — وعلى شاشة البداية تحديداً كانت تقطع
+        // التدرّج اللوني قبل أن يصل لحواف الشاشة فعلياً.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
         if (current in topRoutes) {
             OneUiFloatingNavBar(
                 items = bottomNavItems,
@@ -67,10 +76,17 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         }
     }) { inner ->
         Box(Modifier.padding(inner).fillMaxSize()) {
-            NavHost(navController, Screen.Home.route) {
+            NavHost(navController, Screen.Splash.route) {
+                composable(Screen.Splash.route) {
+                    SplashScreen(onFinished = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Splash.route) { inclusive = true }
+                        }
+                    })
+                }
                 composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.Compare.route) }) }
-                composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, {}, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
+                composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
+                composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }) }
                 composable(Screen.Search.route) { SearchScreen(uiState.herbs, favoriteIds, { navController.popBackStack() }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.Compare.route) { CompareScreen(uiState.herbs, { navController.popBackStack() }) }
