@@ -45,7 +45,15 @@ fun AdminEditHerbScreen(
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { imageUrl = compressImageToDataUrl(context, it) ?: imageUrl }
+        uri?.let {
+            val compressed = compressImageToDataUrl(context, it)
+            if (compressed != null) {
+                imageUrl = compressed
+                errorMessage = null
+            } else {
+                errorMessage = "تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى"
+            }
+        }
     }
 
     val selectedCategoryName = categories.firstOrNull { it.id == categoryId }?.name ?: "بدون تصنيف"
@@ -170,12 +178,46 @@ fun AdminEditHerbScreen(
 
 private fun compressImageToDataUrl(context: android.content.Context, uri: android.net.Uri): String? {
     return runCatching {
-        val source = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return null
-        val max = 1000
-        val scale = minOf(1f, max.toFloat() / maxOf(source.width, source.height))
-        val bitmap = if (scale < 1f) Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true) else source
-        val out = java.io.ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 82, out)
-        "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        val source = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            ?: return null
+
+        // Firestore يرفض أي مستند يتجاوز 1 ميجابايت إجمالاً (كل الحقول
+        // مجتمعة)، وترميز base64 يكبّر حجم الصورة الأصلي بحوالي 33%.
+        // لذلك نحجز هامشاً لبقية حقول العشبة ونضغط الصورة بشكل متكرر —
+        // نقلّل الجودة أولاً، وإذا ما كفت نصغّر الأبعاد كمان — إلى أن
+        // يصير الناتج تحت هذا السقف فعلياً بدل ما نكتشف الفشل بعد محاولة
+        // الحفظ في Firestore.
+        val maxDataUrlBytes = 650_000
+        var maxDimension = 900
+        var quality = 82
+        var dataUrl: String
+
+        while (true) {
+            val scale = minOf(1f, maxDimension.toFloat() / maxOf(source.width, source.height))
+            val bitmap = if (scale < 1f) {
+                Bitmap.createScaledBitmap(
+                    source,
+                    (source.width * scale).toInt().coerceAtLeast(1),
+                    (source.height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else source
+
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            dataUrl = "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+
+            if (dataUrl.length <= maxDataUrlBytes || (quality <= 35 && maxDimension <= 400)) break
+
+            if (quality > 35) {
+                quality -= 15
+            } else {
+                maxDimension = (maxDimension * 0.75f).toInt()
+            }
+        }
+
+        // إذا ظلت الصورة أكبر من الحد المسموح حتى بعد أقصى ضغط ممكن، لا
+        // نرجع نصاً سيفشل حفظه لاحقاً بصمت — نرجع null ليظهر خطأ واضح.
+        if (dataUrl.length > maxDataUrlBytes) null else dataUrl
     }.getOrNull()
 }
