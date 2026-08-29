@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.ui.screens.splash
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -63,7 +64,7 @@ fun SplashScreen(onFinished: () -> Unit) {
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "glow")
-    val glowAlpha by infiniteTransition.animateFloatAsState(
+    val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.35f,
         targetValue = 0.6f,
         animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
@@ -201,7 +202,7 @@ private fun LoadingDots() {
     val transition = rememberInfiniteTransition(label = "dots")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         repeat(3) { index ->
-            val alpha by transition.animateFloatAsState(
+            val alpha by transition.animateFloat(
                 initialValue = 0.3f,
                 targetValue = 1f,
                 animationSpec = infiniteRepeatable(
