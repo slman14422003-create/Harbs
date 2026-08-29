@@ -8,9 +8,12 @@ import androidx.lifecycle.viewModelScope
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
+import com.salman.herbalencyclopedia.data.repository.HerbRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
@@ -36,20 +39,43 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         private set
 
     init {
-        refresh()
+        // Live sync: stay subscribed to Firestore for as long as the app is alive, so
+        // any change - made here, from another device, or from the web admin panel -
+        // is reflected immediately without needing a manual refresh.
+        viewModelScope.launch {
+            combine(
+                container.herbRepository.observeCategories(),
+                container.herbRepository.observeHerbs()
+            ) { categories, herbs ->
+                UiState(herbs = herbs, categories = categories, isLoading = false, error = null)
+            }
+                .catch { e ->
+                    // Keep whatever data is already on screen (e.g. from the offline
+                    // cache) and only surface the error, instead of wiping the list.
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = HerbRepository.describeError(e)
+                    )
+                }
+                .collect { state -> _uiState.value = state }
+        }
     }
 
+    /** Manual retry: forces a real server round-trip to confirm connectivity and clear any error. */
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val categories = container.herbRepository.fetchCategories()
-                val herbs = container.herbRepository.fetchHerbs()
-                _uiState.value = UiState(herbs = herbs, categories = categories, isLoading = false)
+                container.herbRepository.fetchCategories(fromServer = true)
+                container.herbRepository.fetchHerbs(fromServer = true)
+                // The live listeners above already keep uiState in sync with these
+                // results; this call's job is just to confirm connectivity and
+                // surface a clear error if it fails.
+                _uiState.value = _uiState.value.copy(isLoading = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.localizedMessage ?: "تعذّر تحميل البيانات"
+                    error = HerbRepository.describeError(e)
                 )
             }
         }
@@ -75,14 +101,18 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         isAdmin = false
     }
 
+    // Writes below don't call refresh(): the live Firestore listeners in init{}
+    // pick up every change automatically (instantly from the local cache, then
+    // reconciled with the server), so an extra manual fetch would just be a
+    // redundant round-trip and could momentarily race with the listener.
+
     fun addHerb(herb: Herb, onDone: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
                 container.herbRepository.addHerb(herb)
-                refresh()
                 onDone(true, null)
             } catch (e: Exception) {
-                onDone(false, e.localizedMessage)
+                onDone(false, HerbRepository.describeError(e))
             }
         }
     }
@@ -91,10 +121,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             try {
                 container.herbRepository.updateHerb(herb)
-                refresh()
                 onDone(true, null)
             } catch (e: Exception) {
-                onDone(false, e.localizedMessage)
+                onDone(false, HerbRepository.describeError(e))
             }
         }
     }
@@ -103,37 +132,36 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             try {
                 container.herbRepository.deleteHerb(id)
-                refresh()
                 onDone(true, null)
             } catch (e: Exception) {
-                onDone(false, e.localizedMessage)
+                onDone(false, HerbRepository.describeError(e))
             }
         }
     }
     fun addCategory(name: String, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
-        viewModelScope.launch { runCatching { container.herbRepository.addCategory(name) }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+        viewModelScope.launch { runCatching { container.herbRepository.addCategory(name) }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
     fun deleteCategory(id: String, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
-        viewModelScope.launch { runCatching { container.herbRepository.deleteCategory(id) }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+        viewModelScope.launch { runCatching { container.herbRepository.deleteCategory(id) }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
     fun deleteAllHerbs(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
-        viewModelScope.launch { runCatching { container.herbRepository.deleteAllHerbs() }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+        viewModelScope.launch { runCatching { container.herbRepository.deleteAllHerbs() }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
     fun deleteAllData(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
-        viewModelScope.launch { runCatching { container.herbRepository.deleteAllData() }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+        viewModelScope.launch { runCatching { container.herbRepository.deleteAllData() }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
     fun clearFavorites() { viewModelScope.launch { container.preferencesRepository.clearFavorites() } }
 
     fun restoreBackup(json: String, onResult: (Boolean, String?) -> Unit) {
-        viewModelScope.launch { runCatching { container.herbRepository.restoreBackup(json) }.onSuccess { refresh(); onResult(true, null) }.onFailure { onResult(false, it.localizedMessage) } }
+        viewModelScope.launch { runCatching { container.herbRepository.restoreBackup(json) }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
     fun testConnection(onResult: (Boolean, String?) -> Unit) {
-        viewModelScope.launch { runCatching { container.herbRepository.testConnection() }.onSuccess { onResult(true, "الاتصال يعمل بشكل طبيعي") }.onFailure { onResult(false, it.localizedMessage) } }
+        viewModelScope.launch { runCatching { container.herbRepository.testConnection() }.onSuccess { onResult(true, "الاتصال يعمل بشكل طبيعي") }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
 }
