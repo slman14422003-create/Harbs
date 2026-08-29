@@ -38,9 +38,20 @@ object AppMotion {
     fun <T> silky(durationMillis: Int = Slow) =
         tween<T>(durationMillis = durationMillis, easing = Silky)
 
-    /** نابض موحّد لكل الحركات "الحيّة" (ضغط زر، تبديل شريط سفلي...) — تصادم/ارتداد
+    /** نابض موحّد لكل الحركات "الحيّة" (ضغط زر...) — تصادم/ارتداد
      *  خفيف جداً وحركة أهدأ بدل النط الملحوظ، فيبقى الإحساس ناعم ومريح. */
     fun <T> bouncy() = spring<T>(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
+
+    /**
+     * نابض أسرع وأخفّ من [bouncy] خصّيصاً لشريط التنقّل السفلي: قبل هذا
+     * كانت كل عناصر تبديل العنصر المختار (لون الخلفية، حجم الأيقونة،
+     * اتساع الكبسولة، ظهور النص) تستخدم [bouncy] بصلابة منخفضة جداً
+     * (StiffnessLow) فتستغرق نحو 700-900ms لتستقر، فيبدو التبديل بطيئاً
+     * وغير متزامن (كل خاصية تصل لوضعها النهائي بتوقيت مختلف)، وتبقى
+     * كلها تُعيد الرسم لمدة طويلة عند كل ضغطة — وهذا أصل مشكلة الأداء.
+     * هذا النابض يستقر خلال ~150-200ms تقريباً بلا نطّة ملحوظة.
+     */
+    fun <T> snappy() = spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumHigh)
 }
 
 /**
