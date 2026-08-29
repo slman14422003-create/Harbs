@@ -119,42 +119,6 @@ jobs:
           path: app/fallback.keystore.jks
           key: fallback-keystore-v1
 
-      - name: Create signing configuration for Gradle
-        run: |
-          cat > app/signing.gradle << 'EOF'
-          android {
-              signingConfigs {
-                  create("release") {
-                      storeFile = file(System.getenv("RELEASE_STORE_FILE") ?: "fallback.keystore.jks")
-                      storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: "herbal123"
-                      keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: "herbal"
-                      keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "herbal123"
-                  }
-              }
-              buildTypes {
-                  release {
-                      signingConfig = signingConfigs.getByName("release")
-                      isMinifyEnabled = false
-                      proguardFiles(
-                          getDefaultProguardFile("proguard-android-optimize.txt"),
-                          "proguard-rules.pro"
-                      )
-                  }
-              }
-          }
-          EOF
-          
-          # إضافة التكوين إلى build.gradle إذا لم يكن موجوداً
-          if [ -f "app/build.gradle.kts" ]; then
-            if ! grep -q "apply(from = \"signing.gradle\")" app/build.gradle.kts; then
-              echo "apply(from = \"signing.gradle\")" >> app/build.gradle.kts
-            fi
-          elif [ -f "app/build.gradle" ]; then
-            if ! grep -q "apply from: 'signing.gradle'" app/build.gradle; then
-              echo "apply from: 'signing.gradle'" >> app/build.gradle
-            fi
-          fi
-
       - name: Build release APK and App Bundle
         env:
           APP_VERSION_CODE: ${{ steps.appver.outputs.version_code }}
@@ -164,12 +128,13 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.key_alias }}
           RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.key_password }}
         run: |
-          # إعطاء صلاحيات التنفيذ لـ gradlew
-          chmod +x gradlew 2>/dev/null || true
-          
-          # بناء APK و App Bundle
-          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
-          
+          # app/build.gradle.kts يقرأ متغيرات RELEASE_* أعلاه مباشرة وينشئ
+          # signingConfig "release" بنفسه — لا حاجة لأي خطوة إضافية هنا.
+          # نستخدم "gradle" (ثبّتها خطوة setup-gradle أعلاه) بدل "./gradlew"
+          # لأن ملفات wrapper (gradlew/gradlew.bat/gradle-wrapper.jar) غير
+          # موجودة في المستودع.
+          gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+
           # التحقق من وجود الملفات المبنية
           echo "Build outputs:"
           find app/build -name "*.apk" -o -name "*.aab" | head -10
