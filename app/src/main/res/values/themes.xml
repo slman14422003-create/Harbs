@@ -12,6 +12,10 @@
     <style name="Theme.HerbalEncyclopedia.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_leaf</item>
+        <!-- دائرة بيضاء خلف الأيقونة، لتطابق دائرة الزجاج البيضاء التي
+             تحيط بالأيقونة في شاشة البداية داخل التطبيق (Compose)، بدل
+             ورقة عائمة مباشرة على الأخضر بلا تباين واضح. -->
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/white</item>
         <item name="postSplashScreenTheme">@style/Theme.HerbalEncyclopedia</item>
         <item name="windowSplashScreenAnimationDuration">350</item>
     </style>
