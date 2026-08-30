@@ -166,19 +166,25 @@ private fun OneUiFloatingNavItem(
     onClick: () -> Unit
 ) {
     // كل خصائص التبديل هنا (اللون، حجم الأيقونة، اتساع الكبسولة، ظهور
-    // النص) تستخدم الآن نفس النابض السريع snappy() أو مدداً قصيرة
-    // متقاربة، بدل خليط سابق من ألوان بتوين 220ms مع أشكال/أيقونة بنابض
-    // بطيء يستغرق ~800ms — فيصل الشريط لوضعه النهائي بسرعة وبتناسق
-    // (كل الخصائص تستقر معاً تقريباً)، بدل إحساس التأخر والتفكك، وبتكلفة
-    // إعادة رسم أقصر بكثير لكل ضغطة.
+    // النص) كانت تُقسَّم سابقاً بين نوعين مختلفين من الحركة: الألوان
+    // بتوين ثابت المدة 140ms، بينما الحجم/الاتساع بنابض snappy() الذي لا
+    // يملك "مدة" ثابتة أصلاً بل يستقر تقريبياً حول 150-200ms. الفارق
+    // البسيط في طريقة الاستقرار بين النوعين كان يخلق إحساساً بعدم
+    // التزامن (اللون يصل لوضعه النهائي بتوقيت مختلف قليلاً عن الحجم/
+    // النص) — وهذا تحديداً ما يجعل الحركة "مو ظابطة". الحل: توحيد كل
+    // الخصائص هنا على نفس نوع النابض وثوابته تماماً، فتصل كلها لوضعها
+    // النهائي معاً كحركة واحدة متماسكة بدل أربع حركات منفصلة قليلاً.
+    // (كل استدعاء snappy() أدناه منفصل عمداً — كل واحد يُستدل نوعه من
+    // موضع استخدامه: Color، IntSize، Float... لكنها كلها تحمل نفس ثابتي
+    // النابض [dampingRatio/stiffness] فتستقر معاً بنفس الإيقاع تماماً.)
     val background by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(140),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy(),
         label = "navBackground"
     )
     val content by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(140),
+        animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy(),
         label = "navContent"
     )
     // نبضة خفيفة على الأيقونة عند الاختيار بدل التبديل المفاجئ.
@@ -194,7 +200,8 @@ private fun OneUiFloatingNavItem(
             .clickable(onClick = onClick)
             .background(background, CircleShape)
             // العرض يتوسّع/يتقلّص بسلاسة عند ظهور/اختفاء التسمية بدل القفز
-            // المباشر بين حالتي "أيقونة فقط" و"أيقونة + نص".
+            // المباشر بين حالتي "أيقونة فقط" و"أيقونة + نص"، بنفس النابض
+            // الموحّد أعلاه كي يتزامن مع تغيّر اللون والحجم تماماً.
             .animateContentSize(animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy())
             .padding(horizontal = if (selected) 16.dp else 13.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -210,9 +217,9 @@ private fun OneUiFloatingNavItem(
         )
         androidx.compose.animation.AnimatedVisibility(
             visible = selected,
-            enter = androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(140)) +
+            enter = androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy()) +
                 androidx.compose.animation.expandHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy()),
-            exit = androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(100)) +
+            exit = androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy()) +
                 androidx.compose.animation.shrinkHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy())
         ) {
             Text(item.label, color = content, fontWeight = FontWeight.SemiBold)
