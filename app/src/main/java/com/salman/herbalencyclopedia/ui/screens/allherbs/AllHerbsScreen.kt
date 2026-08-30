@@ -27,6 +27,9 @@ fun AllHerbsScreen(herbs: List<Herb>, favoriteIds: Set<String>, onHerbClick: (He
     // of bare text, so the bar doesn't look empty.
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        // انظر التعليق بنفس المكان في HomeScreen: هذه شاشة جذر أيضاً، وترك
+        // الحافة السفلية الافتراضية هنا يُضاعف الفراغ فوق الشريط العائم.
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             GlassTopBar(
                 large = true,
