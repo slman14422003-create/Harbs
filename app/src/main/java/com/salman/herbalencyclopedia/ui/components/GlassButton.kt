@@ -68,7 +68,12 @@ fun GlassButton(
             LiquidGlassSurface(
                 shape = CircleShape,
                 modifier = Modifier,
-                tint = containerColor
+                tint = containerColor,
+                // زر الإجراء الأساسي يظهر كنسخة واحدة بارزة بالشاشة (وليس
+                // بالعشرات كبطاقات القوائم)، فتكلفة اللمعان المتحرك هنا
+                // نسخة واحدة فقط — يستحق الإبقاء عليه لإحساس "حي" بالعنصر
+                // الأهم بالشاشة.
+                sheen = true
             ) {
                 Row(
                     modifier = Modifier.padding(contentPadding),
