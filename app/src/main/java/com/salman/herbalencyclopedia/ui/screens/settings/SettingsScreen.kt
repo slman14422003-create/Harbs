@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.*
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.ui.UpdateCheckState
@@ -75,6 +76,7 @@ fun SettingsScreen(
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
+    onPrivacyPolicyClick: () -> Unit,
     onAdminToolsClick: () -> Unit,
     onCheckForUpdate: (android.content.Context) -> Unit,
     onDownloadUpdate: (android.content.Context, AppUpdateInfo) -> Unit,
@@ -160,6 +162,14 @@ fun SettingsScreen(
                         subtitle = "الأسئلة الشائعة وطريقة الاستخدام",
                         onClick = onHelpClick
                     )
+                    SettingsDivider()
+                    ActionRow(
+                        icon = Icons.Filled.PrivacyTip,
+                        iconTint = Color(0xFF6A1B9A),
+                        title = "سياسة الخصوصية",
+                        subtitle = "كيف نتعامل مع بياناتك، وإخلاء المسؤولية الطبية",
+                        onClick = onPrivacyPolicyClick
+                    )
                     if (isAdmin) {
                         SettingsDivider()
                         ActionRow(
@@ -197,6 +207,13 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Text(
+                    "© جميع الحقوق محفوظة — تطوير المعالج الفيزيائي سلمان",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 8.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
