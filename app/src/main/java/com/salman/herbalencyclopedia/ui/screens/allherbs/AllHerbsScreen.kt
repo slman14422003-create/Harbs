@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -20,8 +22,25 @@ fun AllHerbsScreen(herbs: List<Herb>, favoriteIds: Set<String>, onHerbClick: (He
     var query by remember { mutableStateOf("") }
     val filtered = herbs.filter { query.isBlank() || it.name.contains(query, true) || it.benefits.contains(query, true) }
     // This screen is a bottom-nav root destination (see HerbalNavGraph), so it
-    // intentionally has no back arrow — matches HomeScreen's top bar.
-    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, topBar = { GlassTopBar(large = true, title = { Text("كل الأعشاب") }) }) { padding ->
+    // intentionally has no back arrow — matches HomeScreen's top bar. Title
+    // now uses the same icon-badge + subtitle style as Home/Favorites instead
+    // of bare text, so the bar doesn't look empty.
+    Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        topBar = {
+            GlassTopBar(
+                large = true,
+                title = {
+                    TopBarBrandTitle(
+                        icon = Icons.Filled.MenuBook,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "كل الأعشاب",
+                        subtitle = "${herbs.size} عشبة في الموسوعة"
+                    )
+                }
+            )
+        }
+    ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             OutlinedTextField(
                 value = query,
