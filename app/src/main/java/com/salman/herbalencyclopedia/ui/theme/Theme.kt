@@ -12,107 +12,100 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-
-/** مزج بسيط بين لون الهوية وقاعدة محايدة، يُستخدم لاشتقاق درجة سطح واحدة. */
-private fun tone(hue: Color, base: Color, amount: Float) = lerp(hue, base, amount)
+import androidx.compose.ui.graphics.toArgb
 
 /**
- * سبب ظهور الألوان "باهتة" في الوضع الداكن تحديدًا: كل أدوار الأسطح كانت
- * تُشتق من [ThemePalette.light80] — وهو لون فاتح شبه-باستيل مُصمَّم أصلاً
- * ليُستخدم كنص/تمييز (primary) فوق خلفية داكنة، وليس كمصدر تلوين. مزج لون
- * باهت أصلاً بنسبة كبيرة من الأسود ينتج رماديًا يميل قليلاً للون بدل لون
- * واضح. الحل: اشتقاق الأسطح من [ThemePalette.light40] (النسخة المشبعة
- * الأصلية من اللوحة) بدل النسخة الباستيل، مع خفض نسب المزج الأساسية قليلاً
- * حتى تظهر الصبغة اللونية بوضوح على الكروت وأشرطة الزجاج السائل، بينما
- * تبقى primary/secondary/tertiary نفسها فاتحة كما هي لضمان تباين واضح
- * للنصوص فوق الخلفية الداكنة.
- */
-
-/**
- * بدون هذا الحساب، اللوحة المختارة كانت تغيّر primary/secondary/tertiary
- * فقط، بينما باقي أدوار الألوان (primaryContainer, onPrimaryContainer...)
- * التي تستخدمها أغلب الكروت والأزرار بالتطبيق تبقى على قيم Material
- * الافتراضية الأرجوانية — فيبدو التغيير وكأنه "لا يعمل بشكل كامل".
+ * التلوين السابق كان يمزج (lerp) لون اللوحة مباشرة مع الأسود/الأبيض بنسب
+ * مختلفة. المشكلة أن نتيجة المزج في RGB لا تضمن أي سطوع نهائي محدد: لونان
+ * بنفس نسبة المزج قد ينتج عنهما سطوعان مختلفان تمامًا حسب سطوع اللون
+ * الأصلي نفسه — فبعض التركيبات (خصوصًا في الوضع الداكن) كانت تُنتج نصًا
+ * وخلفية متقاربين في السطوع، وهذا تحديدًا ما يجعل القراءة متعبة للعين رغم
+ * أن الألوان "تبدو" غنية.
  *
- * المشكلة نفسها كانت أعمق في أدوار الأسطح (surfaceContainer/surfaceContainerHigh
- * وغيرها) التي لم تكن تُمرَّر إطلاقاً: كل الكروت وأشرطة الزجاج السائل
- * والأزرار تعتمد عليها (انظر LiquidGlassSurface وGlassIconButton
- * وCategoryCard)، فكانت تبقى دائماً على القيم الأرجوانية الافتراضية لـ
- * Material3 — وهذا بالضبط سبب ظهور "الوضع النهاري" بلون بنفسجي باهت في كل
- * مكان مهما كانت اللوحة المختارة. هذه الدوال تشتق كل أدوار السطح من نفس
- * لون اللوحة (hue) بدرجات مختلفة من المزج مع قاعدة محايدة فاتحة/داكنة، بدل
- * تركها على قيم Material الافتراضية الثابتة.
+ * البديل هنا: نحوّل لون اللوحة إلى HSV ونُثبّت قيمتي التشبع (S) والسطوع (V)
+ * صراحة لكل دور لوني، بدل تركهما نتيجة عرضية للمزج. هذا يضمن فرق سطوع
+ * كبيرًا وثابتًا بين كل سطح والنص الذي يعلوه (مثلاً سطوع 0.14 للخلفية مقابل
+ * 0.94 لنصّها في الوضع الداكن) بغضّ النظر عن لوحة الألوان المختارة، مع
+ * الإبقاء على درجة تشبّع خفيفة على الأسطح نفسها حتى لا تبدو رمادية.
  */
+private fun tone(hue: Color, saturation: Float, value: Float): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(hue.toArgb(), hsv)
+    hsv[1] = saturation.coerceIn(0f, 1f)
+    hsv[2] = value.coerceIn(0f, 1f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
 private fun lightSchemeFor(palette: ThemePalette): androidx.compose.material3.ColorScheme {
     val hue = palette.light40
-    val base = SurfaceLight
+    val sec = palette.secondary40
+    val ter = palette.tertiary40
     return lightColorScheme(
-        primary = palette.light40, onPrimary = Color.White,
-        primaryContainer = tone(hue, Color.White, 0.82f),
-        onPrimaryContainer = tone(hue, Color.Black, 0.55f),
-        secondary = palette.secondary40, onSecondary = Color.White,
-        secondaryContainer = tone(palette.secondary40, Color.White, 0.82f),
-        onSecondaryContainer = tone(palette.secondary40, Color.Black, 0.55f),
-        tertiary = palette.tertiary40, onTertiary = Color.White,
-        tertiaryContainer = tone(palette.tertiary40, Color.White, 0.82f),
-        onTertiaryContainer = tone(palette.tertiary40, Color.Black, 0.55f),
-        background = tone(hue, base, 0.92f),
-        onBackground = tone(hue, Color.Black, 0.72f),
-        surface = tone(hue, base, 0.92f),
-        onSurface = tone(hue, Color.Black, 0.72f),
-        surfaceVariant = tone(hue, Color.White, 0.78f),
-        onSurfaceVariant = tone(hue, Color.Black, 0.48f),
-        surfaceDim = tone(hue, base, 0.76f),
-        surfaceBright = tone(hue, base, 0.96f),
-        surfaceContainerLowest = tone(hue, Color.White, 0.98f),
-        surfaceContainerLow = tone(hue, base, 0.87f),
-        surfaceContainer = tone(hue, base, 0.82f),
-        surfaceContainerHigh = tone(hue, base, 0.75f),
-        surfaceContainerHighest = tone(hue, base, 0.68f),
-        outline = tone(hue, Color(0xFF787E74), 0.55f),
-        outlineVariant = tone(hue, Color.White, 0.65f),
-        inverseSurface = tone(hue, Color.Black, 0.80f),
-        inverseOnSurface = tone(hue, Color.White, 0.90f),
-        inversePrimary = palette.light80,
+        primary = tone(hue, 0.62f, 0.55f), onPrimary = Color.White,
+        primaryContainer = tone(hue, 0.30f, 0.94f),
+        onPrimaryContainer = tone(hue, 0.55f, 0.30f),
+        secondary = tone(sec, 0.35f, 0.50f), onSecondary = Color.White,
+        secondaryContainer = tone(sec, 0.20f, 0.94f),
+        onSecondaryContainer = tone(sec, 0.35f, 0.32f),
+        tertiary = tone(ter, 0.45f, 0.50f), onTertiary = Color.White,
+        tertiaryContainer = tone(ter, 0.25f, 0.94f),
+        onTertiaryContainer = tone(ter, 0.40f, 0.32f),
+        background = tone(hue, 0.06f, 0.99f),
+        onBackground = tone(hue, 0.20f, 0.16f),
+        surface = tone(hue, 0.06f, 0.99f),
+        onSurface = tone(hue, 0.20f, 0.16f),
+        surfaceVariant = tone(hue, 0.12f, 0.93f),
+        onSurfaceVariant = tone(hue, 0.20f, 0.34f),
+        surfaceDim = tone(hue, 0.10f, 0.88f),
+        surfaceBright = tone(hue, 0.06f, 0.99f),
+        surfaceContainerLowest = Color.White,
+        surfaceContainerLow = tone(hue, 0.07f, 0.97f),
+        surfaceContainer = tone(hue, 0.09f, 0.95f),
+        surfaceContainerHigh = tone(hue, 0.11f, 0.92f),
+        surfaceContainerHighest = tone(hue, 0.13f, 0.89f),
+        outline = tone(hue, 0.10f, 0.47f),
+        outlineVariant = tone(hue, 0.10f, 0.82f),
+        inverseSurface = tone(hue, 0.15f, 0.20f),
+        inverseOnSurface = tone(hue, 0.06f, 0.97f),
+        inversePrimary = tone(hue, 0.45f, 0.80f),
         scrim = Color.Black
     )
 }
 
 private fun darkSchemeFor(palette: ThemePalette): androidx.compose.material3.ColorScheme {
-    // مصدر تلوين الأسطح هو اللون المُشبع (light40)، وليس نسخة primary
-    // الباستيل (light80) — هذا وحده هو الفارق بين مظهر "باهت رمادي" ومظهر
-    // "ملوّن بوضوح" في الوضع الداكن.
     val hue = palette.light40
-    val base = SurfaceDark
+    val sec = palette.secondary40
+    val ter = palette.tertiary40
     return darkColorScheme(
-        primary = palette.light80, onPrimary = Color.Black,
-        primaryContainer = tone(hue, Color.Black, 0.45f),
-        onPrimaryContainer = tone(hue, Color.White, 0.30f),
-        secondary = palette.secondary80, onSecondary = Color.Black,
-        secondaryContainer = tone(palette.secondary40, Color.Black, 0.45f),
-        onSecondaryContainer = tone(palette.secondary80, Color.White, 0.30f),
-        tertiary = palette.tertiary80, onTertiary = Color.Black,
-        tertiaryContainer = tone(palette.tertiary40, Color.Black, 0.45f),
-        onTertiaryContainer = tone(palette.tertiary80, Color.White, 0.30f),
-        background = tone(hue, base, 0.88f),
-        onBackground = tone(hue, Color.White, 0.88f),
-        surface = tone(hue, base, 0.88f),
-        onSurface = tone(hue, Color.White, 0.88f),
-        surfaceVariant = tone(hue, Color.Black, 0.65f),
-        onSurfaceVariant = tone(hue, Color.White, 0.55f),
-        surfaceDim = tone(hue, base, 0.86f),
-        surfaceBright = tone(hue, base, 0.45f),
-        surfaceContainerLowest = tone(hue, Color.Black, 0.94f),
-        surfaceContainerLow = tone(hue, base, 0.80f),
-        surfaceContainer = tone(hue, base, 0.70f),
-        surfaceContainerHigh = tone(hue, base, 0.58f),
-        surfaceContainerHighest = tone(hue, base, 0.46f),
-        outline = tone(hue, Color(0xFF9AA497), 0.35f),
-        outlineVariant = tone(hue, Color.Black, 0.45f),
-        inverseSurface = tone(hue, Color.White, 0.85f),
-        inverseOnSurface = tone(hue, Color.Black, 0.80f),
-        inversePrimary = palette.light40,
+        primary = tone(hue, 0.45f, 0.82f), onPrimary = tone(hue, 0.55f, 0.16f),
+        primaryContainer = tone(hue, 0.45f, 0.32f),
+        onPrimaryContainer = tone(hue, 0.30f, 0.92f),
+        secondary = tone(sec, 0.28f, 0.78f), onSecondary = tone(sec, 0.35f, 0.16f),
+        secondaryContainer = tone(sec, 0.28f, 0.30f),
+        onSecondaryContainer = tone(sec, 0.20f, 0.90f),
+        tertiary = tone(ter, 0.35f, 0.78f), onTertiary = tone(ter, 0.40f, 0.16f),
+        tertiaryContainer = tone(ter, 0.32f, 0.30f),
+        onTertiaryContainer = tone(ter, 0.25f, 0.90f),
+        // خلفية داكنة بدرجة تشبّع منخفضة كي تُريح العين، مع فارق سطوع كبير
+        // (0.14 مقابل 0.94) يضمن وضوح النص فوقها بلا إجهاد.
+        background = tone(hue, 0.16f, 0.14f),
+        onBackground = tone(hue, 0.08f, 0.94f),
+        surface = tone(hue, 0.16f, 0.14f),
+        onSurface = tone(hue, 0.08f, 0.94f),
+        surfaceVariant = tone(hue, 0.20f, 0.26f),
+        onSurfaceVariant = tone(hue, 0.10f, 0.80f),
+        surfaceDim = tone(hue, 0.16f, 0.14f),
+        surfaceBright = tone(hue, 0.14f, 0.36f),
+        surfaceContainerLowest = tone(hue, 0.18f, 0.10f),
+        surfaceContainerLow = tone(hue, 0.17f, 0.18f),
+        surfaceContainer = tone(hue, 0.18f, 0.21f),
+        surfaceContainerHigh = tone(hue, 0.19f, 0.25f),
+        surfaceContainerHighest = tone(hue, 0.20f, 0.30f),
+        outline = tone(hue, 0.12f, 0.60f),
+        outlineVariant = tone(hue, 0.16f, 0.32f),
+        inverseSurface = tone(hue, 0.08f, 0.94f),
+        inverseOnSurface = tone(hue, 0.16f, 0.18f),
+        inversePrimary = tone(hue, 0.60f, 0.45f),
         scrim = Color.Black
     )
 }
