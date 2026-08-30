@@ -27,7 +27,8 @@ enum class PerformanceMode(val label: String, val description: String) {
     val isHighQuality: Boolean get() = this == HIGH_QUALITY
 
     companion object {
-        fun fromId(id: String?): PerformanceMode = entries.find { it.name == id } ?: HIGH_QUALITY
+        fun fromId(id: String?, fallback: PerformanceMode = HIGH_QUALITY): PerformanceMode =
+            entries.find { it.name == id } ?: fallback
     }
 }
 
