@@ -70,6 +70,21 @@ enum class ThemePalette(
         light40 = Color(0xFFB3264D), light80 = Color(0xFFFFB1C5),
         secondary40 = Color(0xFF77525A), secondary80 = Color(0xFFE7BDC5),
         tertiary40 = Color(0xFF785A2E), tertiary80 = Color(0xFFE9C18C)
+    ),
+
+    /**
+     * خيار "بدون تلوين" لمن لا يفضّل الألوان: يُطفئ كل تدرّج/تشبّع لوني
+     * في [Theme.kt] (انظر `neutral` هناك)، فتصبح كل الأسطح رمادية محايدة
+     * محضة — أبيض في الوضع الفاتح وأسود تقريباً في الداكن — بدل أي درجة
+     * لونية. قيم light40/secondary40/... هنا غير مؤثرة فعلياً (تُهمَل
+     * درجة تشبّعها بالكامل)، وموجودة فقط لأن enum يتطلّب قيمة لكل حقل.
+     */
+    NONE(
+        label = "بدون تلوين",
+        swatch = Color(0xFF9E9E9E),
+        light40 = Color(0xFF9E9E9E), light80 = Color(0xFF9E9E9E),
+        secondary40 = Color(0xFF9E9E9E), secondary80 = Color(0xFF9E9E9E),
+        tertiary40 = Color(0xFF9E9E9E), tertiary80 = Color(0xFF9E9E9E)
     );
 
     companion object {

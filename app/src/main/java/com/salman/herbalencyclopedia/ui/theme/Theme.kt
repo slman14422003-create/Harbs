@@ -40,34 +40,41 @@ private fun lightSchemeFor(palette: ThemePalette): androidx.compose.material3.Co
     val hue = palette.light40
     val sec = palette.secondary40
     val ter = palette.tertiary40
+    // خيار "بدون تلوين": تشبّع كل الأدوار اللونية يُصفَّر هنا (بغضّ النظر
+    // عمّا تطلبه كل tone() أدناه)، فتنتج نفس درجات السطوع المدروسة تماماً
+    // لكن رمادية محضة — الخلفية تصبح أبيض عملياً (سطوع 0.99 بلا تشبّع)
+    // بدل أي ميل لوني، وهذا بالضبط ما طلبه المستخدم لهذا الخيار.
+    val neutral = palette == ThemePalette.NONE
+    fun t(hueColor: Color, saturation: Float, value: Float) =
+        tone(hueColor, if (neutral) 0f else saturation, value)
     return lightColorScheme(
-        primary = tone(hue, 0.62f, 0.55f), onPrimary = Color.White,
-        primaryContainer = tone(hue, 0.30f, 0.94f),
-        onPrimaryContainer = tone(hue, 0.55f, 0.30f),
-        secondary = tone(sec, 0.35f, 0.50f), onSecondary = Color.White,
-        secondaryContainer = tone(sec, 0.20f, 0.94f),
-        onSecondaryContainer = tone(sec, 0.35f, 0.32f),
-        tertiary = tone(ter, 0.45f, 0.50f), onTertiary = Color.White,
-        tertiaryContainer = tone(ter, 0.25f, 0.94f),
-        onTertiaryContainer = tone(ter, 0.40f, 0.32f),
-        background = tone(hue, 0.06f, 0.99f),
-        onBackground = tone(hue, 0.20f, 0.16f),
-        surface = tone(hue, 0.06f, 0.99f),
-        onSurface = tone(hue, 0.20f, 0.16f),
-        surfaceVariant = tone(hue, 0.12f, 0.93f),
-        onSurfaceVariant = tone(hue, 0.20f, 0.34f),
-        surfaceDim = tone(hue, 0.10f, 0.88f),
-        surfaceBright = tone(hue, 0.06f, 0.99f),
+        primary = t(hue, 0.62f, 0.55f), onPrimary = Color.White,
+        primaryContainer = t(hue, 0.30f, 0.94f),
+        onPrimaryContainer = t(hue, 0.55f, 0.30f),
+        secondary = t(sec, 0.35f, 0.50f), onSecondary = Color.White,
+        secondaryContainer = t(sec, 0.20f, 0.94f),
+        onSecondaryContainer = t(sec, 0.35f, 0.32f),
+        tertiary = t(ter, 0.45f, 0.50f), onTertiary = Color.White,
+        tertiaryContainer = t(ter, 0.25f, 0.94f),
+        onTertiaryContainer = t(ter, 0.40f, 0.32f),
+        background = t(hue, 0.06f, 0.99f),
+        onBackground = t(hue, 0.20f, 0.16f),
+        surface = t(hue, 0.06f, 0.99f),
+        onSurface = t(hue, 0.20f, 0.16f),
+        surfaceVariant = t(hue, 0.12f, 0.93f),
+        onSurfaceVariant = t(hue, 0.20f, 0.34f),
+        surfaceDim = t(hue, 0.10f, 0.88f),
+        surfaceBright = t(hue, 0.06f, 0.99f),
         surfaceContainerLowest = Color.White,
-        surfaceContainerLow = tone(hue, 0.07f, 0.97f),
-        surfaceContainer = tone(hue, 0.09f, 0.95f),
-        surfaceContainerHigh = tone(hue, 0.11f, 0.92f),
-        surfaceContainerHighest = tone(hue, 0.13f, 0.89f),
-        outline = tone(hue, 0.10f, 0.47f),
-        outlineVariant = tone(hue, 0.10f, 0.82f),
-        inverseSurface = tone(hue, 0.15f, 0.20f),
-        inverseOnSurface = tone(hue, 0.06f, 0.97f),
-        inversePrimary = tone(hue, 0.45f, 0.80f),
+        surfaceContainerLow = t(hue, 0.07f, 0.97f),
+        surfaceContainer = t(hue, 0.09f, 0.95f),
+        surfaceContainerHigh = t(hue, 0.11f, 0.92f),
+        surfaceContainerHighest = t(hue, 0.13f, 0.89f),
+        outline = t(hue, 0.10f, 0.47f),
+        outlineVariant = t(hue, 0.10f, 0.82f),
+        inverseSurface = t(hue, 0.15f, 0.20f),
+        inverseOnSurface = t(hue, 0.06f, 0.97f),
+        inversePrimary = t(hue, 0.45f, 0.80f),
         scrim = Color.Black
     )
 }
@@ -76,36 +83,42 @@ private fun darkSchemeFor(palette: ThemePalette): androidx.compose.material3.Col
     val hue = palette.light40
     val sec = palette.secondary40
     val ter = palette.tertiary40
+    // نفس مبدأ lightSchemeFor أعلاه: بلا أي تشبّع لوني لخيار "بدون تلوين"،
+    // فتبقى فقط درجات السطوع نفسها المدروسة أصلاً لراحة العين، لكن رمادية
+    // محضة — خلفية قريبة من الأسود (سطوع 0.14) بلا أي ميل لوني.
+    val neutral = palette == ThemePalette.NONE
+    fun t(hueColor: Color, saturation: Float, value: Float) =
+        tone(hueColor, if (neutral) 0f else saturation, value)
     return darkColorScheme(
-        primary = tone(hue, 0.45f, 0.82f), onPrimary = tone(hue, 0.55f, 0.16f),
-        primaryContainer = tone(hue, 0.45f, 0.32f),
-        onPrimaryContainer = tone(hue, 0.30f, 0.92f),
-        secondary = tone(sec, 0.28f, 0.78f), onSecondary = tone(sec, 0.35f, 0.16f),
-        secondaryContainer = tone(sec, 0.28f, 0.30f),
-        onSecondaryContainer = tone(sec, 0.20f, 0.90f),
-        tertiary = tone(ter, 0.35f, 0.78f), onTertiary = tone(ter, 0.40f, 0.16f),
-        tertiaryContainer = tone(ter, 0.32f, 0.30f),
-        onTertiaryContainer = tone(ter, 0.25f, 0.90f),
+        primary = t(hue, 0.45f, 0.82f), onPrimary = t(hue, 0.55f, 0.16f),
+        primaryContainer = t(hue, 0.45f, 0.32f),
+        onPrimaryContainer = t(hue, 0.30f, 0.92f),
+        secondary = t(sec, 0.28f, 0.78f), onSecondary = t(sec, 0.35f, 0.16f),
+        secondaryContainer = t(sec, 0.28f, 0.30f),
+        onSecondaryContainer = t(sec, 0.20f, 0.90f),
+        tertiary = t(ter, 0.35f, 0.78f), onTertiary = t(ter, 0.40f, 0.16f),
+        tertiaryContainer = t(ter, 0.32f, 0.30f),
+        onTertiaryContainer = t(ter, 0.25f, 0.90f),
         // خلفية داكنة بدرجة تشبّع منخفضة كي تُريح العين، مع فارق سطوع كبير
         // (0.14 مقابل 0.94) يضمن وضوح النص فوقها بلا إجهاد.
-        background = tone(hue, 0.16f, 0.14f),
-        onBackground = tone(hue, 0.08f, 0.94f),
-        surface = tone(hue, 0.16f, 0.14f),
-        onSurface = tone(hue, 0.08f, 0.94f),
-        surfaceVariant = tone(hue, 0.20f, 0.26f),
-        onSurfaceVariant = tone(hue, 0.10f, 0.80f),
-        surfaceDim = tone(hue, 0.16f, 0.14f),
-        surfaceBright = tone(hue, 0.14f, 0.36f),
-        surfaceContainerLowest = tone(hue, 0.18f, 0.10f),
-        surfaceContainerLow = tone(hue, 0.17f, 0.18f),
-        surfaceContainer = tone(hue, 0.18f, 0.21f),
-        surfaceContainerHigh = tone(hue, 0.19f, 0.25f),
-        surfaceContainerHighest = tone(hue, 0.20f, 0.30f),
-        outline = tone(hue, 0.12f, 0.60f),
-        outlineVariant = tone(hue, 0.16f, 0.32f),
-        inverseSurface = tone(hue, 0.08f, 0.94f),
-        inverseOnSurface = tone(hue, 0.16f, 0.18f),
-        inversePrimary = tone(hue, 0.60f, 0.45f),
+        background = t(hue, 0.16f, 0.14f),
+        onBackground = t(hue, 0.08f, 0.94f),
+        surface = t(hue, 0.16f, 0.14f),
+        onSurface = t(hue, 0.08f, 0.94f),
+        surfaceVariant = t(hue, 0.20f, 0.26f),
+        onSurfaceVariant = t(hue, 0.10f, 0.80f),
+        surfaceDim = t(hue, 0.16f, 0.14f),
+        surfaceBright = t(hue, 0.14f, 0.36f),
+        surfaceContainerLowest = t(hue, 0.18f, 0.10f),
+        surfaceContainerLow = t(hue, 0.17f, 0.18f),
+        surfaceContainer = t(hue, 0.18f, 0.21f),
+        surfaceContainerHigh = t(hue, 0.19f, 0.25f),
+        surfaceContainerHighest = t(hue, 0.20f, 0.30f),
+        outline = t(hue, 0.12f, 0.60f),
+        outlineVariant = t(hue, 0.16f, 0.32f),
+        inverseSurface = t(hue, 0.08f, 0.94f),
+        inverseOnSurface = t(hue, 0.16f, 0.18f),
+        inversePrimary = t(hue, 0.60f, 0.45f),
         scrim = Color.Black
     )
 }
