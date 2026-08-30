@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
+import com.salman.herbalencyclopedia.ui.theme.recommendedPerformanceMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -53,9 +54,13 @@ class PreferencesRepository(private val context: Context) {
         ThemePalette.fromId(it[Keys.THEME_PALETTE])
     }
 
-    /** وضع الأداء (عالي الجودة/اقتصادي) — يتحكم بالزجاج السائل والتمويه وثقل الحركات. */
+    /** وضع الأداء (عالي الجودة/اقتصادي) — يتحكم بالزجاج السائل والتمويه وثقل الحركات.
+     *  إذا لم يختر المستخدم شيئاً بعد، يُستخدم وضع مقترَح تلقائياً حسب قدرة
+     *  الجهاز (انظر [recommendedPerformanceMode]) بدل افتراض "أداء عالٍ" للجميع. */
+    private val recommendedMode: PerformanceMode by lazy { recommendedPerformanceMode(context) }
+
     val performanceMode: Flow<PerformanceMode> = context.dataStore.data.map {
-        PerformanceMode.fromId(it[Keys.PERFORMANCE_MODE])
+        PerformanceMode.fromId(it[Keys.PERFORMANCE_MODE], fallback = recommendedMode)
     }
 
     suspend fun toggleFavorite(herbId: String) {
