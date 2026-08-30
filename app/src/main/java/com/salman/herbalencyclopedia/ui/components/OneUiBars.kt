@@ -24,6 +24,44 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/**
+ * عنوان شريط علوي "غني": شارة دائرية ملوّنة بأيقونة + عنوان + عنوان فرعي
+ * (سطر سياق حي مثل عدد العناصر)، بدل نص مجرّد بلا وزن بصري. نفس نمط
+ * شارة الهوية في [HomeScreen]، معاد استخدامه هنا لبقية الشاشات الجذرية
+ * (المفضلة، كل الأعشاب...) كي تبدو منسجمة معه بدل شريط فارغ يبدو ناقصاً.
+ */
+@Composable
+fun TopBarBrandTitle(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(iconTint.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = iconTint)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlassTopBar(
