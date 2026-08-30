@@ -130,7 +130,10 @@ class UpdateRepository(
 
             AppUpdateInfo(
                 versionName = remoteVersionName,
-                releaseNotes = config.releaseNotesOverride ?: release?.body?.ifBlank { null } ?: "إصلاحات وتحسينات عامة.",
+                // Don't show the raw GitHub release body (CI-generated / commit-log style
+                // text) to end users — always show a fixed, friendly Arabic message unless
+                // the admin explicitly typed a custom one in the admin panel.
+                releaseNotes = config.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
                 downloadUrl = downloadUrl,
                 releasePageUrl = release?.htmlUrl ?: "https://github.com/$repo/releases",
                 mandatory = mandatory
