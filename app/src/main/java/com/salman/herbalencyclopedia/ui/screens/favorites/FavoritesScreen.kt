@@ -34,6 +34,9 @@ fun FavoritesScreen(
     }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        // انظر التعليق بنفس المكان في HomeScreen: هذه شاشة جذر أيضاً، وترك
+        // الحافة السفلية الافتراضية هنا يُضاعف الفراغ فوق الشريط العائم.
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             GlassTopBar(
                 large = true,
