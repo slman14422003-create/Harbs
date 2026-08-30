@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.NotInterested
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Speed
@@ -92,6 +93,9 @@ fun SettingsScreen(
     }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        // انظر التعليق بنفس المكان في HomeScreen: هذه شاشة جذر أيضاً، وترك
+        // الحافة السفلية الافتراضية هنا يُضاعف الفراغ فوق الشريط العائم.
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             GlassTopBar(
                 title = { Text("الإعدادات") },
@@ -418,11 +422,16 @@ private fun PaletteSwatch(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    // خيار "بدون تلوين" هو إيقاف/تشغيل التلوين نفسه، فمن المهم أن يكون
+    // مميّزاً بصرياً عن باقي الدوائر الملوّنة (وإلا بدا مجرّد لون رمادي
+    // إضافي بينها) — لذلك يحمل أيقونة "ممنوع" ثابتة بدل الاكتفاء بلون
+    // خلفيته، بغضّ النظر عن حالة الاختيار.
+    val isNone = palette == ThemePalette.NONE
     Box(
         modifier = Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(palette.swatch)
+            .background(if (isNone) Color(0xFFE0E0E0) else palette.swatch)
             .border(
                 width = if (selected) 3.dp else 1.dp,
                 color = if (selected) MaterialTheme.colorScheme.onSurface else Color.White.copy(alpha = 0.35f),
@@ -431,11 +440,17 @@ private fun PaletteSwatch(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (selected) {
-            Icon(
+        when {
+            selected -> Icon(
                 Icons.Filled.Check,
                 contentDescription = palette.label,
-                tint = Color.White,
+                tint = if (isNone) Color(0xFF616161) else Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+            isNone -> Icon(
+                Icons.Filled.NotInterested,
+                contentDescription = palette.label,
+                tint = Color(0xFF757575),
                 modifier = Modifier.size(18.dp)
             )
         }
