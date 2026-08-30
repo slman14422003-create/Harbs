@@ -54,6 +54,16 @@ fun HomeScreen(
 ) {
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        // هذه الشاشة تظهر دائماً فوق OneUiFloatingNavBar (شاشة جذر ضمن
+        // topRoutes)، والـBox الخارجي في HerbalNavGraph يكون قد حجز أصلاً
+        // كامل ارتفاع الشريط العائم (شاملاً حاجز نظام التنقّل السفلي، لأن
+        // الشريط نفسه يطبّق windowInsetsPadding(navigationBars) داخلياً).
+        // لو تُرك Scaffold هنا على قيمته الافتراضية (safeDrawing) سيحجز
+        // إضافياً نفس ارتفاع شريط النظام السفلي من جديد، فتظهر فجوة
+        // فارغة مضاعفة (سماكة/مسافة) بين آخر عنصر بالمحتوى وبين الشريط
+        // العائم نفسه. لذلك نُبقي فقط حجز الحافة العلوية (شريط الحالة)
+        // اللازمة لـGlassTopBar، ونُصفّر الحافة السفلية هنا.
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             GlassTopBar(
                 large = true,
