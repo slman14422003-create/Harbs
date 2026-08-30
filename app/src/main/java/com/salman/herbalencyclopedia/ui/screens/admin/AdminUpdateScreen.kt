@@ -130,7 +130,7 @@ fun AdminUpdateScreen(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("ملاحظات التحديث (اختياري)") },
-                    supportingText = { Text("إن تُركت فارغة يُستخدم وصف الـ Release من GitHub") },
+                    supportingText = { Text("إن تُركت فارغة يظهر للمستخدم نص ثابت: \"تم تحديث الأخطاء وإدخال تحسينات جديدة.\"") },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth()
                 )
