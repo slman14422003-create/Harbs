@@ -1,8 +1,11 @@
 package com.salman.herbalencyclopedia
 
+import android.app.ActivityManager
 import android.app.Application
+import android.graphics.Bitmap
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.memory.MemoryCache
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.salman.herbalencyclopedia.data.image.DataUriFetcher
@@ -46,9 +49,25 @@ class HerbalApp : Application(), ImageLoaderFactory {
     // فيرجّع لكل AsyncImage بالتطبيق صورة فاشلة/فارغة لأي عشبة صورتها
     // مخزّنة كـ base64. Coil يستخدم هذا الـ ImageLoader تلقائياً لأن
     // Application هنا تُنفّذ ImageLoaderFactory.
+    //
+    // على الأجهزة منخفضة الرام: كاش الصور بالذاكرة أُنقص لنسبة أصغر من
+    // الرام المتاح، والصور تُفكّ بعمق ألوان أخفض (RGB_565 بدل ARGB_8888
+    // الافتراضي) — يقلّل استهلاك كل صورة بالذاكرة للنصف تقريباً بأثر بصري
+    // ضئيل جداً على صور صغيرة كصور الأعشاب. على الأجهزة القوية يبقى كل شيء
+    // بأعلى جودة كما كان.
     override fun newImageLoader(): ImageLoader {
+        val activityManager = getSystemService(ACTIVITY_SERVICE) as? ActivityManager
+        val isLowRam = activityManager?.isLowRamDevice == true
+
         return ImageLoader.Builder(this)
             .components { add(DataUriFetcher.Factory()) }
+            .crossfade(true)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(if (isLowRam) 0.15 else 0.25)
+                    .build()
+            }
+            .apply { if (isLowRam) bitmapConfig(Bitmap.Config.RGB_565) }
             .build()
     }
 
