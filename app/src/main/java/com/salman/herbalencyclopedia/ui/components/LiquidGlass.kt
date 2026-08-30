@@ -66,6 +66,15 @@ fun LiquidGlassSurface(
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
+    val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    // حافة الزجاج تعتمد على الوضع: في الوضع الداكن، حدّ أبيض خافت يعطي
+    // إحساس "توهّج" واضحاً على خلفية داكنة. نفس الحدّ الأبيض على خلفية
+    // فاتحة يكاد يكون غير مرئي تماماً (أبيض على أبيض تقريباً) — وهذا بالضبط
+    // سبب شعور "شيء ناقص" في الوضع النهاري: كانت حواف كل بطاقة وزر زجاجي
+    // غير مرئية. في الوضع الفاتح نستخدم حدّاً داكناً خافتاً جداً بدلاً من
+    // ذلك، فيعطي نفس إحساس "حافة الزجاج" لكن بتباين يناسب خلفية فاتحة.
+    val edgeColor = if (darkTheme) Color.White else Color.Black
+    val edgeAlphaScale = if (darkTheme) 1f else 0.5f
 
     Box(modifier = modifier.clip(shape)) {
         if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -115,7 +124,10 @@ fun LiquidGlassSurface(
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = borderAlpha + 0.14f), Color.White.copy(alpha = borderAlpha * 0.35f))
+                        listOf(
+                            edgeColor.copy(alpha = (borderAlpha + 0.14f) * edgeAlphaScale),
+                            edgeColor.copy(alpha = (borderAlpha * 0.35f) * edgeAlphaScale)
+                        )
                     ),
                     shape = shape
                 )
