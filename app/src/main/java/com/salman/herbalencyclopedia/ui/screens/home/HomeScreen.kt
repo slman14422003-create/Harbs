@@ -23,6 +23,7 @@ import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.*
 import com.salman.herbalencyclopedia.ui.theme.staggeredEntrance
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import java.util.Calendar
 
 /**
@@ -52,6 +53,13 @@ fun HomeScreen(
     onAdminClick: () -> Unit,
     onCompareClick: () -> Unit
 ) {
+    // كانت الشبكة GridCells.Fixed(2) ثابتة بعمودين دائماً: على تابلت أو
+    // نافذة عريضة هذا يعني بطاقتين متمددتين بعرض هائل بدل الاستفادة من
+    // المساحة. GridCells.Adaptive مع الحد الأدنى القادم من محرك اكتشاف
+    // الشاشة يحسب عدد الأعمدة ديناميكياً من العرض الفعلي المتاح: يبقى
+    // عمودين على جوال عادي، ويزيد تلقائياً إلى 3-5 أعمدة كلما اتسعت
+    // الشاشة، دون أي عتبة مكتوبة يدوياً هنا.
+    val windowInfo = rememberWindowSizeInfo()
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         // هذه الشاشة تظهر دائماً فوق OneUiFloatingNavBar (شاشة جذر ضمن
@@ -142,7 +150,7 @@ fun HomeScreen(
                 error != null -> ErrorView(error, onRetry, Modifier.fillMaxSize())
                 categories.isEmpty() -> EmptyView("لا توجد تصنيفات بعد", Modifier.fillMaxSize())
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Adaptive(minSize = windowInfo.gridMinCellWidth),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
