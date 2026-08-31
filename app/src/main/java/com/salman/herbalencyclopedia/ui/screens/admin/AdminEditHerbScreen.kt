@@ -1,8 +1,5 @@
 package com.salman.herbalencyclopedia.ui.screens.admin
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -17,12 +14,15 @@ import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.data.image.ImageCompressor
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,15 +43,23 @@ fun AdminEditHerbScreen(
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var isCompressingImage by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            val compressed = compressImageToDataUrl(context, it)
-            if (compressed != null) {
-                imageUrl = compressed
-                errorMessage = null
-            } else {
-                errorMessage = "تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى"
+            errorMessage = null
+            isCompressingImage = true
+            // الضغط ينفَّذ الآن على خيط خلفي (راجع ImageCompressor) بدل تجميد
+            // الواجهة أثناء معالجة الصور الكبيرة.
+            coroutineScope.launch {
+                val compressed = ImageCompressor.compressToDataUrl(context, it)
+                isCompressingImage = false
+                if (compressed != null) {
+                    imageUrl = compressed
+                } else {
+                    errorMessage = "تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى"
+                }
             }
         }
     }
@@ -135,8 +143,14 @@ fun AdminEditHerbScreen(
             )
             Text("صورة العشبة", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton(onClick = { imagePicker.launch("image/*") }) { Text("اختيار صورة") }
-                if (imageUrl.isNotBlank()) GlassOutlinedButton(onClick = { imageUrl = "" }) { Text("مسح") }
+                GlassButton(onClick = { imagePicker.launch("image/*") }, enabled = !isCompressingImage) { Text("اختيار صورة") }
+                if (imageUrl.isNotBlank() && !isCompressingImage) GlassOutlinedButton(onClick = { imageUrl = "" }) { Text("مسح") }
+            }
+            if (isCompressingImage) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("جاري ضغط الصورة...", style = MaterialTheme.typography.bodySmall)
+                }
             }
             if (imageUrl.isNotBlank()) AsyncImage(model = imageUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().height(180.dp))
 
@@ -162,7 +176,7 @@ fun AdminEditHerbScreen(
                         if (success) onBack() else errorMessage = message
                     }
                 },
-                enabled = name.isNotBlank() && !isSaving,
+                enabled = name.isNotBlank() && !isSaving && !isCompressingImage,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isSaving) {
@@ -174,51 +188,4 @@ fun AdminEditHerbScreen(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
-}
-
-
-private fun compressImageToDataUrl(context: android.content.Context, uri: android.net.Uri): String? {
-    return runCatching {
-        val source = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-            ?: return null
-
-        // Firestore يرفض أي مستند يتجاوز 1 ميجابايت إجمالاً (كل الحقول
-        // مجتمعة)، وترميز base64 يكبّر حجم الصورة الأصلي بحوالي 33%.
-        // لذلك نحجز هامشاً لبقية حقول العشبة ونضغط الصورة بشكل متكرر —
-        // نقلّل الجودة أولاً، وإذا ما كفت نصغّر الأبعاد كمان — إلى أن
-        // يصير الناتج تحت هذا السقف فعلياً بدل ما نكتشف الفشل بعد محاولة
-        // الحفظ في Firestore.
-        val maxDataUrlBytes = 650_000
-        var maxDimension = 900
-        var quality = 82
-        var dataUrl: String
-
-        while (true) {
-            val scale = minOf(1f, maxDimension.toFloat() / maxOf(source.width, source.height))
-            val bitmap = if (scale < 1f) {
-                Bitmap.createScaledBitmap(
-                    source,
-                    (source.width * scale).toInt().coerceAtLeast(1),
-                    (source.height * scale).toInt().coerceAtLeast(1),
-                    true
-                )
-            } else source
-
-            val out = java.io.ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
-            dataUrl = "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-
-            if (dataUrl.length <= maxDataUrlBytes || (quality <= 35 && maxDimension <= 400)) break
-
-            if (quality > 35) {
-                quality -= 15
-            } else {
-                maxDimension = (maxDimension * 0.75f).toInt()
-            }
-        }
-
-        // إذا ظلت الصورة أكبر من الحد المسموح حتى بعد أقصى ضغط ممكن، لا
-        // نرجع نصاً سيفشل حفظه لاحقاً بصمت — نرجع null ليظهر خطأ واضح.
-        if (dataUrl.length > maxDataUrlBytes) null else dataUrl
-    }.getOrNull()
 }
