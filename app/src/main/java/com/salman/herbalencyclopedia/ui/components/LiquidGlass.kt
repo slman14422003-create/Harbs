@@ -74,7 +74,12 @@ fun LiquidGlassSurface(
     // غير مرئية. في الوضع الفاتح نستخدم حدّاً داكناً خافتاً جداً بدلاً من
     // ذلك، فيعطي نفس إحساس "حافة الزجاج" لكن بتباين يناسب خلفية فاتحة.
     val edgeColor = if (darkTheme) Color.White else Color.Black
-    val edgeAlphaScale = if (darkTheme) 1f else 0.5f
+    // 0.5 سابقاً كانت تجعل حافة البطاقات/الأشرطة الزجاجية شبه مختفية على
+    // خلفية فاتحة (خصوصاً أعلى الحافة حيث القيمة الأصلية أصلاً منخفضة)،
+    // فتبدو العناصر الزجاجية بلا حدود واضحة مقارنة بوضوحها في الوضع
+    // الداكن — فرق تباين بين الوضعين لم يكن مقصوداً. 0.68 يعيد قدراً كافياً
+    // من الوضوح دون أن يقترب من ثقل حدّ الوضع الداكن.
+    val edgeAlphaScale = if (darkTheme) 1f else 0.68f
 
     Box(modifier = modifier.clip(shape)) {
         if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

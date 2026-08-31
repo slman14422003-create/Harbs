@@ -74,12 +74,19 @@ fun GlassTopBar(
 ) {
     val surface = MaterialTheme.colorScheme.surfaceContainerHigh
     val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+    // ظل أسود افتراضي (Modifier.shadow بلا ألوان مخصّصة) يعطي إحساساً
+    // "موحلاً"/رمادياً تحت سطح زجاجي ملوّن، ويبرز بشكل خاص في الوضع
+    // النهاري حيث الخلفية فاتحة والفرق مع ظل أسود صرف يصبح لافتاً بلا
+    // داعٍ. تظليل بلون السطح نفسه (surfaceContainerHigh) بدل الأسود
+    // المحايد يجعل الظل امتداداً طبيعياً للزجاج بدل بقعة رمادية منفصلة
+    // عنه، بنفس الفكرة في [OneUiFloatingNavBar] أدناه.
+    val shadowTint = surface.copy(alpha = 0.55f)
 
     LiquidGlassSurface(
         shape = shape,
         modifier = modifier
             .fillMaxWidth()
-            .shadow(8.dp, shape, clip = false),
+            .shadow(8.dp, shape, clip = false, ambientColor = shadowTint, spotColor = shadowTint),
         tint = surface,
         borderAlpha = 0.16f,
         // الشريط العلوي ثابت وظاهر طول الوقت بكل الشاشات؛ لمعان لانهائي
@@ -128,6 +135,11 @@ fun OneUiFloatingNavBar(
 ) {
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
     val shape = RoundedCornerShape(30.dp)
+    // نفس مبدأ [GlassTopBar]: ظل بلون السطح نفسه بدل الأسود المحايد
+    // الافتراضي، كي لا يبدو الشريط العائم وكأنه يطفو فوق بقعة رمادية
+    // منفصلة عنه — ملحوظ بوضوح أكبر هنا لأن هذا الشريط عائم بالكامل
+    // (ظل على أربع جهات) وليس ملتصقاً بحافة الشاشة كالشريط العلوي.
+    val shadowTint = container.copy(alpha = 0.5f)
     // على تنقّل الإيماءات الحاجز السفلي (navigationBars) رفيع جداً (عادة
     // أقل من 32dp)، بينما على أزرار التنقل التقليدية الثلاثة يكون أثخن
     // بوضوح. windowInsetsPadding(navigationBars) وحده يتكفّل بعدم تداخل
@@ -148,7 +160,7 @@ fun OneUiFloatingNavBar(
     ) {
         LiquidGlassSurface(
             shape = shape,
-            modifier = Modifier.shadow(16.dp, shape, clip = false),
+            modifier = Modifier.shadow(16.dp, shape, clip = false, ambientColor = shadowTint, spotColor = shadowTint),
             tint = container,
             borderAlpha = 0.16f
         ) {
