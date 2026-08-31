@@ -7,6 +7,22 @@
          (in-app download + install, instead of sending the user to the browser). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- تصريح صريح بدعم كل أحجام الشاشات وكل كثافات البكسل (DPI): بدونه
+         Android يفترض الدعم افتراضياً لكل الأجهزة الحديثة، لكن الوسم هنا
+         يجعل الأمر رسمياً وصريحاً بدل الاعتماد على سلوك افتراضي ضمني —
+         وهو ما يعتمد عليه أيضاً متجر Play لفلترة توافق الجهاز. anyDensity
+         يمنع النظام من إعادة تحجيم موارد كثافة واحدة لتناسب كل الأجهزة
+         (وهو ما يسبب ضبابية)؛ التطبيق أصلاً يوفّر موارد mipmap منفصلة لكل
+         كثافة (ldpi حتى xxxhdpi + anydpi-v26)، وواجهة Compose تُبنى بالكامل
+         بوحدات dp/sp المستقلة عن الكثافة، فهذا الوسم يوثّق ذلك رسمياً. -->
+    <supports-screens
+        android:anyDensity="true"
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:resizeable="true" />
+
     <application
         android:name=".HerbalApp"
         android:allowBackup="false"
