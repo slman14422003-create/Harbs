@@ -40,9 +40,16 @@ class HerbalApp : Application(), ImageLoaderFactory {
             .setGcmSenderId("497780761661")
             .build()
 
-        if (FirebaseApp.getApps(this).isEmpty()) {
+        val firebaseApp = if (FirebaseApp.getApps(this).isEmpty()) {
             FirebaseApp.initializeApp(this, options)
+        } else {
+            FirebaseApp.getInstance()
         }
+
+        // App Check is installed immediately after Firebase initialization so every
+        // subsequent Firestore/Auth request can carry an attestation token. Release
+        // builds use Play Integrity; debug builds use Firebase's debug provider.
+        if (firebaseApp != null) FirebaseSecurity.install()
     }
 
     // بدون هذا، Coil (v2.x) لا يعرف كيف يقرأ روابط data: (base64) —
