@@ -657,7 +657,7 @@ private fun UpdateRow(
                     when (downloadState) {
                         is UpdateDownloadState.Idle -> {
                             Button(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
-                                Text("تنزيل وتثبيت التحديث")
+                                Text("فتح Google Play للتحديث")
                             }
                         }
                         is UpdateDownloadState.Downloading -> {
@@ -678,7 +678,7 @@ private fun UpdateRow(
                             ) {
                                 Icon(Icons.Filled.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("تثبيت الآن")
+                                Text("فتح Google Play")
                             }
                         }
                         is UpdateDownloadState.Failed -> {
