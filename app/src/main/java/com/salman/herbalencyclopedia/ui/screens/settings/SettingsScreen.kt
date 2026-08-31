@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material3.*
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.ui.UpdateCheckState
@@ -78,6 +79,7 @@ fun SettingsScreen(
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
+    onTermsClick: () -> Unit,
     onAdminToolsClick: () -> Unit,
     onCheckForUpdate: (android.content.Context) -> Unit,
     onDownloadUpdate: (android.content.Context, AppUpdateInfo) -> Unit,
@@ -173,6 +175,14 @@ fun SettingsScreen(
                         title = "سياسة الخصوصية",
                         subtitle = "كيف نتعامل مع بياناتك، وإخلاء المسؤولية الطبية",
                         onClick = onPrivacyPolicyClick
+                    )
+                    SettingsDivider()
+                    ActionRow(
+                        icon = Icons.Filled.Gavel,
+                        iconTint = Color(0xFF8D6E63),
+                        title = "الشروط والأحكام",
+                        subtitle = "شروط استخدام التطبيق ومحتوى الموسوعة",
+                        onClick = onTermsClick
                     )
                     if (isAdmin) {
                         SettingsDivider()
