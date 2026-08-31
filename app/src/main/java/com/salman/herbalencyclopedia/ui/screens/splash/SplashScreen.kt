@@ -183,7 +183,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 visible = stage >= 2,
                 enter = fadeIn(tween(600, delayMillis = 200))
             ) {
-                LoadingDots()
+                LoadingDots(highQuality = highQuality)
             }
         }
 
@@ -202,25 +202,46 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 }
 
+/**
+ * كانت هذه الحركة (3 نبضات لانهائية متزامنة) الوحيدة في شاشة البداية غير
+ * المرتبطة بوضع الأداء إطلاقاً — كل بقية عناصر الشاشة (التوهّج العضوي خلف
+ * الشعار) تلتزم بمبدأ إطفاء الحركات اللانهائية في الوضع الاقتصادي، بينما
+ * هذه كانت تعمل بلا شرط على كل الأجهزة. الأثر صغير (نقاط صغيرة، ومدة
+ * الشاشة قصيرة) لكنه يخالف نفس المبدأ المتّبع بقية التطبيق ويضيف 3 حركات
+ * لانهائية بلا داعٍ تحديداً على الأجهزة التي اختارت/اقتُرح لها الوضع
+ * الاقتصادي لأنها الأضعف أصلاً. في الوضع الاقتصادي تظهر النقاط بسطوع
+ * ثابت متدرّج بدل النبض المتحرك — نفس الشكل تقريباً بلا أي تكلفة حركة.
+ */
 @Composable
-private fun LoadingDots() {
-    val transition = rememberInfiniteTransition(label = "dots")
+private fun LoadingDots(highQuality: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        repeat(3) { index ->
-            val alpha by transition.animateFloat(
-                initialValue = 0.3f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(600, delayMillis = index * 160, easing = AppMotion.Smooth),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "dotAlpha$index"
-            )
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(Color.White.copy(alpha = alpha), CircleShape)
-            )
+        if (highQuality) {
+            val transition = rememberInfiniteTransition(label = "dots")
+            repeat(3) { index ->
+                val alpha by transition.animateFloat(
+                    initialValue = 0.3f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(600, delayMillis = index * 160, easing = AppMotion.Smooth),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "dotAlpha$index"
+                )
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color.White.copy(alpha = alpha), CircleShape)
+                )
+            }
+        } else {
+            val staticAlphas = listOf(0.45f, 0.7f, 1f)
+            staticAlphas.forEach { alpha ->
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color.White.copy(alpha = alpha), CircleShape)
+                )
+            }
         }
     }
 }
