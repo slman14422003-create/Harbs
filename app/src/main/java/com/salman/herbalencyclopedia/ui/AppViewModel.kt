@@ -3,9 +3,12 @@ package com.salman.herbalencyclopedia.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
@@ -14,6 +17,7 @@ import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +27,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 data class UiState(
     val herbs: List<Herb> = emptyList(),
@@ -101,25 +110,125 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     // info again from the UI) can re-open the same download link, e.g. on retry.
     private var lastUpdateInfo: AppUpdateInfo? = null
 
-    /** Opens the .apk asset's direct download link in the browser (falls back to the release page). */
+    // The .apk file downloadUpdate() saved into the app's private cache dir,
+    // used by installUpdate() to hand off to the system package installer.
+    private var lastDownloadedApk: File? = null
+
+    /**
+     * Downloads the .apk asset in-app (into the private cache dir), reporting progress via
+     * [downloadState] so the settings screen can show the usual progress bar — instead of
+     * sending the user out to the browser to download it themselves.
+     *
+     * If this release has no .apk asset attached (only a release page), there's nothing to
+     * download in-app, so we fall back to opening that page in the browser as before.
+     */
     fun downloadUpdate(context: Context, info: AppUpdateInfo) {
         lastUpdateInfo = info
-        val opened = openDownloadLink(context, info.apkUrl ?: info.releasePageUrl)
-        _downloadState.value = if (opened) {
-            UpdateDownloadState.ReadyToInstall
-        } else {
-            UpdateDownloadState.Failed("تعذّر فتح رابط التحميل")
+        val apkUrl = info.apkUrl
+        if (apkUrl == null) {
+            val opened = openInBrowser(context, info.releasePageUrl)
+            _downloadState.value = if (opened) {
+                UpdateDownloadState.ReadyToInstall
+            } else {
+                UpdateDownloadState.Failed("تعذّر فتح رابط التحميل")
+            }
+            return
+        }
+
+        val appContext = context.applicationContext
+        _downloadState.value = UpdateDownloadState.Downloading(0)
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                downloadApkToCache(appContext, apkUrl, info.versionName)
+            }
+            _downloadState.value = result.fold(
+                onSuccess = { file ->
+                    lastDownloadedApk = file
+                    UpdateDownloadState.ReadyToInstall
+                },
+                onFailure = { e -> UpdateDownloadState.Failed(e.localizedMessage ?: "فشل تحميل التحديث") }
+            )
         }
     }
 
-    /** Re-opens the download link, e.g. if the user dismissed the browser/download without installing. */
-    fun installUpdate(context: Context) {
-        val info = lastUpdateInfo ?: return
-        openDownloadLink(context, info.apkUrl ?: info.releasePageUrl)
+    /** Streams the .apk to context.cacheDir/updates, publishing percent progress to [downloadState]. */
+    private fun downloadApkToCache(context: Context, url: String, versionName: String): Result<File> = runCatching {
+        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+        // Drop any previous downloaded update(s) so the cache doesn't grow unbounded.
+        dir.listFiles()?.forEach { it.delete() }
+        val destFile = File(dir, "update-$versionName.apk")
+
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15000
+            readTimeout = 20000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "Harbs-App-Update-Downloader")
+        }
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            conn.disconnect()
+            error("فشل الاتصال بالخادم (رمز $code)")
+        }
+
+        val totalSize = conn.contentLength
+        var lastReportedPercent = -1
+        conn.inputStream.use { input ->
+            FileOutputStream(destFile).use { output ->
+                val buffer = ByteArray(8 * 1024)
+                var totalRead = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    output.write(buffer, 0, read)
+                    totalRead += read
+                    if (totalSize > 0) {
+                        val percent = ((totalRead * 100) / totalSize).toInt().coerceIn(0, 100)
+                        if (percent != lastReportedPercent) {
+                            lastReportedPercent = percent
+                            _downloadState.value = UpdateDownloadState.Downloading(percent)
+                        }
+                    }
+                }
+            }
+        }
+        conn.disconnect()
+        destFile
     }
 
-    /** Opens a URL (the .apk download or the GitHub release page) in the browser. Returns success. */
-    private fun openDownloadLink(context: Context, url: String): Boolean {
+    /**
+     * Hands the already-downloaded .apk to the system package installer via a FileProvider
+     * content:// Uri. On Android 8+ this also makes sure "install unknown apps" is allowed for
+     * this app first — if not, it opens that settings screen and the user just taps the
+     * install button again once they've granted it.
+     */
+    fun installUpdate(context: Context) {
+        val file = lastDownloadedApk
+        if (file == null || !file.exists()) {
+            // Nothing was downloaded in-app (e.g. the release had no .apk asset) - fall back
+            // to whatever link we have.
+            lastUpdateInfo?.let { openInBrowser(context, it.apkUrl ?: it.releasePageUrl) }
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
+            val settingsIntent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(settingsIntent) }
+            return
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { context.startActivity(intent) }
+            .onFailure { _downloadState.value = UpdateDownloadState.Failed("تعذّر فتح مثبّت التطبيقات") }
+    }
+
+    /** Opens a URL (the GitHub release page, when there's no .apk asset to download in-app) in the browser. */
+    private fun openInBrowser(context: Context, url: String): Boolean {
         return runCatching {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
