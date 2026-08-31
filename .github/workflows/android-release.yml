@@ -11,6 +11,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # لا يمكن استخدام "secrets" مباشرة داخل أي شرط if: (قيد من GitHub
+      # Actions نفسه، يسبب خطأ "Unrecognized named-value: 'secrets'").
+      # لذلك نمرر النتيجة كمتغير env هنا، ونستخدم env.HAS_KEYSTORE_SECRET
+      # بدل secrets.ANDROID_KEYSTORE_BASE64 داخل أي if: أدناه.
+      HAS_KEYSTORE_SECRET: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -81,7 +88,7 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Prepare signing keystore
+      - name: Prepare release signing (optional in CI)
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -90,18 +97,31 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::Release signing secrets are required. Refusing to generate or cache a fallback signing key."
-            exit 1
-          fi
           mkdir -p app
-          KS_PATH="$GITHUB_WORKSPACE/app/release.keystore.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KS_PATH"
-          keytool -list -keystore "$KS_PATH" -storepass "$KEYSTORE_PASSWORD" >/dev/null
-          echo "store_file=$KS_PATH" >> "$GITHUB_OUTPUT"
-          echo "store_password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
-          echo "key_alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
-          echo "key_password=$KEY_PASSWORD" >> "$GITHUB_OUTPUT"
+
+          # لا ننشئ أبدًا مفتاح توقيع احتياطيًا داخل GitHub Actions.
+          # إذا وُجدت أسرار التوقيع، يُبنى Release موقّع. وإذا لم توجد،
+          # يُبنى Release غير موقّع حتى لا يفشل CI؛ هذا مناسب للاختبار فقط
+          # وليس للرفع إلى Google Play.
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            KS_PATH="$GITHUB_WORKSPACE/app/release.keystore.jks"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KS_PATH"
+            keytool -list -keystore "$KS_PATH" -storepass "$KEYSTORE_PASSWORD" >/dev/null
+
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "store_file=$KS_PATH" >> "$GITHUB_OUTPUT"
+            echo "store_password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
+            echo "key_alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
+            echo "key_password=$KEY_PASSWORD" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets found; building signed artifacts."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "store_file=" >> "$GITHUB_OUTPUT"
+            echo "store_password=" >> "$GITHUB_OUTPUT"
+            echo "key_alias=" >> "$GITHUB_OUTPUT"
+            echo "key_password=" >> "$GITHUB_OUTPUT"
+            echo "::warning::Release signing secrets are not configured. Building unsigned artifacts for CI/testing only. Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD for a Play-ready signed build."
+          fi
 
       - name: Build release APK and App Bundle
         env:
@@ -112,8 +132,8 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.key_alias }}
           RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.key_password }}
         run: |
-          # app/build.gradle.kts يقرأ متغيرات RELEASE_* أعلاه مباشرة وينشئ
-          # signingConfig "release" بنفسه — لا حاجة لأي خطوة إضافية هنا.
+          # عند توفر أسرار التوقيع، app/build.gradle.kts يقرأ RELEASE_* ويوقّع Release.
+          # عند غيابها، يبقى Release غير موقّع ولا يفشل البناء.
           # نستخدم "gradle" (ثبّتها خطوة setup-gradle أعلاه) بدل "./gradlew"
           # لأن ملفات wrapper (gradlew/gradlew.bat/gradle-wrapper.jar) غير
           # موجودة في المستودع.
@@ -160,25 +180,26 @@ jobs:
           path: ${{ steps.outputs.outputs.aab_path }}
           if-no-files-found: warn
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (APK)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.appver.outputs.version_name }}
           name: الإصدار ${{ steps.appver.outputs.version_name }}
           body: |
             ## 📦 الإصدار ${{ steps.appver.outputs.version_name }}
-            
-            ### ✅ التغييرات:
-            - بناء تلقائي عبر GitHub Actions
+
             - رقم الإصدار: ${{ steps.appver.outputs.version_code }}
-            
-            ### 📱 ملفات التحميل:
-            - **APK**: للتثبيت المباشر على الأندرويد
-            - **AAB**: للرفع على متجر Google Play
+            - إذا لم تُضبط أسرار التوقيع، فهذا البناء غير موقّع ومخصص للاختبار فقط.
           generate_release_notes: true
-          files: |
-            ${{ steps.outputs.outputs.apk_path }}
-            ${{ steps.outputs.outputs.aab_path }}
+          files: ${{ steps.outputs.outputs.apk_path }}
+          fail_on_unmatched_files: true
+
+      - name: Add App Bundle to GitHub Release
+        if: ${{ steps.outputs.outputs.aab_path != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.appver.outputs.version_name }}
+          files: ${{ steps.outputs.outputs.aab_path }}
           fail_on_unmatched_files: true
 
       - name: Cleanup Gradle cache
