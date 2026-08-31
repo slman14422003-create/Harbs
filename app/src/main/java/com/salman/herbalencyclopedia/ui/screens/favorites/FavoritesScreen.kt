@@ -1,8 +1,9 @@
 package com.salman.herbalencyclopedia.ui.screens.favorites
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
@@ -54,11 +55,16 @@ fun FavoritesScreen(
         if (favoriteHerbs.isEmpty()) {
             EmptyView(message = "لم تُضِف أي عشبة إلى المفضلة بعد", modifier = Modifier.padding(padding))
         } else {
-            LazyColumn(
+            // نفس إصلاح AllHerbsScreen: عمود واحد ثابت كان يمدّد البطاقة
+            // بعرض الشاشة كاملاً على تابلت. Adaptive يحسب عدد الأعمدة من
+            // العرض الفعلي المتاح بدل قيمة مكتوبة يدوياً.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 340.dp),
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(favoriteHerbs, key = { it.id }) { herb ->
