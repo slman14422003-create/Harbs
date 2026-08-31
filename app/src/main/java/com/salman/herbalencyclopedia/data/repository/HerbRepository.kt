@@ -7,8 +7,10 @@ import com.google.firebase.firestore.Source
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -29,6 +31,8 @@ import kotlinx.coroutines.tasks.await
  *   catalog (including base64 image data) stays available offline and all
  *   local writes made offline queue up and sync automatically once the
  *   connection returns.
+ * - [observeCollection] auto-retries with exponential backoff on listener
+ *   errors instead of permanently ending the live sync (see its retryWhen).
  */
 class HerbRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
@@ -65,6 +69,15 @@ class HerbRepository(
                 }
             }
         awaitClose { registration.remove() }
+    }.retryWhen { _, attempt ->
+        // كان أي خطأ بالمستمع (انقطاع لحظي، انتهاء صلاحية توكن، ...) يُنهي
+        // المزامنة الحيّة نهائياً إلى أن يُعاد فتح التطبيق يدوياً. الآن
+        // نعيد الاشتراك تلقائياً بتأخير تصاعدي (1s ثم 2s ثم 4s... سقف 30s)
+        // بدل الاستسلام من أول خطأ - نفس المصدر (uiState.error) يبقى
+        // يعرض الرسالة المناسبة للمستخدم أثناء إعادة المحاولة بالخلفية.
+        val delayMs = (1000L shl attempt.toInt().coerceAtMost(5)).coerceAtMost(30_000L)
+        delay(delayMs)
+        true
     }
 
     // ---------------------------------------------------------------------
@@ -85,13 +98,13 @@ class HerbRepository(
 
     suspend fun addHerb(herb: Herb) {
         val data: HashMap<String, Any?> = hashMapOf(
-            "name" to herb.name,
+            "name" to herb.name.trim(),
             "category_id" to herb.categoryId,
-            "benefits" to herb.benefits.ifBlank { "—" },
-            "warnings" to herb.warnings.ifBlank { "—" },
-            "harms" to herb.harms.ifBlank { "—" },
-            "usage" to herb.usage.ifBlank { "—" },
-            "notes" to herb.notes.ifBlank { "—" },
+            "benefits" to herb.benefits.trim().ifBlank { "—" },
+            "warnings" to herb.warnings.trim().ifBlank { "—" },
+            "harms" to herb.harms.trim().ifBlank { "—" },
+            "usage" to herb.usage.trim().ifBlank { "—" },
+            "notes" to herb.notes.trim().ifBlank { "—" },
             "image_url" to herb.imageUrl,
             "created_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
         )
@@ -100,13 +113,13 @@ class HerbRepository(
 
     suspend fun updateHerb(herb: Herb) {
         val data: HashMap<String, Any?> = hashMapOf(
-            "name" to herb.name,
+            "name" to herb.name.trim(),
             "category_id" to herb.categoryId,
-            "benefits" to herb.benefits.ifBlank { "—" },
-            "warnings" to herb.warnings.ifBlank { "—" },
-            "harms" to herb.harms.ifBlank { "—" },
-            "usage" to herb.usage.ifBlank { "—" },
-            "notes" to herb.notes.ifBlank { "—" },
+            "benefits" to herb.benefits.trim().ifBlank { "—" },
+            "warnings" to herb.warnings.trim().ifBlank { "—" },
+            "harms" to herb.harms.trim().ifBlank { "—" },
+            "usage" to herb.usage.trim().ifBlank { "—" },
+            "notes" to herb.notes.trim().ifBlank { "—" },
             "image_url" to herb.imageUrl,
             "updated_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
         )
@@ -120,14 +133,14 @@ class HerbRepository(
     suspend fun addCategory(name: String) {
         db.collection("categories").add(
             hashMapOf(
-                "name" to name,
+                "name" to name.trim(),
                 "created_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
             )
         ).await()
     }
 
     suspend fun updateCategory(id: String, name: String) {
-        db.collection("categories").document(id).update("name", name).await()
+        db.collection("categories").document(id).update("name", name.trim()).await()
     }
 
     suspend fun deleteCategory(id: String) {
