@@ -28,10 +28,19 @@ class PreferencesRepository(private val context: Context) {
         val FONT_SCALE = intPreferencesKey("font_scale")
         val THEME_PALETTE = stringPreferencesKey("theme_palette")
         val PERFORMANCE_MODE = stringPreferencesKey("performance_mode")
+        val TERMS_ACCEPTED = booleanPreferencesKey("terms_accepted")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
         it[Keys.FAVORITES] ?: emptySet()
+    }
+
+    /** هل وافق المستخدم على شاشة الترحيب (سياسة الخصوصية + التحذير الطبي +
+     *  الشروط والأحكام)؟ تُقرأ مرة واحدة فقط عند أول تشغيل بعد التثبيت -
+     *  محفوظة محلياً على الجهاز (DataStore)، وليست جزءاً من حساب أو
+     *  Firestore، فتُمسَح فقط إذا حذف المستخدم بيانات التطبيق أو أزاله. */
+    val termsAccepted: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.TERMS_ACCEPTED] ?: false
     }
 
     val darkMode: Flow<Boolean?> = context.dataStore.data.map {
@@ -88,5 +97,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setPerformanceMode(mode: PerformanceMode) {
         context.dataStore.edit { prefs -> prefs[Keys.PERFORMANCE_MODE] = mode.name }
+    }
+
+    /** يُستدعى مرة واحدة فقط عند ضغط "أوافق" في شاشة الترحيب الأولى. */
+    suspend fun setTermsAccepted(accepted: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.TERMS_ACCEPTED] = accepted }
     }
 }
