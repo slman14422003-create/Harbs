@@ -17,21 +17,17 @@ plugins {
 //     .github/workflows/android-release.yml).
 // إن لم يتوفر أي منهما، يبقى "release" بلا توقيع (صالح فقط لتجربة محلية
 // عبر assembleRelease بدون signingConfig، ولن يُقبل في متجر Play).
-val keystorePropertiesFile = rootProject.file("app/keystore.properties")
-val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        keystorePropertiesFile.inputStream().use { load(it) }
-    }
-}
+val releaseStoreFile: String? = System.getenv("RELEASE_STORE_FILE")
+val releaseStorePassword: String? = System.getenv("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
 
-val releaseStoreFile: String? =
-    keystoreProperties.getProperty("storeFile") ?: System.getenv("RELEASE_STORE_FILE")
-val releaseStorePassword: String? =
-    keystoreProperties.getProperty("storePassword") ?: System.getenv("RELEASE_STORE_PASSWORD")
-val releaseKeyAlias: String? =
-    keystoreProperties.getProperty("keyAlias") ?: System.getenv("RELEASE_KEY_ALIAS")
-val releaseKeyPassword: String? =
-    keystoreProperties.getProperty("keyPassword") ?: System.getenv("RELEASE_KEY_PASSWORD")
+require(
+    listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() } ||
+        gradle.startParameter.taskNames.none { it.contains("Release", ignoreCase = true) }
+) {
+    "Release builds require RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD."
+}
 
 android {
     namespace = "com.salman.herbalencyclopedia"
@@ -134,9 +130,11 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.4")
 
     // Firebase (initialized manually via FirebaseOptions - no google-services.json required)
-    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
-    implementation("com.google.firebase:firebase-firestore-ktx")
-    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-appcheck-playintegrity")
+    debugImplementation("com.google.firebase:firebase-appcheck-debug")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
