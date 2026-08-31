@@ -1,8 +1,9 @@
 package com.salman.herbalencyclopedia.ui.screens.admin
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -53,11 +54,15 @@ fun AdminListScreen(
             }
         }
     ) { padding ->
-        LazyColumn(
+        // شبكة متكيّفة بدل عمود واحد ثابت: نفس إصلاح شاشات قوائم الأعشاب،
+        // مهم هنا خصوصاً لأن لوحة التحكم قد تُستخدم من تابلت إداري.
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 320.dp),
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(herbs, key = { it.id }) { herb ->
