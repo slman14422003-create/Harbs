@@ -17,16 +17,25 @@ plugins {
 //     .github/workflows/android-release.yml).
 // إن لم يتوفر أي منهما، يبقى "release" بلا توقيع (صالح فقط لتجربة محلية
 // عبر assembleRelease بدون signingConfig، ولن يُقبل في متجر Play).
-val releaseStoreFile: String? = System.getenv("RELEASE_STORE_FILE")
-val releaseStorePassword: String? = System.getenv("RELEASE_STORE_PASSWORD")
-val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
-val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
+// ملاحظة: نستخدم isNullOrBlank() بدل == null في كل مكان أدناه، لأن CI
+// (راجع .github/workflows/android-release.yml) يمرر هذه المتغيرات كسلسلة
+// فارغة "" عند غياب الأسرار، وليس متغيرًا غائبًا تمامًا. القيمة الفارغة
+// ليست null، فلو اعتمدنا == null فقط لظننا أن التوقيع متوفر وهو ليس كذلك.
+val releaseStoreFile: String? = System.getenv("RELEASE_STORE_FILE")?.takeIf { it.isNotBlank() }
+val releaseStorePassword: String? = System.getenv("RELEASE_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+val hasReleaseSigning: Boolean =
+    releaseStoreFile != null && releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
 
-require(
-    listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() } ||
-        gradle.startParameter.taskNames.none { it.contains("Release", ignoreCase = true) }
-) {
-    "Release builds require RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD."
+// لا نوقف البناء بالكامل عند غياب أسرار التوقيع (CI يعتمد على هذا السلوك
+// لبناء نسخة اختبار غير موقّعة، انظر خطوة "Prepare release signing" في
+// الووركفلو). نكتفي بتحذير واضح بدل إفشال assembleRelease/bundleRelease.
+if (!hasReleaseSigning) {
+    logger.warn(
+        "⚠️  RELEASE_STORE_FILE/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/RELEASE_KEY_PASSWORD غير متوفرة بالكامل — " +
+            "سيُبنى release بلا توقيع (صالح للاختبار المحلي فقط، غير صالح لرفعه على متجر Play)."
+    )
 }
 
 android {
@@ -46,7 +55,7 @@ android {
     }
 
     signingConfigs {
-        if (releaseStoreFile != null) {
+        if (hasReleaseSigning) {
             create("release") {
                 storeFile = file(releaseStoreFile)
                 storePassword = releaseStorePassword
@@ -64,7 +73,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (releaseStoreFile != null) {
+            if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
