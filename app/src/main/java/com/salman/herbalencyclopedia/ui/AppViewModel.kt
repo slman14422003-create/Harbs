@@ -1,7 +1,8 @@
 package com.salman.herbalencyclopedia.ui
 
-import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -39,7 +40,7 @@ sealed class UpdateCheckState {
     data class Error(val message: String) : UpdateCheckState()
 }
 
-/** State of the APK download that follows a detected update (see [AppViewModel.downloadUpdate]). */
+/** State of the Google Play update hand-off (see [AppViewModel.downloadUpdate]). */
 sealed class UpdateDownloadState {
     data object Idle : UpdateDownloadState()
     data class Downloading(val progress: Int) : UpdateDownloadState()
@@ -61,7 +62,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         private set
 
     // ---------------------------------------------------------------------
-    // In-app updates (check GitHub Release -> download -> install)
+    // Update check -> Google Play hand-off
     // ---------------------------------------------------------------------
 
     private val _updateState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
@@ -73,7 +74,6 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private val _updateConfig = MutableStateFlow(AppUpdateConfig())
     val updateConfigState: StateFlow<AppUpdateConfig> = _updateConfig.asStateFlow()
 
-    private var activeDownloadId: Long? = null
 
     /** Reads the app's own installed version and checks the configured GitHub repo for a newer release. */
     fun checkForUpdate(context: Context) {
@@ -97,53 +97,34 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Downloads the update APK with the system DownloadManager, tracking progress until it's ready to install. */
+    /** Opens the official Google Play listing instead of side-loading an APK. */
     fun downloadUpdate(context: Context, info: AppUpdateInfo) {
-        viewModelScope.launch {
-            _downloadState.value = UpdateDownloadState.Downloading(0)
-            val id = try {
-                container.updateRepository.startDownload(context, info)
-            } catch (e: Exception) {
-                _downloadState.value = UpdateDownloadState.Failed(e.localizedMessage ?: "تعذّر بدء التنزيل")
-                return@launch
-            }
-            activeDownloadId = id
-            while (true) {
-                val status = container.updateRepository.queryStatus(context, id)
-                when (status.status) {
-                    DownloadManager.STATUS_SUCCESSFUL -> {
-                        _downloadState.value = UpdateDownloadState.ReadyToInstall
-                        return@launch
-                    }
-                    DownloadManager.STATUS_FAILED -> {
-                        _downloadState.value = UpdateDownloadState.Failed("فشل تنزيل التحديث، تحقق من الاتصال وحاول مرة أخرى")
-                        return@launch
-                    }
-                    else -> {
-                        val pct = if (status.totalBytes > 0) ((status.downloadedBytes * 100) / status.totalBytes).toInt() else 0
-                        _downloadState.value = UpdateDownloadState.Downloading(pct.coerceIn(0, 100))
-                    }
-                }
-                delay(400)
-            }
-        }
+        _downloadState.value = UpdateDownloadState.ReadyToInstall
+        openPlayStore(context)
     }
 
-    /** Launches the package installer for the already-downloaded update, asking for install permission first if needed. */
+    /** Opens the official Google Play listing; Play performs the signed update. */
     fun installUpdate(context: Context) {
-        val id = activeDownloadId ?: return
-        if (!container.updateRepository.canInstallPackages(context)) {
-            container.updateRepository.openInstallPermissionSettings(context)
-            return
+        openPlayStore(context)
+    }
+
+    private fun openPlayStore(context: Context) {
+        val packageUri = Uri.parse("market://details?id=${context.packageName}")
+        val marketIntent = Intent(Intent.ACTION_VIEW, packageUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(marketIntent) }.getOrElse {
+            context.startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         }
-        container.updateRepository.installApk(context, id)
     }
 
     /** Resets the update flow back to its initial state (e.g. after a dismissal). */
     fun resetUpdateFlow() {
         _updateState.value = UpdateCheckState.Idle
         _downloadState.value = UpdateDownloadState.Idle
-        activeDownloadId = null
     }
 
     /** Loads the current admin-editable update settings, for [AdminUpdateScreen]. */
