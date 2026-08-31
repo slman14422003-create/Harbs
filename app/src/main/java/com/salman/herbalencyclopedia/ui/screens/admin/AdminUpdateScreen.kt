@@ -66,7 +66,7 @@ fun AdminUpdateScreen(
         ) {
             item {
                 Text(
-                    "يتحقق التطبيق تلقائياً من آخر إصدار (Release)، ثم يفتح صفحة التطبيق الرسمية في Google Play عند توفر تحديث. لا يتم تنزيل أو تثبيت APK من خارج Google Play.",
+                    "يتحقق التطبيق تلقائياً من آخر إصدار (Release) على GitHub، ثم يفتح رابط تحميل ملف APK مباشرة عند توفر تحديث ليقوم المستخدم بتنزيله وتثبيته يدوياً.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
