@@ -65,7 +65,17 @@ private fun lightSchemeFor(palette: ThemePalette): androidx.compose.material3.Co
         onSurfaceVariant = t(hue, 0.20f, 0.34f),
         surfaceDim = t(hue, 0.12f, 0.84f),
         surfaceBright = t(hue, 0.08f, 0.97f),
-        surfaceContainerLowest = Color.White,
+        // كانت هذه Color.White صريح بلا أي علاقة بـ tone(): أبيض خالص بلا
+        // أي أثر للون اللوحة المختارة، بينما كل بقية الأسطح تتدرّج بنفس
+        // الصيغة الموحّدة t(hue, ...). النتيجة كانت أخفّ سطح بالتطبيق
+        // (البطاقات الأعلى ارتفاعاً، صفحات الإدخال...) يبدو "مبتوراً" عن
+        // بقية التدرّج اللوني — يقفز فجأة لأبيض محايد بدل الاستمرار بنفس
+        // نفَس اللون الخفيف الذي تراه بقية الأسطح، وهو تحديداً إحساس
+        // "الألوان مو ظابطة" في الوضع النهاري. نفس صيغة t() هنا بسطوع
+        // أعلى قليلاً من surfaceContainerLow يُبقيه أفتح سطح فعلاً لكن
+        // متّسقاً مع بقية التدرّج (وحياديّاً تماماً تلقائياً مع خيار "بدون
+        // تلوين" بفضل نفس آلية t() لا حاجة لأي استثناء إضافي).
+        surfaceContainerLowest = t(hue, 0.05f, 0.995f),
         surfaceContainerLow = t(hue, 0.09f, 0.95f),
         surfaceContainer = t(hue, 0.12f, 0.92f),
         surfaceContainerHigh = t(hue, 0.15f, 0.88f),

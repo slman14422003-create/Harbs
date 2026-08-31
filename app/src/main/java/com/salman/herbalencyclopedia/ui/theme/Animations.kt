@@ -15,6 +15,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -89,16 +90,29 @@ fun rememberPressScale(
  * كي تظهر البطاقات الواحدة تلو الأخرى بدل ظهورها كلها دفعة واحدة —
  * وتشتغل *مرة واحدة فقط* عند دخول الشاشة (بلا أي تكرار لانهائي)، على
  * عكس تأثير اللمعان الزجاجي المستمر الذي لا يناسب بطاقات كثيرة معاً.
+ *
+ * ثغرة أداء كانت هنا: `remember(index)` يُنسى بالكامل كلما خرج العنصر من
+ * نطاق الرسم في LazyColumn/LazyVerticalGrid وأُعيد تركيبه لاحقاً (وهو أمر
+ * طبيعي ومتكرر جداً أثناء التمرير)، فتُعاد حركة الظهور من الصفر (delay
+ * كامل + fade + slide) في كل مرة يمر فيها العنصر أمام الشاشة، على قوائم
+ * قد تحوي عشرات/مئات العناصر — إعادة تشغيل حركات وإطارات رسم لا داعي لها
+ * باستمرار أثناء التمرير، في كلا وضعي الأداء. rememberSaveable هنا يعتمد
+ * على SaveableStateHolder الخاص بـ Lazy*، والمرتبط بمعامل `key` الذي توفّره
+ * كل الشاشات فعلاً (`items(list, key = { it.id })`)، فتبقى حالة "ظهر
+ * سابقاً" محفوظة لكل عنصر باسمه الحقيقي حتى لو تغيّر index لاحقاً (بعد
+ * فرز/تصفية)، وتُشغَّل الحركة مرة واحدة فعلية فقط.
  */
 fun Modifier.staggeredEntrance(
     index: Int,
     stepMillis: Long = 45L,
     maxDelayMillis: Long = 360L
 ): Modifier = composed {
-    var visible by remember(index) { mutableStateOf(false) }
+    var visible by rememberSaveable(index) { mutableStateOf(false) }
     LaunchedEffect(index) {
-        delay(minOf(index * stepMillis, maxDelayMillis))
-        visible = true
+        if (!visible) {
+            delay(minOf(index * stepMillis, maxDelayMillis))
+            visible = true
+        }
     }
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
