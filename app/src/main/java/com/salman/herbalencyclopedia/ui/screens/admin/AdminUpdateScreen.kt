@@ -142,7 +142,6 @@ fun AdminUpdateScreen(
                         val newConfig = AppUpdateConfig(
                             enabled = enabled,
                             githubRepo = repo.trim(),
-                            overrideDownloadUrl = null,
                             overrideVersionName = versionName.trim().ifBlank { null },
                             releaseNotesOverride = notes.trim().ifBlank { null },
                             minVersionCode = minVersionCode.toIntOrNull() ?: 0
