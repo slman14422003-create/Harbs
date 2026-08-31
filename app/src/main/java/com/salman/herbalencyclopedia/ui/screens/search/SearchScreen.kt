@@ -1,8 +1,9 @@
 package com.salman.herbalencyclopedia.ui.screens.search
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
@@ -101,11 +102,15 @@ fun SearchScreen(
                 message = "لا توجد نتائج لـ \"$query\"",
                 modifier = Modifier.padding(padding)
             )
-            else -> LazyColumn(
+            // نفس إصلاح شاشات قوائم الأعشاب الأخرى: شبكة متكيّفة بدل عمود
+            // واحد ثابت يمدّد البطاقة بعرض الشاشة كاملاً على تابلت.
+            else -> LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 340.dp),
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(results, key = { it.id }) { herb ->
