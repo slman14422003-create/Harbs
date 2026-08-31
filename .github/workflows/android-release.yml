@@ -11,13 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # لا يمكن استخدام "secrets" مباشرة داخل أي شرط if: (قيد من GitHub
-      # Actions نفسه، يسبب خطأ "Unrecognized named-value: 'secrets'").
-      # لذلك نمرر النتيجة كمتغير env هنا، ونستخدم env.HAS_KEYSTORE_SECRET
-      # بدل secrets.ANDROID_KEYSTORE_BASE64 داخل أي if: أدناه.
-      HAS_KEYSTORE_SECRET: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -88,16 +81,6 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Restore cached fallback keystore
-        id: keystore-cache
-        if: ${{ env.HAS_KEYSTORE_SECRET != 'true' }}
-        uses: actions/cache@v4
-        with:
-          path: app/fallback.keystore.jks
-          key: fallback-keystore-v1
-          restore-keys: |
-            fallback-keystore-
-
       - name: Prepare signing keystore
         id: keystore
         env:
@@ -106,45 +89,19 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # إنشاء مجلد app إذا لم يكن موجوداً
-          mkdir -p app
-          
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Using keystore supplied via repository secrets (stable, permanent signing identity)."
-            KS_PATH="$GITHUB_WORKSPACE/app/release.keystore.jks"
-            echo "$KEYSTORE_BASE64" | base64 -d > "$KS_PATH"
-            echo "store_password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
-            echo "key_alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
-            echo "key_password=$KEY_PASSWORD" >> "$GITHUB_OUTPUT"
-          else
-            KS_PATH="$GITHUB_WORKSPACE/app/fallback.keystore.jks"
-            if [ -f "$KS_PATH" ]; then
-              echo "::warning::No ANDROID_KEYSTORE_BASE64 secret configured. Reusing cached fallback keystore."
-            else
-              echo "::warning::No ANDROID_KEYSTORE_BASE64 secret and no cached keystore. Generating new one."
-              keytool -genkeypair -v \
-                -keystore "$KS_PATH" \
-                -alias herbal \
-                -keyalg RSA -keysize 2048 -validity 10000 \
-                -storepass herbal123 -keypass herbal123 \
-                -dname "CN=Herbal Encyclopedia, OU=App, O=Salman, L=City, ST=State, C=US"
-            fi
-            echo "store_password=herbal123" >> "$GITHUB_OUTPUT"
-            echo "key_alias=herbal" >> "$GITHUB_OUTPUT"
-            echo "key_password=herbal123" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Release signing secrets are required. Refusing to generate or cache a fallback signing key."
+            exit 1
           fi
+          mkdir -p app
+          KS_PATH="$GITHUB_WORKSPACE/app/release.keystore.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KS_PATH"
+          keytool -list -keystore "$KS_PATH" -storepass "$KEYSTORE_PASSWORD" >/dev/null
           echo "store_file=$KS_PATH" >> "$GITHUB_OUTPUT"
-          
-          # عرض معلومات المفتاح للتحقق (بدون كلمات المرور)
-          echo "Keystore prepared at: $KS_PATH"
-          ls -la "$KS_PATH"
-
-      - name: Save fallback keystore to cache
-        if: ${{ env.HAS_KEYSTORE_SECRET != 'true' && steps.keystore-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: app/fallback.keystore.jks
-          key: fallback-keystore-v1
+          echo "store_password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
+          echo "key_alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
+          echo "key_password=$KEY_PASSWORD" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK and App Bundle
         env:
