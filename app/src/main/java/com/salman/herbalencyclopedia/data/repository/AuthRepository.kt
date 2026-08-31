@@ -34,9 +34,11 @@ class AuthRepository(
                 AuthResult(success = true, isAdmin = true)
             }
         } catch (e: Exception) {
+            // Never expose Firebase's raw exception text; it can reveal account
+            // state, backend details, or implementation-specific information.
             AuthResult(
                 success = false,
-                message = e.localizedMessage ?: "تعذّر تسجيل الدخول. تحقق من البيانات."
+                message = "تعذّر تسجيل الدخول. تحقق من بيانات المسؤول وحاول مرة أخرى."
             )
         }
     }

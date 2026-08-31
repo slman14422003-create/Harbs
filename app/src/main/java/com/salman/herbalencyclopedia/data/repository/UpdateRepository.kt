@@ -1,12 +1,5 @@
 package com.salman.herbalencyclopedia.data.repository
 
-import android.app.DownloadManager
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
@@ -20,15 +13,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Handles in-app self-update:
- *  - reads admin-editable settings from Firestore ("app_config/update"),
- *  - checks the configured GitHub repo's latest Release automatically,
- *  - downloads the APK asset with the system DownloadManager (shows in the
- *    system notification shade, resumable, no extra permissions needed),
- *  - and launches the package installer for it.
- *
- * This mirrors the same "settings document editable by the admin panel"
- * pattern the web app already uses for its own config.
+ * Reads the admin update metadata and checks the configured GitHub Release.
+ * Actual installation is intentionally delegated to Google Play; the app never
+ * side-loads or installs an APK itself.
  */
 class UpdateRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
@@ -50,10 +37,9 @@ class UpdateRepository(
                 AppUpdateConfig(
                     enabled = doc.getBoolean("enabled") ?: true,
                     githubRepo = doc.getString("github_repo")?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_REPO,
-                    overrideDownloadUrl = doc.getString("override_download_url")?.trim()?.takeIf { it.isNotBlank() },
                     overrideVersionName = doc.getString("override_version_name")?.trim()?.takeIf { it.isNotBlank() },
                     releaseNotesOverride = doc.getString("release_notes_override")?.trim()?.takeIf { it.isNotBlank() },
-                    minVersionCode = (doc.getLong("min_version_code") ?: 0L).toInt()
+                    minVersionCode = (doc.getLong("min_version_code") ?: 0L).toInt(),
                 )
             } else {
                 AppUpdateConfig(githubRepo = DEFAULT_REPO)
@@ -69,7 +55,6 @@ class UpdateRepository(
             hashMapOf(
                 "enabled" to config.enabled,
                 "github_repo" to config.githubRepo.trim(),
-                "override_download_url" to (config.overrideDownloadUrl?.trim() ?: ""),
                 "override_version_name" to (config.overrideVersionName?.trim() ?: ""),
                 "release_notes_override" to (config.releaseNotesOverride?.trim() ?: ""),
                 "min_version_code" to config.minVersionCode,
@@ -91,6 +76,7 @@ class UpdateRepository(
             if (repo.isBlank()) return@withContext null
 
             val release = fetchLatestRelease(repo)
+            if (release?.apkUrl == null) return@withContext null
             // This project's release workflow tags releases as "v<versionName>-<versionCode>"
             // (see .github/workflows/android-release.yml), e.g. "v2.0.0-42". Split those apart
             // so "42" is compared as the actual build number, not as a 4th version segment —
@@ -123,10 +109,9 @@ class UpdateRepository(
             }
             if (!newer && !mandatory) return@withContext null
 
-            val downloadUrl = config.overrideDownloadUrl
-                ?: release?.apkUrl
-                ?: release?.htmlUrl
-                ?: return@withContext null
+            // The app never side-loads the APK. It only uses the release metadata
+            // to inform the user, then delegates the actual update to Google Play.
+            val releasePageUrl = release?.htmlUrl ?: "https://github.com/$repo/releases"
 
             AppUpdateInfo(
                 versionName = remoteVersionName,
@@ -134,8 +119,7 @@ class UpdateRepository(
                 // text) to end users — always show a fixed, friendly Arabic message unless
                 // the admin explicitly typed a custom one in the admin panel.
                 releaseNotes = config.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
-                downloadUrl = downloadUrl,
-                releasePageUrl = release?.htmlUrl ?: "https://github.com/$repo/releases",
+                releasePageUrl = releasePageUrl,
                 mandatory = mandatory
             )
         }
@@ -154,7 +138,12 @@ class UpdateRepository(
         return withoutV to null
     }
 
-    private data class ReleaseData(val tagName: String, val body: String, val htmlUrl: String, val apkUrl: String?)
+    private data class ReleaseData(
+        val tagName: String,
+        val body: String,
+        val htmlUrl: String,
+        val apkUrl: String?
+    )
 
     private fun fetchLatestRelease(repo: String): ReleaseData? = try {
         val url = URL("https://api.github.com/repos/$repo/releases/latest")
@@ -207,66 +196,5 @@ class UpdateRepository(
         return false
     }
 
-    // ------------------------------------------------------------------
-    // Download & install
-    // ------------------------------------------------------------------
 
-    data class DownloadStatus(val status: Int, val downloadedBytes: Long, val totalBytes: Long)
-
-    /** Starts the download with the system DownloadManager and returns its download id. */
-    fun startDownload(context: Context, info: AppUpdateInfo): Long {
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val safeVersion = info.versionName.replace(Regex("[^A-Za-z0-9.]"), "_")
-        val fileName = "harbs-update-$safeVersion.apk"
-        val request = DownloadManager.Request(Uri.parse(info.downloadUrl))
-            .setTitle("تحديث موسوعة الأعشاب")
-            .setDescription("جاري تنزيل الإصدار ${info.versionName}")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
-            .setMimeType("application/vnd.android.package-archive")
-        return manager.enqueue(request)
-    }
-
-    fun queryStatus(context: Context, downloadId: Long): DownloadStatus {
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val cursor = manager.query(DownloadManager.Query().setFilterById(downloadId))
-        cursor.use {
-            if (it.moveToFirst()) {
-                val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                val downloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                return DownloadStatus(status, downloaded, total)
-            }
-        }
-        return DownloadStatus(DownloadManager.STATUS_FAILED, 0, 0)
-    }
-
-    /** True if the app is currently allowed to install the APK it downloaded itself. */
-    fun canInstallPackages(context: Context): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.packageManager.canRequestPackageInstalls()
-        } else true
-
-    /** Sends the user to the "install unknown apps" system settings screen for this app. */
-    fun openInstallPermissionSettings(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}")
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        }
-    }
-
-    fun installApk(context: Context, downloadId: Long) {
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val uri = manager.getUriForDownloadedFile(downloadId) ?: return
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(intent)
-    }
 }
