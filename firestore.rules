@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == 'OWssFNrZDaZfeSlrLF8ReS8O6LM2';
+    }
+
+    function isString(value, maxLength) {
+      return value is string && value.size() <= maxLength;
+    }
+
+    function validCategory(data) {
+      return data.keys().hasOnly(['name', 'icon', 'created_at', 'updated_at'])
+        && isString(data.name, 200)
+        && (!('icon' in data) || data.icon == null || isString(data.icon, 100));
+    }
+
+    function validUpdateConfig(data) {
+      return data.keys().hasOnly([
+          'enabled', 'github_repo', 'override_version_name',
+          'release_notes_override', 'min_version_code', 'updated_at'
+        ])
+        && data.enabled is bool
+        && isString(data.github_repo, 200)
+        && (!('override_version_name' in data) || data.override_version_name == null || isString(data.override_version_name, 50))
+        && (!('release_notes_override' in data) || data.release_notes_override == null || isString(data.release_notes_override, 2000))
+        && data.min_version_code is int;
+    }
+
+    function validHerb(data) {
+      return data.keys().hasOnly([
+          'name', 'category_id', 'benefits', 'warnings', 'harms', 'usage',
+          'notes', 'image_url', 'created_at', 'updated_at'
+        ])
+        && isString(data.name, 200)
+        && (!('category_id' in data) || data.category_id == null || isString(data.category_id, 150))
+        && isString(data.benefits, 10000)
+        && isString(data.warnings, 10000)
+        && isString(data.harms, 10000)
+        && isString(data.usage, 10000)
+        && isString(data.notes, 10000)
+        && (!('image_url' in data) || data.image_url == null || isString(data.image_url, 700000));
+    }
+
+    match /herbs/{herbId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && validHerb(request.resource.data);
+      allow update: if isAdmin() && validHerb(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && validCategory(request.resource.data);
+      allow update: if isAdmin() && validCategory(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Update metadata is readable by everyone so the app can check for releases
+    // without exposing any write capability. Only the fixed admin UID may change it.
+    match /app_config/update {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isAdmin() && validUpdateConfig(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // All other collections/documents are denied by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

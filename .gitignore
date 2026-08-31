@@ -21,3 +21,7 @@ app/keystore.properties
 
 # Never commit real Firebase Android config if you later add one
 app/google-services.json
+# Release signing material — never commit private keys or passwords
+app/*.jks
+app/keystore.properties
+app/release.keystore.jks
