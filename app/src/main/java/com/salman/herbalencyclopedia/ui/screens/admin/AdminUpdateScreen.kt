@@ -34,7 +34,6 @@ fun AdminUpdateScreen(
 
     var enabled by remember(config) { mutableStateOf(config.enabled) }
     var repo by remember(config) { mutableStateOf(config.githubRepo) }
-    var downloadUrl by remember(config) { mutableStateOf(config.overrideDownloadUrl ?: "") }
     var versionName by remember(config) { mutableStateOf(config.overrideVersionName ?: "") }
     var notes by remember(config) { mutableStateOf(config.releaseNotesOverride ?: "") }
     var minVersionCode by remember(config) {
@@ -67,7 +66,7 @@ fun AdminUpdateScreen(
         ) {
             item {
                 Text(
-                    "يتحقق التطبيق تلقائياً من آخر إصدار (Release) في مستودع GitHub أدناه، ويعرض على المستخدم تنزيله وتثبيته من شاشة الإعدادات. يمكنك التحكم بكل ذلك من هنا دون الحاجة لتحديث التطبيق نفسه.",
+                    "يتحقق التطبيق تلقائياً من آخر إصدار (Release)، ثم يفتح صفحة التطبيق الرسمية في Google Play عند توفر تحديث. لا يتم تنزيل أو تثبيت APK من خارج Google Play.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -101,16 +100,6 @@ fun AdminUpdateScreen(
                     label = { Text("مستودع GitHub") },
                     placeholder = { Text("owner/repo") },
                     supportingText = { Text("يُقرأ منه أحدث Release تلقائياً، مثال: slman14422003-create/Harbs") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = downloadUrl,
-                    onValueChange = { downloadUrl = it },
-                    label = { Text("رابط تحميل مخصّص (اختياري)") },
-                    supportingText = { Text("إن تُرك فارغاً يُستخدم ملف APK المرفق تلقائياً بأحدث Release في المستودع أعلاه") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -153,7 +142,7 @@ fun AdminUpdateScreen(
                         val newConfig = AppUpdateConfig(
                             enabled = enabled,
                             githubRepo = repo.trim(),
-                            overrideDownloadUrl = downloadUrl.trim().ifBlank { null },
+                            overrideDownloadUrl = null,
                             overrideVersionName = versionName.trim().ifBlank { null },
                             releaseNotesOverride = notes.trim().ifBlank { null },
                             minVersionCode = minVersionCode.toIntOrNull() ?: 0
