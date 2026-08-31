@@ -22,9 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.data.ai.AiConfig
+import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +43,16 @@ fun AdminToolsScreen(
     onTestConnection: ((Boolean, String?) -> Unit) -> Unit,
     onClearFavorites: () -> Unit,
     onRestoreBackup: (String, (Boolean, String?) -> Unit) -> Unit,
-    onUpdateSettingsClick: () -> Unit
+    onUpdateSettingsClick: () -> Unit,
+    // ── إعدادات "مساعد المقارنة الذكي" (HerbAssistant) — تُمرَّر حيّة من
+    // DataStore عبر HerbalNavGraph، وتُعدَّل هنا مباشرة كـ "أدوات مطور" ──
+    aiSimilarityThreshold: Float = AiConfig.defaultSimilarityThreshold.toFloat(),
+    aiSearchThreshold: Float = AiConfig.defaultSearchThreshold.toFloat(),
+    aiExtraStopWords: Set<String> = emptySet(),
+    onSetAiSimilarityThreshold: (Float) -> Unit = {},
+    onSetAiSearchThreshold: (Float) -> Unit = {},
+    onSetAiExtraStopWords: (Set<String>) -> Unit = {},
+    onResetAiSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -97,6 +109,18 @@ fun AdminToolsScreen(
             item { AdminButton(Icons.Filled.DeleteSweep, "مسح جميع الأعشاب", "حذف كل الأعشاب من Firestore", { confirmAction = "herbs" }, danger = true) }
             item { AdminButton(Icons.Filled.DeleteForever, "حذف كل البيانات", "حذف الأعشاب والتصنيفات", { confirmAction = "all" }, danger = true) }
             item { AdminButton(Icons.Filled.CleaningServices, "تنظيف المفضلة", "حذف المفضلة المحلية", { onClearFavorites(); notify(true, "تم تنظيف المفضلة") }) }
+            item {
+                AiAssistantDevTools(
+                    herbs = herbs,
+                    similarityThreshold = aiSimilarityThreshold,
+                    searchThreshold = aiSearchThreshold,
+                    extraStopWords = aiExtraStopWords,
+                    onSimilarityChange = onSetAiSimilarityThreshold,
+                    onSearchThresholdChange = onSetAiSearchThreshold,
+                    onExtraStopWordsChange = onSetAiExtraStopWords,
+                    onReset = { onResetAiSettings(); notify(true, "تمت إعادة ضبط إعدادات المساعد الذكي") }
+                )
+            }
         }
     }
     confirmAction?.let { action ->
@@ -140,6 +164,108 @@ fun AdminToolsScreen(
         )
     }
 }
+/**
+ * أدوات مطور لضبط "تدريب" مساعد المقارنة الذكي (HerbAssistant): عتبتا
+ * التشابه المستخدمتان في تجميع النقاط والبحث الحر، وكلمات إيقاف إضافية
+ * لتحسين تحليل النصوص العربية الخاصة بالموسوعة، مع مساحة اختبار حيّة
+ * تُظهر إجابة المساعد فوراً على أي سؤال باستخدام أعشاب حقيقية من القاعدة —
+ * كل تغيير هنا يُحفظ ويُطبَّق مباشرة بلا أي حظر أو قيد إضافي على الإجابات.
+ */
+@Composable
+private fun AiAssistantDevTools(
+    herbs: List<Herb>,
+    similarityThreshold: Float,
+    searchThreshold: Float,
+    extraStopWords: Set<String>,
+    onSimilarityChange: (Float) -> Unit,
+    onSearchThresholdChange: (Float) -> Unit,
+    onExtraStopWordsChange: (Set<String>) -> Unit,
+    onReset: () -> Unit
+) {
+    var stopWordsText by remember(extraStopWords) { mutableStateOf(extraStopWords.joinToString(", ")) }
+    var testQuestion by remember { mutableStateOf("") }
+    var testHerbIds by remember { mutableStateOf(setOf<String>()) }
+    var testAnswer by remember { mutableStateOf<String?>(null) }
+
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Psychology, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("مساعد المقارنة الذكي (تدريب/ضبط)", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+            Text(
+                "المساعد يعمل محلياً بالكامل من بيانات الموسوعة نفسها، بلا اتصال إنترنت وبلا أي حظر أو قيد على الإجابات. عدّل العتبات هنا لتحسين دقّة \"تدريبه\" فوراً.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("حساسية تجميع النقاط المتشابهة: ${(similarityThreshold * 100).roundToIntPct()}%", style = MaterialTheme.typography.labelLarge)
+                Slider(value = similarityThreshold, onValueChange = onSimilarityChange, valueRange = 0.05f..0.95f)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("حساسية البحث الحر عن إجابة: ${(searchThreshold * 100).roundToIntPct()}%", style = MaterialTheme.typography.labelLarge)
+                Slider(value = searchThreshold, onValueChange = onSearchThresholdChange, valueRange = 0.02f..0.9f)
+            }
+
+            OutlinedTextField(
+                value = stopWordsText,
+                onValueChange = { stopWordsText = it },
+                label = { Text("كلمات إيقاف إضافية (مفصولة بفاصلة)") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    onExtraStopWordsChange(stopWordsText.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet())
+                }) { Text("حفظ الكلمات") }
+                TextButton(onClick = onReset) { Text("إعادة الضبط الافتراضي") }
+            }
+
+            HorizontalDivider()
+
+            Text("اختبار حيّ", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            LazyColumn(Modifier.heightIn(max = 130.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(herbs, key = { it.id }) { herb ->
+                    FilterChip(
+                        selected = herb.id in testHerbIds,
+                        onClick = { testHerbIds = if (herb.id in testHerbIds) testHerbIds - herb.id else testHerbIds + herb.id },
+                        label = { Text(herb.name) },
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = testQuestion,
+                onValueChange = { testQuestion = it },
+                label = { Text("جرّب سؤالاً") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    TextButton(enabled = testQuestion.isNotBlank() && testHerbIds.isNotEmpty(), onClick = {
+                        val selectedHerbs = herbs.filter { it.id in testHerbIds }
+                        testAnswer = HerbAssistant.answer(testQuestion, selectedHerbs)
+                    }) { Text("اسأل") }
+                }
+            )
+            if (testAnswer != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                ) {
+                    Text(testAnswer.orEmpty(), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+private fun Float.roundToIntPct(): Int = this.roundToInt()
+
 private fun backupJson(categories: List<Category>, herbs: List<Herb>): String {
     val root = org.json.JSONObject()
     root.put("categories", org.json.JSONArray().apply { categories.forEach { put(org.json.JSONObject().apply { put("id",it.id); put("name",it.name); put("icon",it.icon ?: "") }) } })
