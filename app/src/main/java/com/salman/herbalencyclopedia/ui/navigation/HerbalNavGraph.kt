@@ -15,6 +15,8 @@ import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.components.OneUiFloatingNavBar
 import com.salman.herbalencyclopedia.ui.components.OneUiNavItem
+import com.salman.herbalencyclopedia.ui.components.OneUiNavigationRail
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import com.salman.herbalencyclopedia.ui.screens.admin.*
 import com.salman.herbalencyclopedia.ui.screens.allherbs.AllHerbsScreen
 import com.salman.herbalencyclopedia.ui.screens.auth.LoginScreen
@@ -63,6 +65,18 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
             OneUiNavItem("الإعدادات", Icons.Filled.Settings, Screen.Settings.route)
         )
     }
+    // محرك اكتشاف الشاشة يقرر نمط التنقّل: شريط عائم سفلي بالإبهام على
+    // جوال (COMPACT)، وشريط جانبي ثابت على تابلت/نافذة عريضة
+    // (MEDIUM/EXPANDED) بدل تمديد نفس الشريط السفلي بعرض الشاشة كاملاً —
+    // وهو ما كان يحدث سابقاً بلا أي تمييز بين الحجمين.
+    val windowInfo = rememberWindowSizeInfo()
+    val onNavItemClick: (OneUiNavItem) -> Unit = { item ->
+        navController.navigate(item.route) {
+            popUpTo(Screen.Home.route)
+            launchSingleTop = true
+        }
+    }
+    val showNav = current in topRoutes
 
     Scaffold(
         // كل شاشة تدير حواف نظامها بنفسها: GlassTopBar/TopAppBar يتكفّل بشريط
@@ -73,20 +87,29 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         // التدرّج اللوني قبل أن يصل لحواف الشاشة فعلياً.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-        if (current in topRoutes) {
-            OneUiFloatingNavBar(
-                items = bottomNavItems,
-                currentRoute = current,
-                onItemClick = { item ->
-                    navController.navigate(item.route) {
-                        popUpTo(Screen.Home.route)
-                        launchSingleTop = true
-                    }
-                }
-            )
+            // الشريط العائم السفلي فقط بوضع الجوال الضيق؛ على تابلت/نافذة
+            // عريضة ينتقل التنقل لشريط جانبي (أدناه) فلا حاجة لحجز سفلي هنا.
+            if (showNav && !windowInfo.useNavigationRail) {
+                OneUiFloatingNavBar(
+                    items = bottomNavItems,
+                    currentRoute = current,
+                    onItemClick = onNavItemClick
+                )
+            }
         }
-    }) { inner ->
-        Box(Modifier.padding(inner).fillMaxSize()) {
+    ) { inner ->
+        Row(Modifier.padding(inner).fillMaxSize()) {
+            // على تابلت/نافذة عريضة: شريط جانبي ثابت بجوار المحتوى بدل
+            // شريط سفلي عائم يمتد بعرض الشاشة كاملاً بعيداً عن متناول
+            // الإبهام في تلك الحالة.
+            if (showNav && windowInfo.useNavigationRail) {
+                OneUiNavigationRail(
+                    items = bottomNavItems,
+                    currentRoute = current,
+                    onItemClick = onNavItemClick
+                )
+            }
+        Box(Modifier.weight(1f).fillMaxSize()) {
             com.salman.herbalencyclopedia.ui.components.AmbientBackground()
             NavHost(
                 navController,
@@ -198,6 +221,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 }
                 composable(Screen.AdminEdit.route, arguments=listOf(navArgument("herbId"){type=NavType.StringType})) { e -> if (appViewModel.isAdmin) { val id=e.arguments?.getString("herbId"); val existing=uiState.herbs.firstOrNull {it.id==id}; AdminEditHerbScreen(existing, uiState.categories, {navController.popBackStack()}, {h,cb->if(existing==null) appViewModel.addHerb(h,cb) else appViewModel.updateHerb(h,cb)}) } }
             }
+        }
         }
     }
 }
