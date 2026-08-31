@@ -14,8 +14,9 @@ import java.net.URL
 
 /**
  * Reads the admin update metadata and checks the configured GitHub Release.
- * Actual installation is intentionally delegated to Google Play; the app never
- * side-loads or installs an APK itself.
+ * The app is distributed as a direct APK download rather than through Google
+ * Play, so an available update points straight at the .apk asset's download
+ * URL (falling back to the release page if no .apk asset is attached).
  */
 class UpdateRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
@@ -109,8 +110,8 @@ class UpdateRepository(
             }
             if (!newer && !mandatory) return@withContext null
 
-            // The app never side-loads the APK. It only uses the release metadata
-            // to inform the user, then delegates the actual update to Google Play.
+            // Direct-download distribution: point the user at the .apk asset itself
+            // (falling back to the release page if this release has no .apk attached).
             val releasePageUrl = release?.htmlUrl ?: "https://github.com/$repo/releases"
 
             AppUpdateInfo(
@@ -120,6 +121,7 @@ class UpdateRepository(
                 // the admin explicitly typed a custom one in the admin panel.
                 releaseNotes = config.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
                 releasePageUrl = releasePageUrl,
+                apkUrl = release?.apkUrl,
                 mandatory = mandatory
             )
         }
