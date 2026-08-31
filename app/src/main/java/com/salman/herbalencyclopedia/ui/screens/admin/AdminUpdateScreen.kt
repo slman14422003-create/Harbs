@@ -39,6 +39,8 @@ fun AdminUpdateScreen(
     var minVersionCode by remember(config) {
         mutableStateOf(if (config.minVersionCode > 0) config.minVersionCode.toString() else "")
     }
+    var useProxyFallback by remember(config) { mutableStateOf(config.useProxyFallback) }
+    var customProxyBaseUrl by remember(config) { mutableStateOf(config.customProxyBaseUrl ?: "") }
     var saving by remember { mutableStateOf(false) }
 
     fun notify(message: String) {
@@ -125,6 +127,41 @@ fun AdminUpdateScreen(
                 )
             }
             item {
+                Card(
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("استخدام بروكسي عند حجب GitHub", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "إذا فشل الوصول المباشر لـ GitHub (كما في بعض الدول)، يعيد التطبيق المحاولة عبر مرآة بروكسي تلقائياً، دون الحاجة لـ VPN",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = useProxyFallback, onCheckedChange = { useProxyFallback = it })
+                    }
+                }
+            }
+            if (useProxyFallback) {
+                item {
+                    OutlinedTextField(
+                        value = customProxyBaseUrl,
+                        onValueChange = { customProxyBaseUrl = it },
+                        label = { Text("رابط بروكسي مخصّص (اختياري)") },
+                        placeholder = { Text("https://my-proxy.example.com/") },
+                        supportingText = { Text("إن تُرك فارغاً تُستخدم مرايا عامة معروفة تلقائياً كخطة بديلة") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            item {
                 OutlinedTextField(
                     value = minVersionCode,
                     onValueChange = { v -> minVersionCode = v.filter { it.isDigit() } },
@@ -144,7 +181,9 @@ fun AdminUpdateScreen(
                             githubRepo = repo.trim(),
                             overrideVersionName = versionName.trim().ifBlank { null },
                             releaseNotesOverride = notes.trim().ifBlank { null },
-                            minVersionCode = minVersionCode.toIntOrNull() ?: 0
+                            minVersionCode = minVersionCode.toIntOrNull() ?: 0,
+                            useProxyFallback = useProxyFallback,
+                            customProxyBaseUrl = customProxyBaseUrl.trim().ifBlank { null }
                         )
                         onSave(newConfig) { ok, msg ->
                             saving = false
