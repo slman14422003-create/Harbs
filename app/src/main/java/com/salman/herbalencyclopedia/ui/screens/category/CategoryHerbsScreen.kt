@@ -1,8 +1,9 @@
 package com.salman.herbalencyclopedia.ui.screens.category
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -40,11 +41,16 @@ fun CategoryHerbsScreen(
         if (herbs.isEmpty()) {
             EmptyView(message = "لا توجد أعشاب في هذا التصنيف بعد", modifier = Modifier.padding(padding))
         } else {
-            LazyColumn(
+            // كان عموداً واحداً ثابتاً؛ Adaptive يوسّع تلقائياً على تابلت
+            // بدل بطاقة ممدودة بعرض الشاشة كاملاً (نفس إصلاح باقي شاشات
+            // قوائم الأعشاب).
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 340.dp),
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(herbs, key = { it.id }) { herb ->
