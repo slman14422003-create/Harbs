@@ -128,12 +128,22 @@ fun OneUiFloatingNavBar(
 ) {
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
     val shape = RoundedCornerShape(30.dp)
+    // على تنقّل الإيماءات الحاجز السفلي (navigationBars) رفيع جداً (عادة
+    // أقل من 32dp)، بينما على أزرار التنقل التقليدية الثلاثة يكون أثخن
+    // بوضوح. windowInsetsPadding(navigationBars) وحده يتكفّل بعدم تداخل
+    // الشريط مع نظام التنقل في الحالتين، لكن بلا أي هامش إضافي كان الشريط
+    // العائم يلتصق بحافة منطقة الإيماءات مباشرة على أجهزة الإيماءات —
+    // فرق بسيط لكنه يجعل الشريط "معلّقاً" بدل مستقر. هامش سفلي إضافي صغير
+    // فقط في وضع الإيماءات يعيد له نفس الإحساس بالاستقرار الذي يملكه
+    // تلقائياً فوق أزرار التنقل الأثخن.
+    val extraBottomPadding = if (com.salman.herbalencyclopedia.ui.util.isGestureNavigation()) 8.dp else 0.dp
 
     Box(
         modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .padding(bottom = extraBottomPadding),
         contentAlignment = Alignment.Center
     ) {
         LiquidGlassSurface(
@@ -223,6 +233,47 @@ private fun OneUiFloatingNavItem(
                 androidx.compose.animation.shrinkHorizontally(com.salman.herbalencyclopedia.ui.theme.AppMotion.snappy())
         ) {
             Text(item.label, color = content, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/**
+ * شريط تنقّل جانبي لتابلت/نافذة عريضة (Medium/Expanded)، بديل عن
+ * [OneUiFloatingNavBar] الذي صُمّم لعرض جوال ضيق. قبل هذا المكوّن كان
+ * الشريط العائم السفلي نفسه يُستخدم على كل الأحجام بلا استثناء: على
+ * تابلت بوضع أفقي هذا يعني شريطاً عريضاً يمتد كامل عرض الشاشة أسفلها
+ * بعيداً عن الإبهام في تلك الحالة، ويسرق ارتفاعاً كان يمكن استغلاله
+ * لعرض محتوى أكثر. شريط جانبي ثابت العرض على الحافة (يمين الشاشة بلغة
+ * RTL) هو النمط المعتاد لتطبيقات أندرويد على الشاشات الواسعة.
+ */
+@Composable
+fun OneUiNavigationRail(
+    items: List<OneUiNavItem>,
+    currentRoute: String?,
+    onItemClick: (OneUiNavItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    NavigationRail(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        windowInsets = WindowInsets(0, 0, 0, 0)
+    ) {
+        Spacer(Modifier.height(12.dp))
+        items.forEach { item ->
+            val selected = item.route == currentRoute
+            NavigationRailItem(
+                selected = selected,
+                onClick = { onItemClick(item) },
+                icon = { Icon(item.icon, contentDescription = item.label) },
+                label = { Text(item.label, fontWeight = FontWeight.SemiBold) },
+                colors = NavigationRailItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
         }
     }
 }
