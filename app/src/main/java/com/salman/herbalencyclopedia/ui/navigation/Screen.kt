@@ -2,6 +2,7 @@ package com.salman.herbalencyclopedia.ui.navigation
 
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
+    data object Welcome : Screen("welcome")
     data object Home : Screen("home")
     data object AllHerbs : Screen("all_herbs")
     data object Favorites : Screen("favorites")

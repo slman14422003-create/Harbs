@@ -24,6 +24,7 @@ import com.salman.herbalencyclopedia.ui.screens.favorites.FavoritesScreen
 import com.salman.herbalencyclopedia.ui.screens.help.HelpScreen
 import com.salman.herbalencyclopedia.ui.screens.herbdetail.HerbDetailScreen
 import com.salman.herbalencyclopedia.ui.screens.home.HomeScreen
+import com.salman.herbalencyclopedia.ui.screens.onboarding.WelcomeScreen
 import com.salman.herbalencyclopedia.ui.screens.search.SearchScreen
 import com.salman.herbalencyclopedia.ui.screens.settings.SettingsScreen
 import com.salman.herbalencyclopedia.ui.screens.splash.SplashScreen
@@ -35,6 +36,9 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val uiState by appViewModel.uiState.collectAsState()
     val favoriteIds by appViewModel.favoriteIds.collectAsState()
     val darkMode by preferencesRepository.darkMode.collectAsState(initial = null)
+    // null = لم تُقرأ بعد من DataStore. نتعامل معها كـ "لم يوافق بعد" (نفس
+    // معاملة false) لتفادي أي وميض للشاشة الرئيسية قبل عرض شاشة الترحيب.
+    val termsAccepted by preferencesRepository.termsAccepted.collectAsState(initial = null)
     val dynamicColor by preferencesRepository.dynamicColor.collectAsState(initial = true)
     val fontScale by preferencesRepository.fontScale.collectAsState(initial = 0)
     val themePalette by preferencesRepository.themePalette.collectAsState(
@@ -111,10 +115,24 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
             ) {
                 composable(Screen.Splash.route) {
                     SplashScreen(onFinished = {
-                        navController.navigate(Screen.Home.route) {
+                        val destination = if (termsAccepted == true) Screen.Home.route else Screen.Welcome.route
+                        navController.navigate(destination) {
                             popUpTo(Screen.Splash.route) { inclusive = true }
                         }
                     })
+                }
+                composable(Screen.Welcome.route) {
+                    WelcomeScreen(
+                        onViewFullPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) },
+                        onAgree = {
+                            scope.launch {
+                                preferencesRepository.setTermsAccepted(true)
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(Screen.Welcome.route) { inclusive = true }
+                                }
+                            }
+                        }
+                    )
                 }
                 composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.Compare.route) }) }
                 composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
