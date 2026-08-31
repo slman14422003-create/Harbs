@@ -144,6 +144,9 @@ dependencies {
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // قراءة اتجاه الصورة (EXIF) قبل الضغط - راجع data/image/ImageCompressor.kt
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     // Local persistence (favorites, theme preference, offline cache)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
