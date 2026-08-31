@@ -2,11 +2,13 @@ package com.salman.herbalencyclopedia.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.salman.herbalencyclopedia.data.ai.AiConfig
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.theme.recommendedPerformanceMode
@@ -29,6 +31,12 @@ class PreferencesRepository(private val context: Context) {
         val THEME_PALETTE = stringPreferencesKey("theme_palette")
         val PERFORMANCE_MODE = stringPreferencesKey("performance_mode")
         val TERMS_ACCEPTED = booleanPreferencesKey("terms_accepted")
+        // إعدادات "مساعد المقارنة الذكي" (HerbAssistant) — قابلة للتعديل من
+        // أدوات المطور (AdminToolsScreen) لضبط/"تدريب" سلوك المطابقة النصية
+        // المحلية دون الحاجة لإعادة بناء التطبيق.
+        val AI_SIMILARITY_THRESHOLD = floatPreferencesKey("ai_similarity_threshold")
+        val AI_SEARCH_THRESHOLD = floatPreferencesKey("ai_search_threshold")
+        val AI_EXTRA_STOPWORDS = stringSetPreferencesKey("ai_extra_stopwords")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -102,5 +110,34 @@ class PreferencesRepository(private val context: Context) {
     /** يُستدعى مرة واحدة فقط عند ضغط "أوافق" في شاشة الترحيب الأولى. */
     suspend fun setTermsAccepted(accepted: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.TERMS_ACCEPTED] = accepted }
+    }
+
+    // ── إعدادات مساعد المقارنة الذكي (HerbAssistant) ────────────────────
+
+    val aiSimilarityThreshold: Flow<Float> = context.dataStore.data.map {
+        it[Keys.AI_SIMILARITY_THRESHOLD] ?: AiConfig.defaultSimilarityThreshold.toFloat()
+    }
+    val aiSearchThreshold: Flow<Float> = context.dataStore.data.map {
+        it[Keys.AI_SEARCH_THRESHOLD] ?: AiConfig.defaultSearchThreshold.toFloat()
+    }
+    val aiExtraStopWords: Flow<Set<String>> = context.dataStore.data.map {
+        it[Keys.AI_EXTRA_STOPWORDS] ?: emptySet()
+    }
+
+    suspend fun setAiSimilarityThreshold(value: Float) {
+        context.dataStore.edit { it[Keys.AI_SIMILARITY_THRESHOLD] = value }
+    }
+    suspend fun setAiSearchThreshold(value: Float) {
+        context.dataStore.edit { it[Keys.AI_SEARCH_THRESHOLD] = value }
+    }
+    suspend fun setAiExtraStopWords(words: Set<String>) {
+        context.dataStore.edit { it[Keys.AI_EXTRA_STOPWORDS] = words }
+    }
+    suspend fun resetAiSettings() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.AI_SIMILARITY_THRESHOLD)
+            prefs.remove(Keys.AI_SEARCH_THRESHOLD)
+            prefs.remove(Keys.AI_EXTRA_STOPWORDS)
+        }
     }
 }
