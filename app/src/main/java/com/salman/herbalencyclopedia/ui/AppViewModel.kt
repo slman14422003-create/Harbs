@@ -40,7 +40,7 @@ sealed class UpdateCheckState {
     data class Error(val message: String) : UpdateCheckState()
 }
 
-/** State of the Google Play update hand-off (see [AppViewModel.downloadUpdate]). */
+/** State of the direct-APK-download update hand-off (see [AppViewModel.downloadUpdate]). */
 sealed class UpdateDownloadState {
     data object Idle : UpdateDownloadState()
     data class Downloading(val progress: Int) : UpdateDownloadState()
@@ -62,7 +62,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         private set
 
     // ---------------------------------------------------------------------
-    // Update check -> Google Play hand-off
+    // Update check -> direct APK download hand-off
     // ---------------------------------------------------------------------
 
     private val _updateState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
@@ -97,28 +97,34 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Opens the official Google Play listing instead of side-loading an APK. */
+    // Remembers the last update info so installUpdate() (which isn't passed the
+    // info again from the UI) can re-open the same download link, e.g. on retry.
+    private var lastUpdateInfo: AppUpdateInfo? = null
+
+    /** Opens the .apk asset's direct download link in the browser (falls back to the release page). */
     fun downloadUpdate(context: Context, info: AppUpdateInfo) {
-        _downloadState.value = UpdateDownloadState.ReadyToInstall
-        openPlayStore(context)
-    }
-
-    /** Opens the official Google Play listing; Play performs the signed update. */
-    fun installUpdate(context: Context) {
-        openPlayStore(context)
-    }
-
-    private fun openPlayStore(context: Context) {
-        val packageUri = Uri.parse("market://details?id=${context.packageName}")
-        val marketIntent = Intent(Intent.ACTION_VIEW, packageUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(marketIntent) }.getOrElse {
-            context.startActivity(
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+        lastUpdateInfo = info
+        val opened = openDownloadLink(context, info.apkUrl ?: info.releasePageUrl)
+        _downloadState.value = if (opened) {
+            UpdateDownloadState.ReadyToInstall
+        } else {
+            UpdateDownloadState.Failed("تعذّر فتح رابط التحميل")
         }
+    }
+
+    /** Re-opens the download link, e.g. if the user dismissed the browser/download without installing. */
+    fun installUpdate(context: Context) {
+        val info = lastUpdateInfo ?: return
+        openDownloadLink(context, info.apkUrl ?: info.releasePageUrl)
+    }
+
+    /** Opens a URL (the .apk download or the GitHub release page) in the browser. Returns success. */
+    private fun openDownloadLink(context: Context, url: String): Boolean {
+        return runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.isSuccess
     }
 
     /** Resets the update flow back to its initial state (e.g. after a dismissal). */
