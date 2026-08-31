@@ -11,6 +11,7 @@ sealed class Screen(val route: String) {
     data object Compare : Screen("compare")
     data object Help : Screen("help")
     data object PrivacyPolicy : Screen("privacy_policy")
+    data object Terms : Screen("terms")
     data object CategoryHerbs : Screen("category/{categoryId}/{categoryName}") {
         fun createRoute(categoryId: String, categoryName: String) = "category/$categoryId/${android.net.Uri.encode(categoryName)}"
     }
