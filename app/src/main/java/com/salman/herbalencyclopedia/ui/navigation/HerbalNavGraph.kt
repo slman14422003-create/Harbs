@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.*
 import androidx.navigation.compose.*
+import com.salman.herbalencyclopedia.data.ai.AiConfig
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.components.OneUiFloatingNavBar
@@ -53,6 +54,21 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val updateState by appViewModel.updateState.collectAsState()
     val downloadState by appViewModel.downloadState.collectAsState()
     val updateConfig by appViewModel.updateConfigState.collectAsState()
+    // إعدادات "مساعد المقارنة الذكي" — تُحمَّل من DataStore وتُطبَّق حياً على
+    // AiConfig (الكائن الذي يقرأ منه HerbAssistant مباشرة)، بحيث أي تعديل
+    // من أدوات المطور ينعكس فوراً على شاشة المقارنة دون إعادة تشغيل التطبيق.
+    val aiSimilarityThreshold by preferencesRepository.aiSimilarityThreshold.collectAsState(
+        initial = AiConfig.defaultSimilarityThreshold.toFloat()
+    )
+    val aiSearchThreshold by preferencesRepository.aiSearchThreshold.collectAsState(
+        initial = AiConfig.defaultSearchThreshold.toFloat()
+    )
+    val aiExtraStopWords by preferencesRepository.aiExtraStopWords.collectAsState(initial = emptySet())
+    LaunchedEffect(aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords) {
+        AiConfig.similarityThreshold = aiSimilarityThreshold.toDouble()
+        AiConfig.searchThreshold = aiSearchThreshold.toDouble()
+        AiConfig.extraStopWords = aiExtraStopWords
+    }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
     val topRoutes = setOf(Screen.Home.route, Screen.AllHerbs.route, Screen.Favorites.route, Screen.Settings.route)
@@ -208,7 +224,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 }
                 composable(Screen.Login.route) { LoginScreen({ navController.popBackStack() }, appViewModel::login) { navController.popBackStack() } }
                 composable(Screen.Admin.route) { if (appViewModel.isAdmin) AdminListScreen(uiState.herbs, {navController.popBackStack()}, {navController.navigate(Screen.AdminEdit.createRoute(Screen.AdminEdit.NEW))}, {h->navController.navigate(Screen.AdminEdit.createRoute(h.id))}, {h->appViewModel.deleteHerb(h.id) { _, _ -> }}) { navController.navigate(Screen.AdminTools.route) } }
-                composable(Screen.AdminTools.route) { if (appViewModel.isAdmin) AdminToolsScreen(uiState.categories, uiState.herbs, {navController.popBackStack()}, appViewModel::refresh, {n,cb->appViewModel.addCategory(n,cb)}, {id,cb->appViewModel.deleteCategory(id,cb)}, {cb->appViewModel.deleteAllHerbs(cb)}, {cb->appViewModel.deleteAllData(cb)}, {cb->appViewModel.testConnection(cb)}, {appViewModel.clearFavorites()}, {json,cb->appViewModel.restoreBackup(json,cb)}, {navController.navigate(Screen.AdminUpdate.route)}) }
+                composable(Screen.AdminTools.route) { if (appViewModel.isAdmin) AdminToolsScreen(uiState.categories, uiState.herbs, {navController.popBackStack()}, appViewModel::refresh, {n,cb->appViewModel.addCategory(n,cb)}, {id,cb->appViewModel.deleteCategory(id,cb)}, {cb->appViewModel.deleteAllHerbs(cb)}, {cb->appViewModel.deleteAllData(cb)}, {cb->appViewModel.testConnection(cb)}, {appViewModel.clearFavorites()}, {json,cb->appViewModel.restoreBackup(json,cb)}, {navController.navigate(Screen.AdminUpdate.route)}, aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, {v -> scope.launch { preferencesRepository.setAiSimilarityThreshold(v) }}, {v -> scope.launch { preferencesRepository.setAiSearchThreshold(v) }}, {w -> scope.launch { preferencesRepository.setAiExtraStopWords(w) }}, { scope.launch { preferencesRepository.resetAiSettings() } }) }
                 composable(Screen.AdminUpdate.route) {
                     if (appViewModel.isAdmin) {
                         LaunchedEffect(Unit) { appViewModel.loadUpdateConfig() }
