@@ -35,7 +35,8 @@ fun HerbDetailScreen(
     herb: Herb,
     isFavorite: Boolean,
     onBack: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onReportIssue: () -> Unit
 ) {
     val sections = listOf(
         InfoSection("الفوائد", herb.benefits, Icons.Filled.Favorite, Color(0xFF2E7D32)),
@@ -56,6 +57,9 @@ fun HerbDetailScreen(
                     }
                 },
                 actions = {
+                    GlassIconButton(onClick = onReportIssue) {
+                        Icon(Icons.Filled.Feedback, contentDescription = "الإبلاغ عن خطأ بالمعلومات")
+                    }
                     GlassIconButton(onClick = onToggleFavorite) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
