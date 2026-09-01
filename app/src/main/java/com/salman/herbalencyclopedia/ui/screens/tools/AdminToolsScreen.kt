@@ -44,7 +44,7 @@ fun AdminToolsScreen(
     onClearFavorites: () -> Unit,
     onRestoreBackup: (String, (Boolean, String?) -> Unit) -> Unit,
     onUpdateSettingsClick: () -> Unit,
-    // ── إعدادات "مساعد المقارنة الذكي" (HerbAssistant) — تُمرَّر حيّة من
+    // ── إعدادات "سيمو المساعد" (HerbAssistant) — تُمرَّر حيّة من
     // DataStore عبر HerbalNavGraph، وتُعدَّل هنا مباشرة كـ "أدوات مطور" ──
     aiSimilarityThreshold: Float = AiConfig.defaultSimilarityThreshold.toFloat(),
     aiSearchThreshold: Float = AiConfig.defaultSearchThreshold.toFloat(),
@@ -165,7 +165,7 @@ fun AdminToolsScreen(
     }
 }
 /**
- * أدوات مطور لضبط "تدريب" مساعد المقارنة الذكي (HerbAssistant): عتبتا
+ * أدوات مطور لضبط "تدريب" سيمو المساعد (HerbAssistant): عتبتا
  * التشابه المستخدمتان في تجميع النقاط والبحث الحر، وكلمات إيقاف إضافية
  * لتحسين تحليل النصوص العربية الخاصة بالموسوعة، مع مساحة اختبار حيّة
  * تُظهر إجابة المساعد فوراً على أي سؤال باستخدام أعشاب حقيقية من القاعدة —
@@ -196,7 +196,7 @@ private fun AiAssistantDevTools(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Psychology, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
-                Text("مساعد المقارنة الذكي (تدريب/ضبط)", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text("سيمو المساعد (تدريب/ضبط)", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             }
             Text(
                 "المساعد يعمل محلياً بالكامل من بيانات الموسوعة نفسها، بلا اتصال إنترنت وبلا أي حظر أو قيد على الإجابات. عدّل العتبات هنا لتحسين دقّة \"تدريبه\" فوراً.",
