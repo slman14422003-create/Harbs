@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.ai.AiConfig
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
+import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlinx.coroutines.launch
@@ -52,7 +53,14 @@ fun AdminToolsScreen(
     onSetAiSimilarityThreshold: (Float) -> Unit = {},
     onSetAiSearchThreshold: (Float) -> Unit = {},
     onSetAiExtraStopWords: (Set<String>) -> Unit = {},
-    onResetAiSettings: () -> Unit = {}
+    onResetAiSettings: () -> Unit = {},
+    // ── تدريب سيمو المخصّص: مرادفات وحالات (سؤال ← رد) يعلّمها المطوّر ──
+    aiSynonyms: Map<String, String> = emptyMap(),
+    aiTrainedExamples: List<TrainedExample> = emptyList(),
+    aiTrainedThreshold: Float = AiConfig.defaultTrainedThreshold.toFloat(),
+    onSetAiSynonyms: (Map<String, String>) -> Unit = {},
+    onSetAiTrainedExamples: (List<TrainedExample>) -> Unit = {},
+    onSetAiTrainedThreshold: (Float) -> Unit = {}
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -119,6 +127,16 @@ fun AdminToolsScreen(
                     onSearchThresholdChange = onSetAiSearchThreshold,
                     onExtraStopWordsChange = onSetAiExtraStopWords,
                     onReset = { onResetAiSettings(); notify(true, "تمت إعادة ضبط إعدادات المساعد الذكي") }
+                )
+            }
+            item {
+                AiTrainingDevTools(
+                    synonyms = aiSynonyms,
+                    trainedExamples = aiTrainedExamples,
+                    trainedThreshold = aiTrainedThreshold,
+                    onSynonymsChange = onSetAiSynonyms,
+                    onTrainedExamplesChange = onSetAiTrainedExamples,
+                    onTrainedThresholdChange = onSetAiTrainedThreshold
                 )
             }
         }
@@ -265,6 +283,147 @@ private fun AiAssistantDevTools(
 }
 
 private fun Float.roundToIntPct(): Int = this.roundToInt()
+
+/**
+ * أدوات مطور لـ"تطوير الفهم" الفعلي لسيمو بما يتجاوز عتبات المطابقة: يضيف
+ * المطوّر هنا مرادفات (كلمات جديدة يفهمها سيمو كأنها كلمة أخرى معروفة له)
+ * وحالات مدرَّبة كاملة (سؤال نموذجي + الرد المطلوب بالضبط)، فيتعلّم سيمو
+ * التعامل مع صياغات أو حالات لم يغطها المنطق العام جيداً — كل ذلك يُحفظ
+ * ويُطبَّق فوراً بلا إعادة بناء التطبيق.
+ */
+@Composable
+private fun AiTrainingDevTools(
+    synonyms: Map<String, String>,
+    trainedExamples: List<TrainedExample>,
+    trainedThreshold: Float,
+    onSynonymsChange: (Map<String, String>) -> Unit,
+    onTrainedExamplesChange: (List<TrainedExample>) -> Unit,
+    onTrainedThresholdChange: (Float) -> Unit
+) {
+    var newSynonymWord by remember { mutableStateOf("") }
+    var newSynonymMeaning by remember { mutableStateOf("") }
+    var newPattern by remember { mutableStateOf("") }
+    var newResponse by remember { mutableStateOf("") }
+
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.School, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("تدريب سيمو المخصّص", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+            Text(
+                "علّم سيمو كلمات ومرادفات جديدة، أو درّبه على حالات وأسئلة بعينها بردٍ تكتبه أنت بنفسك — يُستخدم فوراً في كل محادثة قادمة.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            // ── عتبة مطابقة الحالات المدرَّبة ──
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("حساسية مطابقة الحالات المدرَّبة: ${(trainedThreshold * 100).roundToIntPct()}%", style = MaterialTheme.typography.labelLarge)
+                Slider(value = trainedThreshold, onValueChange = onTrainedThresholdChange, valueRange = 0.1f..0.95f)
+                Text(
+                    "كلما قلّت النسبة، كفى تشابه أبسط بين سؤال المستخدم والمثال المدرَّب ليُستخدم رده مباشرة.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            HorizontalDivider()
+
+            // ── مرادفات ──
+            Text("مرادفات (كلمات جديدة يفهمها سيمو)", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (synonyms.isEmpty()) {
+                Text("لا توجد مرادفات مضافة بعد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    synonyms.forEach { (word, meaning) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("$word  ⇦  $meaning", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            GlassIconButton(onClick = { onSynonymsChange(synonyms - word) }, size = 32.dp) {
+                                Icon(Icons.Filled.Delete, "حذف", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = newSynonymWord,
+                    onValueChange = { newSynonymWord = it },
+                    label = { Text("كلمة جديدة") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = newSynonymMeaning,
+                    onValueChange = { newSynonymMeaning = it },
+                    label = { Text("تُفهم كـ") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            TextButton(
+                enabled = newSynonymWord.isNotBlank() && newSynonymMeaning.isNotBlank(),
+                onClick = {
+                    onSynonymsChange(synonyms + (newSynonymWord.trim() to newSynonymMeaning.trim()))
+                    newSynonymWord = ""; newSynonymMeaning = ""
+                }
+            ) { Text("إضافة مرادف") }
+
+            HorizontalDivider()
+
+            // ── حالات مدرَّبة ──
+            Text("حالات مدرَّبة (سؤال ← رد مخصّص)", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (trainedExamples.isEmpty()) {
+                Text("لا توجد حالات مدرَّبة بعد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    trainedExamples.forEach { example ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
+                        ) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("س: ${example.pattern}", style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                    Text("ج: ${example.response}", style = MaterialTheme.typography.bodySmall)
+                                }
+                                GlassIconButton(onClick = { onTrainedExamplesChange(trainedExamples - example) }, size = 32.dp) {
+                                    Icon(Icons.Filled.Delete, "حذف", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = newPattern,
+                onValueChange = { newPattern = it },
+                label = { Text("سؤال نموذجي") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = newResponse,
+                onValueChange = { newResponse = it },
+                label = { Text("الرد المطلوب") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
+            )
+            TextButton(
+                enabled = newPattern.isNotBlank() && newResponse.isNotBlank(),
+                onClick = {
+                    onTrainedExamplesChange(trainedExamples + TrainedExample(newPattern.trim(), newResponse.trim()))
+                    newPattern = ""; newResponse = ""
+                }
+            ) { Text("إضافة حالة") }
+        }
+    }
+}
 
 private fun backupJson(categories: List<Category>, herbs: List<Herb>): String {
     val root = org.json.JSONObject()
