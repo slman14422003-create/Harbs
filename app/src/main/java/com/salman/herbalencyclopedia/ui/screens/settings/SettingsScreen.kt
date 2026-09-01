@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.*
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.ui.UpdateCheckState
@@ -81,6 +82,7 @@ fun SettingsScreen(
     onPrivacyPolicyClick: () -> Unit,
     onTermsClick: () -> Unit,
     onAdminToolsClick: () -> Unit,
+    onAdminFeedbackClick: () -> Unit,
     onCheckForUpdate: (android.content.Context) -> Unit,
     onDownloadUpdate: (android.content.Context, AppUpdateInfo) -> Unit,
     onInstallUpdate: (android.content.Context) -> Unit
@@ -192,6 +194,14 @@ fun SettingsScreen(
                             title = "أدوات الإدارة",
                             subtitle = "إدارة الأعشاب والتصنيفات والبيانات",
                             onClick = onAdminToolsClick
+                        )
+                        SettingsDivider()
+                        ActionRow(
+                            icon = Icons.Filled.Inbox,
+                            iconTint = Color(0xFF00838F),
+                            title = "ملاحظات المستخدمين",
+                            subtitle = "الأخطاء والملاحظات المرسلة من المستخدمين",
+                            onClick = onAdminFeedbackClick
                         )
                     }
                     SettingsDivider()
