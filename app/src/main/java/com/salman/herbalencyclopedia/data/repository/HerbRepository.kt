@@ -4,6 +4,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Source
+import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlinx.coroutines.channels.awaitClose
@@ -57,6 +58,9 @@ class HerbRepository(
     /** Emits the full category list every time Firestore's data changes, locally or on the server. */
     fun observeCategories(): Flow<List<Category>> = observeCollection("categories", Category::class.java)
 
+    /** Emits the full blends ("الخلطات") list every time Firestore's data changes, locally or on the server. */
+    fun observeBlends(): Flow<List<Blend>> = observeCollection("blends", Blend::class.java)
+
     private fun <T> observeCollection(collection: String, clazz: Class<T>): Flow<List<T>> = callbackFlow {
         val registration = db.collection(collection)
             .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
@@ -91,6 +95,10 @@ class HerbRepository(
     suspend fun fetchCategories(fromServer: Boolean = false): List<Category> =
         db.collection("categories").get(if (fromServer) Source.SERVER else Source.DEFAULT)
             .await().toObjects(Category::class.java)
+
+    suspend fun fetchBlends(fromServer: Boolean = false): List<Blend> =
+        db.collection("blends").get(if (fromServer) Source.SERVER else Source.DEFAULT)
+            .await().toObjects(Blend::class.java)
 
     // ---------------------------------------------------------------------
     // Writes
@@ -128,6 +136,42 @@ class HerbRepository(
 
     suspend fun deleteHerb(id: String) {
         db.collection("herbs").document(id).delete().await()
+    }
+
+    // ---------------------------------------------------------------------
+    // Blends ("الخلطات") — same admin-only write model as herbs above.
+    // ---------------------------------------------------------------------
+
+    suspend fun addBlend(blend: Blend) {
+        val data: HashMap<String, Any?> = hashMapOf(
+            "name" to blend.name.trim(),
+            "herb_ids" to blend.herbIds,
+            "benefits" to blend.benefits.trim().ifBlank { "—" },
+            "usage" to blend.usage.trim().ifBlank { "—" },
+            "warnings" to blend.warnings.trim().ifBlank { "—" },
+            "notes" to blend.notes.trim().ifBlank { "—" },
+            "image_url" to blend.imageUrl,
+            "created_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+        db.collection("blends").add(data).await()
+    }
+
+    suspend fun updateBlend(blend: Blend) {
+        val data: HashMap<String, Any?> = hashMapOf(
+            "name" to blend.name.trim(),
+            "herb_ids" to blend.herbIds,
+            "benefits" to blend.benefits.trim().ifBlank { "—" },
+            "usage" to blend.usage.trim().ifBlank { "—" },
+            "warnings" to blend.warnings.trim().ifBlank { "—" },
+            "notes" to blend.notes.trim().ifBlank { "—" },
+            "image_url" to blend.imageUrl,
+            "updated_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+        db.collection("blends").document(blend.id).update(data).await()
+    }
+
+    suspend fun deleteBlend(id: String) {
+        db.collection("blends").document(id).delete().await()
     }
 
     suspend fun addCategory(name: String) {

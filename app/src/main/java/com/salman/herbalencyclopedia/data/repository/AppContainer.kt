@@ -13,4 +13,5 @@ class AppContainer(context: Context) {
         PreferencesRepository(context.applicationContext)
     }
     val updateRepository: UpdateRepository by lazy { UpdateRepository() }
+    val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository() }
 }
