@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.*
 import androidx.navigation.compose.*
 import com.salman.herbalencyclopedia.data.ai.AiConfig
+import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.components.OneUiFloatingNavBar
@@ -64,10 +65,18 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         initial = AiConfig.defaultSearchThreshold.toFloat()
     )
     val aiExtraStopWords by preferencesRepository.aiExtraStopWords.collectAsState(initial = emptySet())
-    LaunchedEffect(aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords) {
+    val aiSynonyms by preferencesRepository.aiSynonyms.collectAsState(initial = emptyMap())
+    val aiTrainedExamples by preferencesRepository.aiTrainedExamples.collectAsState(initial = emptyList())
+    val aiTrainedThreshold by preferencesRepository.aiTrainedThreshold.collectAsState(
+        initial = AiConfig.defaultTrainedThreshold.toFloat()
+    )
+    LaunchedEffect(aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, aiSynonyms, aiTrainedExamples, aiTrainedThreshold) {
         AiConfig.similarityThreshold = aiSimilarityThreshold.toDouble()
         AiConfig.searchThreshold = aiSearchThreshold.toDouble()
         AiConfig.extraStopWords = aiExtraStopWords
+        AiConfig.synonyms = aiSynonyms
+        AiConfig.trainedExamples = aiTrainedExamples
+        AiConfig.trainedMatchThreshold = aiTrainedThreshold.toDouble()
     }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
@@ -224,7 +233,35 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 }
                 composable(Screen.Login.route) { LoginScreen({ navController.popBackStack() }, appViewModel::login) { navController.popBackStack() } }
                 composable(Screen.Admin.route) { if (appViewModel.isAdmin) AdminListScreen(uiState.herbs, {navController.popBackStack()}, {navController.navigate(Screen.AdminEdit.createRoute(Screen.AdminEdit.NEW))}, {h->navController.navigate(Screen.AdminEdit.createRoute(h.id))}, {h->appViewModel.deleteHerb(h.id) { _, _ -> }}) { navController.navigate(Screen.AdminTools.route) } }
-                composable(Screen.AdminTools.route) { if (appViewModel.isAdmin) AdminToolsScreen(uiState.categories, uiState.herbs, {navController.popBackStack()}, appViewModel::refresh, {n,cb->appViewModel.addCategory(n,cb)}, {id,cb->appViewModel.deleteCategory(id,cb)}, {cb->appViewModel.deleteAllHerbs(cb)}, {cb->appViewModel.deleteAllData(cb)}, {cb->appViewModel.testConnection(cb)}, {appViewModel.clearFavorites()}, {json,cb->appViewModel.restoreBackup(json,cb)}, {navController.navigate(Screen.AdminUpdate.route)}, aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, {v -> scope.launch { preferencesRepository.setAiSimilarityThreshold(v) }}, {v -> scope.launch { preferencesRepository.setAiSearchThreshold(v) }}, {w -> scope.launch { preferencesRepository.setAiExtraStopWords(w) }}, { scope.launch { preferencesRepository.resetAiSettings() } }) }
+                composable(Screen.AdminTools.route) {
+                    if (appViewModel.isAdmin) AdminToolsScreen(
+                        categories = uiState.categories,
+                        herbs = uiState.herbs,
+                        onBack = { navController.popBackStack() },
+                        onRefresh = appViewModel::refresh,
+                        onAddCategory = { n, cb -> appViewModel.addCategory(n, cb) },
+                        onDeleteCategory = { id, cb -> appViewModel.deleteCategory(id, cb) },
+                        onDeleteAllHerbs = { cb -> appViewModel.deleteAllHerbs(cb) },
+                        onDeleteAllData = { cb -> appViewModel.deleteAllData(cb) },
+                        onTestConnection = { cb -> appViewModel.testConnection(cb) },
+                        onClearFavorites = { appViewModel.clearFavorites() },
+                        onRestoreBackup = { json, cb -> appViewModel.restoreBackup(json, cb) },
+                        onUpdateSettingsClick = { navController.navigate(Screen.AdminUpdate.route) },
+                        aiSimilarityThreshold = aiSimilarityThreshold,
+                        aiSearchThreshold = aiSearchThreshold,
+                        aiExtraStopWords = aiExtraStopWords,
+                        onSetAiSimilarityThreshold = { v -> scope.launch { preferencesRepository.setAiSimilarityThreshold(v) } },
+                        onSetAiSearchThreshold = { v -> scope.launch { preferencesRepository.setAiSearchThreshold(v) } },
+                        onSetAiExtraStopWords = { w -> scope.launch { preferencesRepository.setAiExtraStopWords(w) } },
+                        onResetAiSettings = { scope.launch { preferencesRepository.resetAiSettings() } },
+                        aiSynonyms = aiSynonyms,
+                        aiTrainedExamples = aiTrainedExamples,
+                        aiTrainedThreshold = aiTrainedThreshold,
+                        onSetAiSynonyms = { m -> scope.launch { preferencesRepository.setAiSynonyms(m) } },
+                        onSetAiTrainedExamples = { list -> scope.launch { preferencesRepository.setAiTrainedExamples(list) } },
+                        onSetAiTrainedThreshold = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } }
+                    )
+                }
                 composable(Screen.AdminUpdate.route) {
                     if (appViewModel.isAdmin) {
                         LaunchedEffect(Unit) { appViewModel.loadUpdateConfig() }
