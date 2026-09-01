@@ -21,15 +21,43 @@ object AiConfig {
     /** كلمات إيقاف إضافية يضيفها المطوّر (تُستبعد من التحليل، بصيغة مُطبَّعة أو خام). */
     var extraStopWords: Set<String> = emptySet()
 
+    /**
+     * مرادفات يعلّمها المطوّر لسيمو: كل مُدخل هو "كلمة جديدة → الكلمة القياسية
+     * التي يجب أن يفهمها سيمو بدلاً منها" (مثال: "ينفع" → "فائدة"). تُستخدم
+     * في كل عمليات تحليل النص (المقارنة والبحث الحر وأمثلة التدريب أدناه)،
+     * فتوسّع فهم سيمو للعبارات المرادفة بلا حاجة لتغيير أي كود.
+     */
+    var synonyms: Map<String, String> = emptyMap()
+
+    /**
+     * "حالات مدرَّبة" يضيفها المطوّر يدوياً: سؤال نموذجي مع الرد المطلوب
+     * بالضبط. عند سؤال المستخدم شيئاً مشابهاً بدرجة كافية لأحد هذه الأمثلة
+     * (حسب [trainedMatchThreshold])، يرد سيمو بالنص المدرَّب مباشرة بدل
+     * الاعتماد على المنطق العام — وهذه هي آلية "تطوير النماذج وفهم الحالات"
+     * الفعلية هنا: تعليم مباشر بلا إعادة بناء التطبيق.
+     */
+    var trainedExamples: List<TrainedExample> = emptyList()
+
+    /** حد التشابه (0..1) الذي يجب أن تبلغه رسالة المستخدم مع مثال مدرَّب ليُستخدم رده مباشرة. */
+    var trainedMatchThreshold: Double = 0.45
+        set(value) { field = value.coerceIn(0.1, 0.95) }
+
     val defaultSimilarityThreshold = 0.34
     val defaultSearchThreshold = 0.12
+    val defaultTrainedThreshold = 0.45
 
     fun resetToDefaults() {
         similarityThreshold = defaultSimilarityThreshold
         searchThreshold = defaultSearchThreshold
         extraStopWords = emptySet()
+        synonyms = emptyMap()
+        trainedExamples = emptyList()
+        trainedMatchThreshold = defaultTrainedThreshold
     }
 }
+
+/** حالة تدريب واحدة: سؤال نموذجي والرد المخصّص الذي يجب أن يعطيه سيمو له. */
+data class TrainedExample(val pattern: String, val response: String)
 
 /**
  * سيمو — المساعد الذكي للموسوعة. يعمل بالكامل داخل الجهاز، بلا اتصال
@@ -67,10 +95,24 @@ object HerbAssistant {
         return t.trim().lowercase()
     }
 
-    private fun wordsOf(text: String): Set<String> =
-        normalize(text).split(Regex("\\s+"))
+    private fun wordsOf(text: String): Set<String> {
+        val base = normalize(text).split(Regex("\\s+"))
             .filter { it.length > 1 && it !in stopWords }
             .toSet()
+        return applySynonyms(base)
+    }
+
+    /**
+     * يستبدل كل كلمة بمرادفها القياسي إن وُجد في [AiConfig.synonyms] (بعد
+     * تطبيع الطرفين)، بحيث تُحسب "ينفع" و"يفيد" مثلاً ككلمة واحدة أثناء أي
+     * مقارنة أو بحث — هذا هو أثر "تعليم سيمو كلمات جديدة" على أرض الواقع.
+     */
+    private fun applySynonyms(words: Set<String>): Set<String> {
+        if (AiConfig.synonyms.isEmpty()) return words
+        val table = AiConfig.synonyms.entries.associate { (k, v) -> normalize(k) to normalize(v) }
+        if (table.isEmpty()) return words
+        return words.map { table[it] ?: it }.toSet()
+    }
 
     /** يقسّم فقرة حرة إلى نقاط قصيرة قابلة للمقارنة والعرض كعناصر منفصلة. */
     private fun splitPoints(text: String): List<String> {
@@ -91,6 +133,28 @@ object HerbAssistant {
         terms.any { normalizedText.contains(normalize(it)) }
 
     private fun herbNames(herbs: List<Herb>): String = herbs.joinToString(" و") { it.name }
+
+    /**
+     * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" التي أضافها المطوّر
+     * ([AiConfig.trainedExamples])، ويعيد أقرب رد مخصّص إن تجاوز التشابه
+     * [AiConfig.trainedMatchThreshold]، وإلا يعيد null ليكمل سيمو بمنطقه
+     * العام. هذا يمنح المطوّر أولوية كاملة لتصحيح أو تحسين أي حالة بعينها.
+     */
+    private fun matchTrainedExample(question: String): String? {
+        if (AiConfig.trainedExamples.isEmpty()) return null
+        val qWords = wordsOf(question)
+        if (qWords.isEmpty()) return null
+        var bestResponse: String? = null
+        var bestScore = 0.0
+        AiConfig.trainedExamples.forEach { example ->
+            val score = jaccard(qWords, wordsOf(example.pattern))
+            if (score > bestScore) {
+                bestScore = score
+                bestResponse = example.response
+            }
+        }
+        return if (bestScore >= AiConfig.trainedMatchThreshold) bestResponse else null
+    }
 
     // ── المقارنة المنظّمة (يُستخدم في بطاقات المقارنة بالشاشة) ─────────
 
@@ -209,6 +273,10 @@ object HerbAssistant {
         if (herbs.isEmpty()) return "لم أجد في الموسوعة معلومات كافية للإجابة على هذا السؤال بعد 🌿"
         val qNorm = normalize(question)
         if (qNorm.isBlank()) return "تفضّل، اسأل سيمو عن أي عشبة: فوائدها، طريقة استخدامها، أو تحذيراتها."
+
+        // أولوية مطلقة للحالات التي دربها المطوّر يدوياً — إن وُجدت مطابقة
+        // كافية، يستخدم سيمو ردّها مباشرة قبل أي منطق عام آخر.
+        matchTrainedExample(question)?.let { return it }
 
         // "محدَّد" = عدد قليل من الأعشاب المستهدفة فعلياً (باختيار المستخدم أو
         // ذكرها بالاسم) — عندها فقط تُبنى إجابات مفصّلة لكل عشبة على حدة.
