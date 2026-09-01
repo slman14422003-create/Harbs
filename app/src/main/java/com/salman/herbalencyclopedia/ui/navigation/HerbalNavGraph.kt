@@ -22,7 +22,7 @@ import com.salman.herbalencyclopedia.ui.screens.admin.*
 import com.salman.herbalencyclopedia.ui.screens.allherbs.AllHerbsScreen
 import com.salman.herbalencyclopedia.ui.screens.auth.LoginScreen
 import com.salman.herbalencyclopedia.ui.screens.category.CategoryHerbsScreen
-import com.salman.herbalencyclopedia.ui.screens.compare.CompareScreen
+import com.salman.herbalencyclopedia.ui.screens.semo.SemoAssistantScreen
 import com.salman.herbalencyclopedia.ui.screens.favorites.FavoritesScreen
 import com.salman.herbalencyclopedia.ui.screens.help.HelpScreen
 import com.salman.herbalencyclopedia.ui.screens.herbdetail.HerbDetailScreen
@@ -54,9 +54,9 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val updateState by appViewModel.updateState.collectAsState()
     val downloadState by appViewModel.downloadState.collectAsState()
     val updateConfig by appViewModel.updateConfigState.collectAsState()
-    // إعدادات "مساعد المقارنة الذكي" — تُحمَّل من DataStore وتُطبَّق حياً على
+    // إعدادات "سيمو المساعد" — تُحمَّل من DataStore وتُطبَّق حياً على
     // AiConfig (الكائن الذي يقرأ منه HerbAssistant مباشرة)، بحيث أي تعديل
-    // من أدوات المطور ينعكس فوراً على شاشة المقارنة دون إعادة تشغيل التطبيق.
+    // من أدوات المطور ينعكس فوراً على شاشة سيمو دون إعادة تشغيل التطبيق.
     val aiSimilarityThreshold by preferencesRepository.aiSimilarityThreshold.collectAsState(
         initial = AiConfig.defaultSimilarityThreshold.toFloat()
     )
@@ -174,12 +174,12 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                         }
                     )
                 }
-                composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.Compare.route) }) }
+                composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.SemoAssistant.route) }) }
                 composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }) }
                 composable(Screen.Search.route) { SearchScreen(uiState.herbs, favoriteIds, { navController.popBackStack() }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.Compare.route) { CompareScreen(uiState.herbs, { navController.popBackStack() }) }
+                composable(Screen.SemoAssistant.route) { SemoAssistantScreen(uiState.herbs, { navController.popBackStack() }) }
                 composable(Screen.Help.route) { HelpScreen { navController.popBackStack() } }
                 composable(Screen.PrivacyPolicy.route) {
                     com.salman.herbalencyclopedia.ui.screens.privacy.PrivacyPolicyScreen { navController.popBackStack() }

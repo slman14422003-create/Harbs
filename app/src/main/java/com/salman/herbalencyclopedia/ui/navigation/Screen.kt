@@ -8,7 +8,7 @@ sealed class Screen(val route: String) {
     data object Favorites : Screen("favorites")
     data object Settings : Screen("settings")
     data object Search : Screen("search")
-    data object Compare : Screen("compare")
+    data object SemoAssistant : Screen("semo_assistant")
     data object Help : Screen("help")
     data object PrivacyPolicy : Screen("privacy_policy")
     data object Terms : Screen("terms")
