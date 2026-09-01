@@ -21,4 +21,16 @@ sealed class Screen(val route: String) {
     data object AdminEdit : Screen("admin/edit/{herbId}") { const val NEW = "new"; fun createRoute(herbId: String) = "admin/edit/$herbId" }
     data object AdminTools : Screen("admin/tools")
     data object AdminUpdate : Screen("admin/update")
+
+    // ── الخلطات (Blends) ──────────────────────────────────────────────
+    data object Blends : Screen("blends")
+    data object BlendDetail : Screen("blend/{blendId}") { fun createRoute(blendId: String) = "blend/$blendId" }
+    data object AdminEditBlend : Screen("admin/blend/{blendId}") { const val NEW = "new"; fun createRoute(blendId: String) = "admin/blend/$blendId" }
+
+    // ── ملاحظات المستخدمين (Feedback) ────────────────────────────────
+    data object SendFeedback : Screen("feedback/{targetType}/{targetId}/{targetName}") {
+        fun createRoute(targetType: String, targetId: String, targetName: String) =
+            "feedback/$targetType/$targetId/${android.net.Uri.encode(targetName)}"
+    }
+    data object AdminFeedback : Screen("admin/feedback")
 }

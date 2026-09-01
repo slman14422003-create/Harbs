@@ -22,9 +22,12 @@ import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import com.salman.herbalencyclopedia.ui.screens.admin.*
 import com.salman.herbalencyclopedia.ui.screens.allherbs.AllHerbsScreen
 import com.salman.herbalencyclopedia.ui.screens.auth.LoginScreen
+import com.salman.herbalencyclopedia.ui.screens.blends.BlendDetailScreen
+import com.salman.herbalencyclopedia.ui.screens.blends.BlendsScreen
 import com.salman.herbalencyclopedia.ui.screens.category.CategoryHerbsScreen
 import com.salman.herbalencyclopedia.ui.screens.semo.SemoAssistantScreen
 import com.salman.herbalencyclopedia.ui.screens.favorites.FavoritesScreen
+import com.salman.herbalencyclopedia.ui.screens.feedback.SendFeedbackScreen
 import com.salman.herbalencyclopedia.ui.screens.help.HelpScreen
 import com.salman.herbalencyclopedia.ui.screens.herbdetail.HerbDetailScreen
 import com.salman.herbalencyclopedia.ui.screens.home.HomeScreen
@@ -183,10 +186,10 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                         }
                     )
                 }
-                composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.SemoAssistant.route) }) }
+                composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.SemoAssistant.route) }, { navController.navigate(Screen.Blends.route) }) }
                 composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }) }
+                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }) }
                 composable(Screen.Search.route) { SearchScreen(uiState.herbs, favoriteIds, { navController.popBackStack() }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.SemoAssistant.route) { SemoAssistantScreen(uiState.herbs, { navController.popBackStack() }) }
                 composable(Screen.Help.route) { HelpScreen { navController.popBackStack() } }
@@ -228,7 +231,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                     }
                 ) { e ->
                     uiState.herbs.firstOrNull { it.id == e.arguments?.getString("herbId") }?.let { h ->
-                        HerbDetailScreen(h, h.id in favoriteIds, { navController.popBackStack() }, { appViewModel.toggleFavorite(h.id) })
+                        HerbDetailScreen(h, h.id in favoriteIds, { navController.popBackStack() }, { appViewModel.toggleFavorite(h.id) }, { navController.navigate(Screen.SendFeedback.createRoute("herb", h.id, h.name)) })
                     }
                 }
                 composable(Screen.Login.route) { LoginScreen({ navController.popBackStack() }, appViewModel::login) { navController.popBackStack() } }
@@ -273,6 +276,75 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                     }
                 }
                 composable(Screen.AdminEdit.route, arguments=listOf(navArgument("herbId"){type=NavType.StringType})) { e -> if (appViewModel.isAdmin) { val id=e.arguments?.getString("herbId"); val existing=uiState.herbs.firstOrNull {it.id==id}; AdminEditHerbScreen(existing, uiState.categories, {navController.popBackStack()}, {h,cb->if(existing==null) appViewModel.addHerb(h,cb) else appViewModel.updateHerb(h,cb)}) } }
+
+                // ── الخلطات (Blends) ──────────────────────────────────
+                composable(Screen.Blends.route) {
+                    BlendsScreen(
+                        blends = uiState.blends,
+                        isAdmin = appViewModel.isAdmin,
+                        onBack = { navController.popBackStack() },
+                        onBlendClick = { b -> navController.navigate(Screen.BlendDetail.createRoute(b.id)) },
+                        onAddNew = { navController.navigate(Screen.AdminEditBlend.createRoute(Screen.AdminEditBlend.NEW)) }
+                    )
+                }
+                composable(Screen.BlendDetail.route, arguments = listOf(navArgument("blendId") { type = NavType.StringType })) { e ->
+                    val blend = uiState.blends.firstOrNull { it.id == e.arguments?.getString("blendId") }
+                    blend?.let { b ->
+                        BlendDetailScreen(
+                            blend = b,
+                            ingredientHerbs = uiState.herbs.filter { it.id in b.herbIds },
+                            isAdmin = appViewModel.isAdmin,
+                            onBack = { navController.popBackStack() },
+                            onIngredientClick = { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) },
+                            onEdit = { navController.navigate(Screen.AdminEditBlend.createRoute(b.id)) },
+                            onDelete = { appViewModel.deleteBlend(b.id) { success, _ -> if (success) navController.popBackStack() } },
+                            onReportIssue = { navController.navigate(Screen.SendFeedback.createRoute("blend", b.id, b.name)) }
+                        )
+                    }
+                }
+                composable(Screen.AdminEditBlend.route, arguments = listOf(navArgument("blendId") { type = NavType.StringType })) { e ->
+                    if (appViewModel.isAdmin) {
+                        val id = e.arguments?.getString("blendId")
+                        val existing = uiState.blends.firstOrNull { it.id == id }
+                        AdminEditBlendScreen(existing, uiState.herbs, { navController.popBackStack() }, { b, cb -> if (existing == null) appViewModel.addBlend(b, cb) else appViewModel.updateBlend(b, cb) })
+                    }
+                }
+
+                // ── ملاحظات المستخدمين (Feedback) ─────────────────────
+                composable(
+                    Screen.SendFeedback.route,
+                    arguments = listOf(
+                        navArgument("targetType") { type = NavType.StringType },
+                        navArgument("targetId") { type = NavType.StringType },
+                        navArgument("targetName") { type = NavType.StringType }
+                    )
+                ) { e ->
+                    val targetType = e.arguments?.getString("targetType") ?: "herb"
+                    val targetId = e.arguments?.getString("targetId") ?: ""
+                    val targetName = e.arguments?.getString("targetName") ?: ""
+                    SendFeedbackScreen(
+                        targetName = targetName,
+                        onBack = { navController.popBackStack() },
+                        onSubmit = { senderName, message, cb ->
+                            appViewModel.submitFeedback(targetType, targetId, targetName, message, senderName, cb)
+                        }
+                    )
+                }
+                composable(Screen.AdminFeedback.route) {
+                    if (appViewModel.isAdmin) {
+                        LaunchedEffect(Unit) { appViewModel.loadFeedback() }
+                        val feedbackList by appViewModel.feedbackList.collectAsState()
+                        val feedbackLoading by appViewModel.feedbackLoading.collectAsState()
+                        val feedbackError by appViewModel.feedbackError.collectAsState()
+                        AdminFeedbackScreen(
+                            feedback = feedbackList,
+                            isLoading = feedbackLoading,
+                            error = feedbackError,
+                            onBack = { navController.popBackStack() },
+                            onDelete = { f -> appViewModel.deleteFeedback(f.id) }
+                        )
+                    }
+                }
             }
         }
         }
