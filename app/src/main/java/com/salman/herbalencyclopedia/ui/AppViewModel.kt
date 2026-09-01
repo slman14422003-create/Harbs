@@ -13,11 +13,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
+import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Category
+import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +39,7 @@ import java.net.URL
 data class UiState(
     val herbs: List<Herb> = emptyList(),
     val categories: List<Category> = emptyList(),
+    val blends: List<Blend> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -269,9 +273,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             combine(
                 container.herbRepository.observeCategories(),
-                container.herbRepository.observeHerbs()
-            ) { categories, herbs ->
-                UiState(herbs = herbs, categories = categories, isLoading = false, error = null)
+                container.herbRepository.observeHerbs(),
+                container.herbRepository.observeBlends()
+            ) { categories, herbs, blends ->
+                UiState(herbs = herbs, categories = categories, blends = blends, isLoading = false, error = null)
             }
                 .catch { e ->
                     // Keep whatever data is already on screen (e.g. from the offline
@@ -292,6 +297,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 container.herbRepository.fetchCategories(fromServer = true)
                 container.herbRepository.fetchHerbs(fromServer = true)
+                container.herbRepository.fetchBlends(fromServer = true)
                 // The live listeners above already keep uiState in sync with these
                 // results; this call's job is just to confirm connectivity and
                 // surface a clear error if it fails.
@@ -362,6 +368,108 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
     }
+    // ---------------------------------------------------------------------
+    // Blends ("الخلطات") — admin-only writes, same live-sync model as herbs.
+    // ---------------------------------------------------------------------
+
+    fun addBlend(blend: Blend, onDone: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                container.herbRepository.addBlend(blend)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
+    fun updateBlend(blend: Blend, onDone: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                container.herbRepository.updateBlend(blend)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
+    fun deleteBlend(id: String, onDone: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            try {
+                container.herbRepository.deleteBlend(id)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Feedback ("ملاحظات المستخدمين") — anyone can send, only the admin
+    // account can read (enforced by firestore.rules), surfaced in
+    // AdminFeedbackScreen under Settings.
+    // ---------------------------------------------------------------------
+
+    private val _feedbackList = MutableStateFlow<List<Feedback>>(emptyList())
+    val feedbackList: StateFlow<List<Feedback>> = _feedbackList.asStateFlow()
+
+    private val _feedbackLoading = MutableStateFlow(false)
+    val feedbackLoading: StateFlow<Boolean> = _feedbackLoading.asStateFlow()
+
+    private val _feedbackError = MutableStateFlow<String?>(null)
+    val feedbackError: StateFlow<String?> = _feedbackError.asStateFlow()
+
+    private var feedbackJob: Job? = null
+
+    /** Sending is open to everyone — no admin/login check here on purpose. */
+    fun submitFeedback(
+        targetType: String,
+        targetId: String,
+        targetName: String,
+        message: String,
+        senderName: String?,
+        onDone: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                container.feedbackRepository.submitFeedback(targetType, targetId, targetName, message, senderName)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
+    /** Starts (once) the admin-only live listener backing [feedbackList]. Safe to call every time the screen opens. */
+    fun loadFeedback() {
+        if (feedbackJob?.isActive == true) return
+        _feedbackLoading.value = true
+        feedbackJob = viewModelScope.launch {
+            container.feedbackRepository.observeFeedback()
+                .catch { e ->
+                    _feedbackLoading.value = false
+                    _feedbackError.value = HerbRepository.describeError(e)
+                }
+                .collect { list ->
+                    _feedbackLoading.value = false
+                    _feedbackError.value = null
+                    _feedbackList.value = list
+                }
+        }
+    }
+
+    fun deleteFeedback(id: String, onDone: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            try {
+                container.feedbackRepository.deleteFeedback(id)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
     fun addCategory(name: String, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch { runCatching { container.herbRepository.addCategory(name) }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
