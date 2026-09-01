@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.salman.herbalencyclopedia.data.ai.AiConfig
+import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.theme.recommendedPerformanceMode
@@ -16,6 +17,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "herbal_prefs")
+
+/** فاصل داخلي لتشفير أزواج (مرادف/حالة مدرَّبة) داخل قيمة نصية واحدة، لأن
+ *  DataStore يخزّن Set<String> فقط دون بنية key-value متداخلة. حرف تحكم
+ *  غير مرئي وشبه مستحيل ورودُه ضمن نص عربي طبيعي يكتبه المطوّر. */
+private const val AI_ENTRY_SEP = "\u241F"
 
 /**
  * Stores favorite herb IDs and the dark-mode preference locally on-device
@@ -37,6 +43,11 @@ class PreferencesRepository(private val context: Context) {
         val AI_SIMILARITY_THRESHOLD = floatPreferencesKey("ai_similarity_threshold")
         val AI_SEARCH_THRESHOLD = floatPreferencesKey("ai_search_threshold")
         val AI_EXTRA_STOPWORDS = stringSetPreferencesKey("ai_extra_stopwords")
+        // "تدريب سيمو المخصّص": مرادفات يفهمها + حالات (سؤال↔رد) يعلّمها
+        // المطوّر يدوياً من أدوات المطور، تُطبَّق حياً بلا إعادة بناء التطبيق.
+        val AI_SYNONYMS = stringSetPreferencesKey("ai_synonyms")
+        val AI_TRAINED_EXAMPLES = stringSetPreferencesKey("ai_trained_examples")
+        val AI_TRAINED_THRESHOLD = floatPreferencesKey("ai_trained_threshold")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -138,6 +149,45 @@ class PreferencesRepository(private val context: Context) {
             prefs.remove(Keys.AI_SIMILARITY_THRESHOLD)
             prefs.remove(Keys.AI_SEARCH_THRESHOLD)
             prefs.remove(Keys.AI_EXTRA_STOPWORDS)
+            prefs.remove(Keys.AI_SYNONYMS)
+            prefs.remove(Keys.AI_TRAINED_EXAMPLES)
+            prefs.remove(Keys.AI_TRAINED_THRESHOLD)
         }
+    }
+
+    // ── تدريب سيمو المخصّص: مرادفات وحالات (سؤال ← رد) يعلّمها المطوّر ───
+
+    val aiSynonyms: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
+        (prefs[Keys.AI_SYNONYMS] ?: emptySet()).mapNotNull { entry ->
+            val parts = entry.split(AI_ENTRY_SEP, limit = 2)
+            if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) parts[0] to parts[1] else null
+        }.toMap()
+    }
+
+    val aiTrainedExamples: Flow<List<TrainedExample>> = context.dataStore.data.map { prefs ->
+        (prefs[Keys.AI_TRAINED_EXAMPLES] ?: emptySet()).mapNotNull { entry ->
+            val parts = entry.split(AI_ENTRY_SEP, limit = 2)
+            if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) TrainedExample(parts[0], parts[1]) else null
+        }
+    }
+
+    val aiTrainedThreshold: Flow<Float> = context.dataStore.data.map {
+        it[Keys.AI_TRAINED_THRESHOLD] ?: AiConfig.defaultTrainedThreshold.toFloat()
+    }
+
+    suspend fun setAiSynonyms(synonyms: Map<String, String>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AI_SYNONYMS] = synonyms.map { (word, meaning) -> "$word$AI_ENTRY_SEP$meaning" }.toSet()
+        }
+    }
+
+    suspend fun setAiTrainedExamples(examples: List<TrainedExample>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AI_TRAINED_EXAMPLES] = examples.map { "${it.pattern}$AI_ENTRY_SEP${it.response}" }.toSet()
+        }
+    }
+
+    suspend fun setAiTrainedThreshold(value: Float) {
+        context.dataStore.edit { it[Keys.AI_TRAINED_THRESHOLD] = value }
     }
 }
