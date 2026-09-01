@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Balance
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material3.*
@@ -51,7 +51,7 @@ fun HomeScreen(
     onFavoritesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAdminClick: () -> Unit,
-    onCompareClick: () -> Unit
+    onSemoClick: () -> Unit
 ) {
     // كانت الشبكة GridCells.Fixed(2) ثابتة بعمودين دائماً: على تابلت أو
     // نافذة عريضة هذا يعني بطاقتين متمددتين بعرض هائل بدل الاستفادة من
@@ -139,9 +139,9 @@ fun HomeScreen(
                 )
                 QuickAction(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Filled.Balance,
-                    label = "مقارنة",
-                    onClick = onCompareClick
+                    icon = Icons.Filled.AutoAwesome,
+                    label = "سيمو",
+                    onClick = onSemoClick
                 )
             }
 
