@@ -225,6 +225,178 @@ object HerbAssistant {
             if (words.isEmpty()) words else words + words.flatMap { related[it].orEmpty() }
     }
 
+    // ── تدريب سيمو الافتتاحي: أكثر من 500 صياغة محادثة جاهزة ────────────
+
+    /**
+     * "تدريب سيمو الافتتاحي" — أكثر من 500 صياغة عربية/عامية مختلفة (تحية،
+     * شكر، وداع، سؤال عن الحال، هوية سيمو، قدراته، اعتذار، مجاملة، ورد
+     * بسيط بنعم/لا) يتعرّف عليها سيمو مباشرة فور تثبيت التطبيق، دون أي حاجة
+     * لبحث حر في الموسوعة ودون أي تدخل من المطوّر بعد التثبيت — هذا هو
+     * "تدريبه على أكثر من 500 سؤال" كما طُلب، منفصل تماماً عن
+     * [AiConfig.trainedExamples] (تدريب المطوّر اليدوي القابل للتعديل من
+     * أدوات المطور) و[AiConfig.autoLearnedExamples] (تعلّمه الذاتي من
+     * تقييمات المستخدمين). الصياغات تُبنى من حاصل ضرب (كلمات أساسية ×
+     * لواحق شائعة) بدل كتابة كل صياغة يدوياً، فتغطّي مئات الاحتمالات
+     * الواقعية التي يكتبها المستخدم فعلاً بأقل قدر من التكرار في الكود.
+     */
+    private object ConversationalSeed {
+        private data class Category(
+            val words: List<String>,
+            val suffixes: List<String>,
+            val responses: List<String>,
+            /** مطابقة تامة فقط (بلا startsWith) — للعبارات القصيرة جداً القابلة للالتباس مثل "لا". */
+            val exactOnly: Boolean = false
+        )
+
+        private val greeting = Category(
+            words = listOf(
+                "مرحبا", "مرحباً", "مرحبتين", "هلا", "هلا بيك", "هلا فيك", "أهلا", "اهلا",
+                "أهلا وسهلا", "اهلا وسهلا", "اهلين", "يا هلا", "صباح الخير", "صباح النور",
+                "مساء الخير", "مساء النور", "السلام عليكم", "وعليكم السلام", "هاي", "هالو",
+                "hello", "hi", "hey", "يا سيمو"
+            ),
+            suffixes = listOf("", " سيمو", " يا سيمو", " كيف الحال", "؟", " فيك خير", " يا صديقي"),
+            responses = listOf(
+                "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
+                "هلا فيك 🌿 سيمو حاضر، جاهز أساعدك بأي سؤال عن الأعشاب في الموسوعة."
+            )
+        )
+
+        private val thanks = Category(
+            words = listOf(
+                "شكرا", "شكراً", "شكرا الك", "شكرا كتير", "يعطيك العافية", "يعطيك الف عافية",
+                "تسلم", "تسلم ايدك", "تسلمي", "الله يعطيك العافية", "مشكور", "مشكورة",
+                "ممنون", "ممنونة", "جزاك الله خير", "تسلملي", "الله يخليك", "يسلمو"
+            ),
+            suffixes = listOf("", " سيمو", " كتير", " جدا", " يا سيمو", "!"),
+            responses = listOf(
+                "عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.",
+                "العفو 🌱 سعيد إني قدرت أساعدك، تحت أمرك بأي وقت."
+            )
+        )
+
+        private val farewell = Category(
+            words = listOf(
+                "مع السلامة", "باي", "وداعا", "الى اللقاء", "إلى اللقاء", "تصبح على خير",
+                "تصبحين على خير", "نهارك سعيد", "بشوفك", "نلتقي لاحقا", "سلام", "bye"
+            ),
+            suffixes = listOf("", " سيمو", " يا سيمو", "!"),
+            responses = listOf(
+                "مع السلامة 🌿 ارجع أي وقت تحتاج فيه سيمو لسؤال عن الأعشاب.",
+                "إلى اللقاء 🌱 سيمو موجود دائماً هنا لما تحتاجني."
+            )
+        )
+
+        private val wellbeing = Category(
+            words = listOf(
+                "كيفك", "كيف حالك", "شلونك", "شو اخبارك", "اخبارك ايه", "عامل ايه",
+                "كيف الصحة", "كيفك اليوم", "انت منيح", "شو مسوي", "ايش الأخبار", "شخبارك"
+            ),
+            suffixes = listOf("", " سيمو", " يا سيمو", "؟"),
+            responses = listOf(
+                "الحمد لله تمام 🌿 أنا سيمو وجاهز دائماً، كيف أقدر أساعدك اليوم بموضوع الأعشاب؟",
+                "بخير وجاهز أساعدك 🌱 شو الموضوع اللي حابب تسألني عنه؟"
+            )
+        )
+
+        private val identity = Category(
+            words = listOf(
+                "من انت", "مين انت", "شو اسمك", "ما اسمك", "انت مين", "عرفني فيك",
+                "احكيلي عنك", "مين سيمو", "who are you", "what is your name"
+            ),
+            suffixes = listOf("", "؟", " سيمو"),
+            responses = listOf(
+                "أنا سيمو 🌿، المساعد الذكي لموسوعة الأعشاب. أعمل بالكامل على جهازك دون إنترنت، وأجيبك من بيانات الأعشاب الموجودة في الموسوعة عن الفوائد والاستخدام والتحذيرات."
+            )
+        )
+
+        private val capability = Category(
+            words = listOf(
+                "شو تقدر تعمل", "ماذا تستطيع ان تفعل", "ايش بتعرف تعمل", "شو بتعرف",
+                "ما هي قدراتك", "كيف تساعدني", "بماذا تساعدني", "وش تسوي",
+                "ماذا تفعل", "what can you do"
+            ),
+            suffixes = listOf("", "؟", " سيمو"),
+            responses = listOf(
+                "أقدر أجاوبك عن فوائد أي عشبة في الموسوعة، طريقة استخدامها، تحذيراتها وأضرارها، وأقدر كمان أقارن بين أكثر من عشبة إذا طلبت ذلك صراحة — جرّب اسألني عن اسم عشبة مباشرة."
+            )
+        )
+
+        private val apology = Category(
+            words = listOf("اسف", "آسف", "اسفة", "آسفة", "معذرة", "سامحني", "عفوا", "سوري", "sorry"),
+            suffixes = listOf("", " سيمو", "!"),
+            responses = listOf("ولا يهمك 🌿 لا داعي للاعتذار، خبرني كيف أقدر أساعدك.")
+        )
+
+        private val compliment = Category(
+            words = listOf(
+                "برافو", "احسنت", "رائع", "ممتاز", "تمام", "حلو", "perfect", "nice",
+                "great job", "كفو", "روعة", "جميل"
+            ),
+            suffixes = listOf("", " سيمو", "!"),
+            responses = listOf("شكراً لكلامك الطيب 🌿 سعيد إني أفدتك، تحت أمرك بأي سؤال ثاني.")
+        )
+
+        private val smalltalk = Category(
+            words = listOf("نعم", "ايوة", "أيوة", "تمام", "اوك", "ok", "لا", "لأ", "مافي شي", "خلاص"),
+            suffixes = listOf(""),
+            responses = listOf("تمام 🌿 خبرني إذا حابب تسأل عن عشبة معيّنة أو أي موضوع بالموسوعة."),
+            exactOnly = true
+        )
+
+        private val all = listOf(
+            greeting, thanks, farewell, wellbeing, identity, capability, apology, compliment, smalltalk
+        )
+
+        /** صياغة واحدة مسطّحة: النص، ردّه، وهل مطابقتها تامة فقط (بلا استثناء). */
+        private data class Flat(val phrase: String, val response: String, val exactOnly: Boolean)
+
+        /** كل الصياغات مسطّحة، تُبنى مرة واحدة فقط عند أول استخدام. */
+        private val flattened: List<Flat> by lazy {
+            val out = mutableListOf<Flat>()
+            all.forEach { cat ->
+                cat.words.forEach { w ->
+                    cat.suffixes.forEach { s ->
+                        val phrase = (w + s).trim()
+                        if (phrase.isNotBlank()) {
+                            val idx = phrase.hashCode().let { if (it < 0) -it else it } % cat.responses.size
+                            out += Flat(phrase, cat.responses[idx], cat.exactOnly)
+                        }
+                    }
+                }
+            }
+            out
+        }
+
+        /** عدد الصياغات المدرَّبة فعلياً (لأغراض العرض/التوثيق فقط). */
+        val phrasingCount: Int get() = flattened.size
+
+        /**
+         * يطابق سؤال المستخدم (بعد التطبيع) بأطول صياغة مدرَّبة مطابقة تماماً،
+         * أو تكون الصياغة بداية للسؤال مع فارق طفيف جداً بعدها (٣ أحرف كحد
+         * أقصى، لالتقاط علامات ترقيم أو مسافات) — بحيث لا تُخطف أسئلة حقيقية
+         * عن الأعشاب تحتوي بالصدفة على جزء من عبارة تحية قصيرة. الصياغات
+         * القصيرة الملتبسة (مثل "لا") تتطلب مطابقة تامة فقط.
+         */
+        fun match(question: String): String? {
+            val qNorm = normalize(question)
+            if (qNorm.isBlank()) return null
+            var best: Flat? = null
+            var bestLen = -1
+            for (flat in flattened) {
+                val pNorm = normalize(flat.phrase)
+                if (pNorm.isEmpty()) continue
+                val isMatch = qNorm == pNorm ||
+                    (!flat.exactOnly && qNorm.startsWith(pNorm) && qNorm.length - pNorm.length <= 3)
+                if (isMatch && pNorm.length > bestLen) {
+                    best = flat
+                    bestLen = pNorm.length
+                }
+            }
+            return best?.response
+        }
+    }
+
     // ذاكرة تخزين مؤقت بسيطة: يُعاد بناء الفهرس فقط عند تغيّر مرجع قائمة
     // الأعشاب (تُنشئ شاشات التطبيق قائمة جديدة عند أي تحديث فعلي للبيانات).
     private var cachedIndex: CorpusIndex? = null
@@ -461,6 +633,11 @@ object HerbAssistant {
         // ردّها مباشرة قبل أي منطق عام آخر.
         matchTrainedExample(question)?.let { return AssistantReply(it, false) }
 
+        // تدريب سيمو الافتتاحي (أكثر من 500 صياغة محادثة، انظر [ConversationalSeed])
+        // يأتي بعد تدريب المطوّر مباشرة وقبل أي منطق آخر: يغطي التحية والشكر
+        // والوداع وأسئلة الهوية والقدرات، فلا تحتاج هذه لأي بحث في الموسوعة.
+        ConversationalSeed.match(question)?.let { return AssistantReply(it, false) }
+
         // "محدَّد" = عدد قليل من الأعشاب المستهدفة فعلياً (باختيار المستخدم أو
         // ذكرها بالاسم) — عندها فقط تُبنى إجابات مفصّلة لكل عشبة على حدة.
         // إن كان السياق هو كامل الموسوعة (لم يُطلب/يُحدَّد شيء)، يُستخدم
@@ -575,53 +752,81 @@ object HerbAssistant {
             "عدد التحذيرات المسجّلة متقارب بين الأعشاب المختارة."
     }
 
+    private data class SearchHit(val herb: Herb, val field: String, val text: String, val score: Double)
+
+    private val searchableFields = listOf<Pair<String, (Herb) -> String>>(
+        "الفوائد" to { it.benefits },
+        "الاستخدام" to { it.usage },
+        "التحذيرات" to { it.warnings },
+        "الأضرار" to { it.harms },
+        "ملاحظات" to { it.notes }
+    )
+
     /**
-     * البحث الحر: يعيد النص + بياناً هل عُثر فعلاً على نتائج ذات صلة (`true`)
-     * أم أن الرد كان رسالة تعذّر عامة (`false`) — يُستخدم هذا البيان لتحديد
-     * أهلية الرد للتعلّم الذاتي (انظر [AssistantReply.learnable]).
-     * يوسّع كلمات السؤال تلقائياً بعلاقات [CorpusIndex] المكتشفة من الموسوعة
-     * نفسها، ويرجّح النتائج بأهمية الكلمات (IDF) بدل عدّها بالتساوي — وهذا هو
-     * الفرق العملي بين "بحث عن كلمات" و"فهم اعتماداً على الموسوعة".
+     * البحث الحر الكامل في كل نصوص الموسوعة، على مراحل واضحة ومنفصلة —
+     * بالضبط تسلسل "سؤال → تحليل → تفكير → تنظيم → تجميع النتيجة وإرسالها":
+     * 1) [analyzeQuestion]  — يحلّل سؤال المستخدم إلى كلمات مفتاحية،
+     *    ويوسّعها بعلاقات [CorpusIndex] الضمنية + جذور [ArabicLexicon]
+     *    التقريبية، بحيث يفهم صيغاً لم تُذكر حرفياً في نص الموسوعة.
+     * 2) [gatherCandidates] — "يفكّر" بالإجابة عبر مسح كل حقول كل الأعشاب
+     *    المتاحة ومقارنة كل نقطة فيها بكلمات السؤال (تشابه موزون بالأهمية
+     *    IDF بدل عدّ الكلمات بالتساوي)، ويحتفظ فقط بما يتجاوز عتبة القبول.
+     * 3) [organizeHits]     — "ينسّق الأفكار": يرتّب النتائج حسب الصلة، ثم
+     *    يجمّعها تحت كل عشبة معاً بدل تشتيتها.
+     * 4) [composeAnswer]    — يجمع كل هذا في رد واحد مقروء ويُعيده جاهزاً
+     *    للعرض في الدردشة.
+     * يعيد النص + بياناً هل عُثر فعلاً على نتائج ذات صلة (`true`) أم أن الرد
+     * كان رسالة تعذّر عامة (`false`) — يُستخدم هذا لتحديد أهلية الرد للتعلّم
+     * الذاتي (انظر [AssistantReply.learnable]).
      */
     private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>): Pair<String, Boolean> {
-        val qWordsBase = wordsOf(question)
-        if (qWordsBase.isEmpty()) return fallbackHelp(herbs) to false
-
         val index = corpusIndexFor(herbs)
-        val qWords = index.expand(qWordsBase)
+        val qWords = analyzeQuestion(question, index)
+        if (qWords.isEmpty()) return fallbackHelp(herbs) to false
 
-        data class Hit(val herb: Herb, val field: String, val text: String, val score: Double)
+        val hits = gatherCandidates(qWords, herbs, index)
+        if (hits.isEmpty()) return fallbackHelp(herbs) to false
 
-        val fieldsLabeled = listOf<Pair<String, (Herb) -> String>>(
-            "الفوائد" to { it.benefits },
-            "الاستخدام" to { it.usage },
-            "التحذيرات" to { it.warnings },
-            "الأضرار" to { it.harms },
-            "ملاحظات" to { it.notes }
-        )
+        val organized = organizeHits(hits)
+        return composeAnswer(organized) to true
+    }
 
-        val hits = mutableListOf<Hit>()
+    /** المرحلة ١ — تحليل السؤال: كلمات مفتاحية + توسيع بعلاقات الموسوعة وجذور اللغة. */
+    private fun analyzeQuestion(question: String, index: CorpusIndex): Set<String> {
+        val base = wordsOf(question)
+        if (base.isEmpty()) return base
+        val expandedByCorpus = index.expand(base)
+        return ArabicLexicon.expand(expandedByCorpus)
+    }
+
+    /** المرحلة ٢ — "التفكير بالإجابة": مسح كل نقاط كل حقل، وترجيح كل نقطة حسب مدى صلتها الفعلية بالسؤال. */
+    private fun gatherCandidates(qWords: Set<String>, herbs: List<Herb>, index: CorpusIndex): List<SearchHit> {
         val threshold = AiConfig.searchThreshold
+        val hits = mutableListOf<SearchHit>()
         herbs.forEach { herb ->
-            fieldsLabeled.forEach { (label, getter) ->
+            searchableFields.forEach { (label, getter) ->
                 splitPoints(getter(herb)).forEach { point ->
                     val sim = weightedSimilarity(index, qWords, wordsOf(point))
-                    if (sim > threshold) hits += Hit(herb, label, point, sim)
+                    if (sim > threshold) hits += SearchHit(herb, label, point, sim)
                 }
             }
         }
+        return hits
+    }
 
-        val top = hits.sortedByDescending { it.score }.take(4)
-        if (top.isEmpty()) return fallbackHelp(herbs) to false
+    /** المرحلة ٣ — تنسيق الأفكار: أفضل النتائج فقط، مجمّعة حسب العشبة بدل عرضها مبعثرة. */
+    private fun organizeHits(hits: List<SearchHit>): Map<Herb, List<SearchHit>> =
+        hits.sortedByDescending { it.score }
+            .take(4)
+            .groupBy { it.herb }
 
-        val text = buildString {
-            append("وجدت هذه المعلومات ذات الصلة:\n\n")
-            top.groupBy { it.herb }.forEach { (herb, herbHits) ->
-                append("🔸 ${herb.name}:\n")
-                herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
-            }
+    /** المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. */
+    private fun composeAnswer(organized: Map<Herb, List<SearchHit>>): String = buildString {
+        append("وجدت هذه المعلومات ذات الصلة:\n\n")
+        organized.forEach { (herb, herbHits) ->
+            append("🔸 ${herb.name}:\n")
+            herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
         }
-        return text to true
     }
 
     private fun fallbackHelp(herbs: List<Herb>): String =
