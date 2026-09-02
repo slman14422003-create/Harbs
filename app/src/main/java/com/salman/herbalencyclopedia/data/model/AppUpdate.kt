@@ -38,7 +38,19 @@ data class AppUpdateInfo(
     val versionName: String,
     val releaseNotes: String,
     val releasePageUrl: String,
-    /** Direct download link to the .apk asset on the GitHub release, if one was attached. */
+    /** Direct (unproxied) download link to the .apk asset on the GitHub release, if one was attached. */
     val apkUrl: String? = null,
-    val mandatory: Boolean
+    val mandatory: Boolean,
+    /**
+     * Proxy settings captured at check time, carried along so the actual .apk
+     * download can build its own direct-then-proxy-mirrors fallback chain later.
+     * This matters because the release metadata (api.github.com) and the release
+     * asset itself (github.com/releases/download/... which redirects to
+     * objects.githubusercontent.com) are separate GitHub domains that can be
+     * blocked independently of one another — the metadata check succeeding
+     * unproxied is no guarantee the asset download will also succeed unproxied,
+     * and vice versa.
+     */
+    val useProxyFallback: Boolean = true,
+    val customProxyBaseUrl: String? = null
 )
