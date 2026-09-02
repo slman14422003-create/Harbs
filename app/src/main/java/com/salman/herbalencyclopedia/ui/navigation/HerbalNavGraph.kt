@@ -73,13 +73,25 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val aiTrainedThreshold by preferencesRepository.aiTrainedThreshold.collectAsState(
         initial = AiConfig.defaultTrainedThreshold.toFloat()
     )
-    LaunchedEffect(aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, aiSynonyms, aiTrainedExamples, aiTrainedThreshold) {
+    // "تعلّم سيمو الذاتي" — حالات يولّدها التطبيق تلقائياً من تقييمات
+    // المستخدمين (👍/👎) على إجابات البحث الحر في شاشة الدردشة، منفصلة عن
+    // تدريب المطوّر اليدوي أعلاه، ومحفوظة/مُطبَّقة حياً بنفس الآلية.
+    val aiAutoLearnedExamples by preferencesRepository.aiAutoLearnedExamples.collectAsState(initial = emptyList())
+    val aiAutoLearnEnabled by preferencesRepository.aiAutoLearnEnabled.collectAsState(
+        initial = AiConfig.defaultAutoLearnEnabled
+    )
+    LaunchedEffect(
+        aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, aiSynonyms,
+        aiTrainedExamples, aiTrainedThreshold, aiAutoLearnedExamples, aiAutoLearnEnabled
+    ) {
         AiConfig.similarityThreshold = aiSimilarityThreshold.toDouble()
         AiConfig.searchThreshold = aiSearchThreshold.toDouble()
         AiConfig.extraStopWords = aiExtraStopWords
         AiConfig.synonyms = aiSynonyms
         AiConfig.trainedExamples = aiTrainedExamples
         AiConfig.trainedMatchThreshold = aiTrainedThreshold.toDouble()
+        AiConfig.autoLearnedExamples = aiAutoLearnedExamples
+        AiConfig.autoLearnEnabled = aiAutoLearnEnabled
     }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
@@ -189,9 +201,15 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.SemoAssistant.route) }, { navController.navigate(Screen.Blends.route) }) }
                 composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }, { appViewModel.cancelDownload() }) }
+                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }) }
                 composable(Screen.Search.route) { SearchScreen(uiState.herbs, favoriteIds, { navController.popBackStack() }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.SemoAssistant.route) { SemoAssistantScreen(uiState.herbs, { navController.popBackStack() }) }
+                composable(Screen.SemoAssistant.route) {
+                    SemoAssistantScreen(
+                        herbs = uiState.herbs,
+                        onBack = { navController.popBackStack() },
+                        onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } }
+                    )
+                }
                 composable(Screen.Help.route) { HelpScreen { navController.popBackStack() } }
                 composable(Screen.PrivacyPolicy.route) {
                     com.salman.herbalencyclopedia.ui.screens.privacy.PrivacyPolicyScreen { navController.popBackStack() }
@@ -262,6 +280,10 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                         aiTrainedThreshold = aiTrainedThreshold,
                         onSetAiSynonyms = { m -> scope.launch { preferencesRepository.setAiSynonyms(m) } },
                         onSetAiTrainedExamples = { list -> scope.launch { preferencesRepository.setAiTrainedExamples(list) } },
+                        aiAutoLearnedExamples = aiAutoLearnedExamples,
+                        aiAutoLearnEnabled = aiAutoLearnEnabled,
+                        onSetAiAutoLearnedExamples = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
+                        onSetAiAutoLearnEnabled = { v -> scope.launch { preferencesRepository.setAiAutoLearnEnabled(v) } },
                         onSetAiTrainedThreshold = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } }
                     )
                 }
