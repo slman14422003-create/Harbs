@@ -1,9 +1,15 @@
 package com.salman.herbalencyclopedia.ui.util
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -154,4 +160,40 @@ fun isGestureNavigation(): Boolean {
     val bottomInsetPx = WindowInsets.navigationBars.getBottom(density)
     val bottomInsetDp = with(density) { bottomInsetPx.toDp() }
     return bottomInsetDp < 32.dp
+}
+
+/**
+ * Wraps a single-column "reading" screen (herb/blend details, settings, help, terms,
+ * privacy policy, admin tools/settings…) so its content is capped at
+ * [WindowSizeInfo.contentMaxWidth] and centered, instead of stretching edge-to-edge.
+ *
+ * [rememberWindowSizeInfo] already computed a sensible [WindowSizeInfo.contentMaxWidth]
+ * for exactly this purpose (960.dp on an EXPANDED window, 760.dp on MEDIUM, unconstrained
+ * on COMPACT/phone), but nothing in the app actually applied it anywhere — grids used
+ * `GridCells.Adaptive` (which self-adjusts its column count from available width, so they
+ * were fine on their own), but every plain `LazyColumn`-based text/detail screen still just
+ * did `Modifier.fillMaxWidth()` inside the Scaffold. On a tablet or a wide split-screen
+ * window that meant paragraphs of herb benefits/warnings, or a settings/admin list, stretched
+ * the full width of the screen — lines of Arabic text far too long to read comfortably, and
+ * list rows with huge empty trailing space. This finally wires that unused field in.
+ *
+ * On COMPACT (phone) windows [WindowSizeInfo.contentMaxWidth] is `Dp.Unspecified`, so this
+ * is a no-op there — phone layouts are completely unaffected.
+ */
+@Composable
+fun ResponsiveScreenContent(
+    windowInfo: WindowSizeInfo,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(
+            modifier = if (windowInfo.contentMaxWidth == Dp.Unspecified) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier.fillMaxSize().widthIn(max = windowInfo.contentMaxWidth)
+            },
+            content = content
+        )
+    }
 }
