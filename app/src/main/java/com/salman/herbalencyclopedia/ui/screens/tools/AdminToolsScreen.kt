@@ -27,8 +27,6 @@ import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
-import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
-import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -62,7 +60,14 @@ fun AdminToolsScreen(
     aiTrainedThreshold: Float = AiConfig.defaultTrainedThreshold.toFloat(),
     onSetAiSynonyms: (Map<String, String>) -> Unit = {},
     onSetAiTrainedExamples: (List<TrainedExample>) -> Unit = {},
-    onSetAiTrainedThreshold: (Float) -> Unit = {}
+    onSetAiTrainedThreshold: (Float) -> Unit = {},
+    // ── تعلّم سيمو الذاتي: حالات جمعها التطبيق تلقائياً من تقييمات
+    // المستخدمين (👍/👎) في شاشة الدردشة — قابلة للمراجعة والحذف أو
+    // "الترقية" لتدريب يدوي دائم من هنا مباشرة. ──
+    aiAutoLearnedExamples: List<TrainedExample> = emptyList(),
+    aiAutoLearnEnabled: Boolean = AiConfig.defaultAutoLearnEnabled,
+    onSetAiAutoLearnedExamples: (List<TrainedExample>) -> Unit = {},
+    onSetAiAutoLearnEnabled: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -91,8 +96,7 @@ fun AdminToolsScreen(
         topBar = { GlassTopBar(title = { Text("أدوات الإدارة") }, navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text("الصيانة والمزامنة", style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", { onRefresh(); notify(true, "جاري تحديث البيانات") }) }
             item { AdminButton(Icons.Filled.NetworkCheck, "اختبار الاتصال", "التحقق من الوصول إلى البيانات", { onTestConnection { ok, msg -> notify(ok, msg) } }) }
@@ -142,7 +146,19 @@ fun AdminToolsScreen(
                     onTrainedThresholdChange = onSetAiTrainedThreshold
                 )
             }
-        }
+            item {
+                AiSelfLearningDevTools(
+                    autoLearnedExamples = aiAutoLearnedExamples,
+                    autoLearnEnabled = aiAutoLearnEnabled,
+                    trainedExamples = aiTrainedExamples,
+                    onAutoLearnedExamplesChange = onSetAiAutoLearnedExamples,
+                    onAutoLearnEnabledChange = onSetAiAutoLearnEnabled,
+                    onPromoteToTrained = { example ->
+                        onSetAiTrainedExamples(aiTrainedExamples + example)
+                        onSetAiAutoLearnedExamples(aiAutoLearnedExamples - example)
+                    }
+                )
+            }
         }
     }
     confirmAction?.let { action ->
@@ -425,6 +441,108 @@ private fun AiTrainingDevTools(
                     newPattern = ""; newResponse = ""
                 }
             ) { Text("إضافة حالة") }
+        }
+    }
+}
+
+/**
+ * أدوات مطور لمراجعة "تعلّم سيمو الذاتي": كل حالة هنا وُلدت تلقائياً من
+ * إجابة بحث حر أعطاها سيمو فعلاً من بيانات الموسوعة، وقيّمها مستخدم حقيقي
+ * بـ 👍 في شاشة الدردشة — أي أن المصدر بالكامل هو الموسوعة + استخدام
+ * فعلي، وليس تخميناً. يمكن للمطوّر من هنا: تعطيل التعلّم الذاتي كلياً،
+ * حذف حالة بعينها (لو كانت غير دقيقة)، "ترقيتها" لتصبح حالة تدريب يدوية
+ * دائمة (تنتقل للقائمة المحمية في [AiTrainingDevTools])، أو مسح كل ما
+ * تعلّمه سيمو والبدء من جديد.
+ */
+@Composable
+private fun AiSelfLearningDevTools(
+    autoLearnedExamples: List<TrainedExample>,
+    autoLearnEnabled: Boolean,
+    trainedExamples: List<TrainedExample>,
+    onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit,
+    onAutoLearnEnabledChange: (Boolean) -> Unit,
+    onPromoteToTrained: (TrainedExample) -> Unit
+) {
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("تعلّم سيمو الذاتي", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+            Text(
+                "كل حالة هنا وُلدت تلقائياً من إجابة سيمو الفعلية على بيانات الموسوعة بعد أن قيّمها مستخدم بـ 👍 في الدردشة — يعتمد سيمو على الموسوعة أولاً، ثم يراكم فوقها خبرة حقيقية من استخدامه.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("تفعيل التعلّم الذاتي", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "عند التعطيل، يتوقف سيمو عن حفظ أي حالات جديدة ولا يستخدم القديمة منها في الردود.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = autoLearnEnabled, onCheckedChange = onAutoLearnEnabledChange)
+            }
+
+            HorizontalDivider()
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "الحالات المتعلَّمة (${autoLearnedExamples.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                if (autoLearnedExamples.isNotEmpty()) {
+                    TextButton(onClick = { onAutoLearnedExamplesChange(emptyList()) }) { Text("مسح الكل") }
+                }
+            }
+
+            if (autoLearnedExamples.isEmpty()) {
+                Text(
+                    "لم يتعلّم سيمو أي حالة بعد. ستظهر هنا تلقائياً أول مرة يُقيّم فيها مستخدم إجابة بحث حر بـ 👍.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    autoLearnedExamples.forEach { example ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f)
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text("س: ${example.pattern}", style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                Text("ج: ${example.response}", style = MaterialTheme.typography.bodySmall)
+                                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End) {
+                                    TextButton(
+                                        enabled = example !in trainedExamples,
+                                        onClick = { onPromoteToTrained(example) }
+                                    ) { Text("ترقية لتدريب دائم") }
+                                    TextButton(onClick = { onAutoLearnedExamplesChange(autoLearnedExamples - example) }) {
+                                        Text("حذف", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
