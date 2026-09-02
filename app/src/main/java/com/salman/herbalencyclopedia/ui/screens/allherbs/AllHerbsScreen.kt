@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
+import com.salman.herbalencyclopedia.data.search.HerbSearch
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
@@ -22,7 +23,9 @@ import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 @Composable
 fun AllHerbsScreen(herbs: List<Herb>, favoriteIds: Set<String>, onHerbClick: (Herb) -> Unit, onToggleFavorite: (String) -> Unit) {
     var query by remember { mutableStateOf("") }
-    val filtered = herbs.filter { query.isBlank() || it.name.contains(query, true) || it.benefits.contains(query, true) }
+    // نفس إصلاح شاشة البحث المستقلة (SearchScreen): بحث مطبَّع وموسَّع
+    // بمرادفات محلية بدل `contains` حرفي فقط — انظر توثيق [HerbSearch].
+    val filtered = remember(query, herbs) { if (query.isBlank()) herbs else HerbSearch.search(query, herbs) }
     // كانت هذه القائمة LazyColumn بعمود واحد ثابت: على تابلت أو نافذة
     // عريضة تتمدد بطاقة العشبة بعرض الشاشة كاملاً (قد يتجاوز 800dp) بدل
     // الاستفادة من العرض. LazyVerticalGrid مع Adaptive تُبقي عموداً واحداً
