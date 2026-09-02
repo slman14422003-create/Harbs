@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,8 +42,9 @@ fun HelpScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
+        ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
         LazyColumn(
-            Modifier.padding(padding).fillMaxSize(),
+            Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -127,6 +130,7 @@ fun HelpScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
         }
     }
 }
