@@ -682,6 +682,16 @@ object HerbAssistant {
             specific && containsAny(qNorm, listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد")) ->
                 AssistantReply(buildBenefitsAnswer(herbs), false)
 
+            // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
+            // (لا إرفاق ولا ذكر اسم صريح) — عندها "الاقتراح" له معنى فعلياً،
+            // وهو اختيار الأنسب من كامل الموسوعة بدل عشبة واحدة معروفة أصلاً.
+            // إن كانت هناك عشبة محدَّدة، تُعامَل الكلمة كجزء عادي من سؤال عادي
+            // (فتُغطّى أصلاً عبر فروع الفائدة/الاستخدام أعلاه) بدل خطفها هنا.
+            !specific && isSuggestionIntent(qNorm) -> {
+                val (text, learnable) = buildSuggestionAnswer(question, herbs)
+                AssistantReply(text, learnable)
+            }
+
             else -> {
                 val (text, learnable) = buildGeneralSearchAnswer(question, herbs)
                 AssistantReply(text, learnable)
@@ -765,6 +775,91 @@ object HerbAssistant {
             "عدد التحذيرات المسجّلة متقارب بين الأعشاب المختارة."
     }
 
+    // ── اقتراح عشبة مناسبة لهدف/عرض معيّن ("اقترح عشبة لتحسين النوم") ───
+
+    /**
+     * كلمات/عبارات "أمر الاقتراح" نفسها — لا تحمل أي دلالة عن الهدف الفعلي
+     * (النوم، الهضم...) وتُستبعد من كلمات المطابقة في [buildSuggestionAnswer]
+     * حتى لا "تُغرق" حساب التشابه بكلمات لا علاقة لها بنص الموسوعة.
+     */
+    private val suggestionFillerWords: Set<String> by lazy {
+        listOf(
+            "اقترح", "اقتراح", "اقترحلي", "رشح", "رشحلي", "رشحي", "انصح", "انصحني",
+            "انصحيني", "أنصحني", "توصية", "اوصي", "أوصي", "توصي", "عشبة", "عشب",
+            "اعشاب", "أعشاب", "نبات", "نبتة", "نباتات"
+        ).map { normalize(it) }.toSet()
+    }
+
+    /** هل يطلب المستخدم اقتراحاً/توصية بعشبة (بدل سؤال مباشر عن عشبة معروفة)؟ */
+    private fun isSuggestionIntent(qNorm: String): Boolean = containsAny(
+        qNorm,
+        listOf(
+            "اقترح", "اقتراح", "رشح", "رشحلي", "رشحي", "انصح", "انصحني", "انصحيني",
+            "أنصحني", "توصية", "اوصي", "أوصي", "توصي", "افضل عشبة", "أفضل عشبة",
+            "احسن عشبة", "أحسن عشبة", "عشبة تساعد", "عشبة تفيد", "عشبة ل",
+            "علاج طبيعي", "حل طبيعي", "دواء طبيعي", "وش تنصح", "وش ينفع", "شو ينفع لل"
+        )
+    )
+
+    /** أفضل نقطة مطابِقة لعشبة واحدة مع درجة تشابهها ومصدر الحقل. */
+    private data class HerbMatch(val text: String, val field: String, val score: Double)
+
+    /**
+     * يبني اقتراحاً مرتَّباً لأفضل الأعشاب المتاحة لهدف/عرض ورد في السؤال،
+     * عبر نفس خط أنابيب "تحليل → بحث → تحليل بيانات → تنظيم" المستخدم في
+     * البحث الحر ([buildGeneralSearchAnswer])، لكن بتجميع على مستوى العشبة
+     * (أفضل نقطة لكل عشبة) بدل عرض نقاط مبعثرة، وبترجيح حقل الفوائد أعلى من
+     * غيره (لأن "الاقتراح" يعني عملياً: أي عشبة تفيد في هذا الغرض تحديداً)،
+     * فتظهر أفضل ٣ أعشاب مرشَّحة مع سبب الترشيح من نص الموسوعة نفسه.
+     */
+    private fun buildSuggestionAnswer(question: String, herbs: List<Herb>): Pair<String, Boolean> {
+        val index = corpusIndexFor(herbs)
+        val qWords = analyzeQuestion(question, index) - suggestionFillerWords
+        if (qWords.isEmpty()) {
+            return "خبرني أكثر عن الهدف أو العرض اللي حابب عشبة تساعدك فيه (مثل: النوم، الهضم، المناعة، التوتر...) وسأبحث لك ضمن الموسوعة 🌿" to false
+        }
+
+        val fieldWeight = mapOf(
+            "الفوائد" to 1.15, "الاستخدام" to 0.9, "ملاحظات" to 0.85,
+            "التحذيرات" to 0.4, "الأضرار" to 0.4
+        )
+
+        val bestPerHerb = mutableMapOf<Herb, HerbMatch>()
+        herbs.forEach { herb ->
+            searchableFields.forEach { (label, getter) ->
+                val weight = fieldWeight[label] ?: 1.0
+                splitPoints(getter(herb)).forEach { point ->
+                    val sim = weightedSimilarity(index, qWords, wordsOf(point)) * weight
+                    val current = bestPerHerb[herb]
+                    if (current == null || sim > current.score) {
+                        bestPerHerb[herb] = HerbMatch(point, label, sim)
+                    }
+                }
+            }
+        }
+
+        val ranked = bestPerHerb.entries
+            .filter { it.value.score > AiConfig.searchThreshold }
+            .sortedByDescending { it.value.score }
+            .take(3)
+
+        if (ranked.isEmpty()) {
+            return "لم أجد في بيانات الموسوعة عشبة ترتبط مباشرة بما طلبته. جرّب صياغة الهدف بكلمة مختلفة، أو اذكر عرضاً أو فائدة أكثر تحديداً." to false
+        }
+
+        val text = buildString {
+            append("بحثت وحلّلت بيانات الموسوعة، وهذه أنسب الأعشاب المتوفرة لهدفك:\n\n")
+            ranked.forEachIndexed { i, entry ->
+                val herb = entry.key
+                val match = entry.value
+                append("${i + 1}. 🔸 ${herb.name}\n")
+                append("   • [${match.field}] ${match.text}\n")
+            }
+            append("\nهذه النتائج مبنية فقط على نصوص الموسوعة، وليست بديلاً عن استشارة طبيب أو صيدلاني، خصوصاً مع وجود حمل أو أدوية أو حالة صحية مزمنة.")
+        }
+        return text to true
+    }
+
     private data class SearchHit(val herb: Herb, val field: String, val text: String, val score: Double)
 
     private val searchableFields = listOf<Pair<String, (Herb) -> String>>(
@@ -837,20 +932,30 @@ object HerbAssistant {
         return hits
     }
 
-    /** المرحلة ٣ — تنسيق الأفكار: أفضل النتائج فقط، مجمّعة حسب العشبة بدل عرضها مبعثرة. */
+    /**
+     * المرحلة ٣ — تنسيق الأفكار: تُجمَّع كل النقاط حسب العشبة أولاً، ثم
+     * تُرتَّب *الأعشاب نفسها* تنازلياً حسب أقوى نقطة لديها (لا الاكتفاء
+     * بترتيب النقاط المبعثرة عالمياً كما كان سابقاً)، فتظهر العشبة الأكثر
+     * صلة بالسؤال أولاً دوماً، مع أفضل ٣ نقاط من نصوصها فقط — هذا هو
+     * "التحليل" الفعلي لبيانات الموسوعة بدل عرض أول ٤ نقاط بغضّ النظر عن
+     * مصدرها.
+     */
     private fun organizeHits(hits: List<SearchHit>): Map<Herb, List<SearchHit>> =
-        hits.sortedByDescending { it.score }
-            .take(4)
-            .groupBy { it.herb }
+        hits.groupBy { it.herb }
+            .entries
+            .sortedByDescending { (_, herbHits) -> herbHits.maxOf { it.score } }
+            .take(3)
+            .associate { (herb, herbHits) -> herb to herbHits.sortedByDescending { it.score }.take(3) }
 
     /** المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. */
     private fun composeAnswer(organized: Map<Herb, List<SearchHit>>): String = buildString {
-        append("وجدت هذه المعلومات ذات الصلة:\n\n")
+        append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
         organized.forEach { (herb, herbHits) ->
             append("🔸 ${herb.name}:\n")
             herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
+            append("\n")
         }
-    }
+    }.trimEnd()
 
     private fun fallbackHelp(herbs: List<Herb>): String =
         if (herbs.size <= 3)
