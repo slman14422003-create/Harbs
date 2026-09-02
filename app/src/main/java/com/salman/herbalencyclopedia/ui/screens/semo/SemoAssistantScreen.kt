@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
+import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
@@ -44,9 +47,19 @@ import kotlinx.coroutines.launch
 
 private const val MAX_ATTACHED = 3
 
+/**
+ * [learnable] = هل هذا الرد ناتج عن بحث حر فعلي (وليس ترحيباً/شكراً/حالة
+ * مدرَّبة مسبقاً)؟ في هذه الحالة فقط تُعرض أزرار تقييم 👍/👎 تحت الفقاعة،
+ * وتقييم المستخدم هو ما يغذّي "تعلّم سيمو الذاتي" (انظر [HerbAssistant.recordFeedback]).
+ * [feedback] = null قبل أي تقييم، true بعد 👍، false بعد 👎 (لإخفاء الأزرار
+ * واستبدالها برسالة تأكيد قصيرة بعد أول تقييم).
+ */
 private data class ChatMessage(
     val text: String,
     val isUser: Boolean,
+    val sourceQuestion: String = "",
+    val learnable: Boolean = false,
+    val feedback: Boolean? = null,
     val id: Long = System.nanoTime()
 )
 
@@ -62,7 +75,14 @@ private data class ChatMessage(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SemoAssistantScreen(herbs: List<Herb>, onBack: () -> Unit) {
+fun SemoAssistantScreen(
+    herbs: List<Herb>,
+    onBack: () -> Unit,
+    // ── تعلّم سيمو الذاتي: قائمة الحالات المتعلَّمة تُمرَّر حيّة من
+    // DataStore عبر HerbalNavGraph، وأي تقييم 👍/👎 هنا يُحدّثها فوراً عبر
+    // onAutoLearnedExamplesChange لتُحفظ وتُطبَّق في كل محادثة قادمة. ──
+    onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit = {}
+) {
     var attachedIds by remember { mutableStateOf<List<String>>(emptyList()) }
     val attached = attachedIds.mapNotNull { id -> herbs.firstOrNull { it.id == id } }
     var showAttachPicker by remember { mutableStateOf(false) }
@@ -97,10 +117,22 @@ fun SemoAssistantScreen(herbs: List<Herb>, onBack: () -> Unit) {
                 else -> { contextHerbs = herbs; allowCompare = false }
             }
 
-            val reply = HerbAssistant.answer(question, contextHerbs, allowCompare)
-            messages = messages + ChatMessage(reply, isUser = false)
+            val reply = HerbAssistant.answerDetailed(question, contextHerbs, allowCompare)
+            messages = messages + ChatMessage(
+                text = reply.text,
+                isUser = false,
+                sourceQuestion = question,
+                learnable = reply.learnable
+            )
             isThinking = false
         }
+    }
+
+    fun rateMessage(messageId: Long, helpful: Boolean) {
+        val target = messages.firstOrNull { it.id == messageId } ?: return
+        val updated = HerbAssistant.recordFeedback(target.sourceQuestion, target.text, helpful)
+        onAutoLearnedExamplesChange(updated)
+        messages = messages.map { if (it.id == messageId) it.copy(feedback = helpful) else it }
     }
 
     LaunchedEffect(messages.size, isThinking) {
@@ -179,7 +211,9 @@ fun SemoAssistantScreen(herbs: List<Herb>, onBack: () -> Unit) {
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(messages, key = { it.id }) { message -> ChatBubble(message) }
+                        items(messages, key = { it.id }) { message ->
+                            ChatBubble(message, onRate = { helpful -> rateMessage(message.id, helpful) })
+                        }
                         if (isThinking) item(key = "typing") { TypingBubble() }
                     }
                 }
@@ -328,30 +362,71 @@ private fun AttachHerbsDialog(
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage) {
-    Row(
+private fun ChatBubble(message: ChatMessage, onRate: (Boolean) -> Unit = {}) {
+    Column(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
     ) {
-        if (!message.isUser) {
-            AssistantAvatar(size = 28.dp)
-            Spacer(Modifier.width(6.dp))
-        }
-        Surface(
-            shape = RoundedCornerShape(
-                topStart = 16.dp, topEnd = 16.dp,
-                bottomStart = if (message.isUser) 16.dp else 4.dp,
-                bottomEnd = if (message.isUser) 4.dp else 16.dp
-            ),
-            color = if (message.isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.widthIn(max = 300.dp)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
         ) {
-            Text(
-                message.text,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                color = if (message.isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            if (!message.isUser) {
+                AssistantAvatar(size = 28.dp)
+                Spacer(Modifier.width(6.dp))
+            }
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 16.dp, topEnd = 16.dp,
+                    bottomStart = if (message.isUser) 16.dp else 4.dp,
+                    bottomEnd = if (message.isUser) 4.dp else 16.dp
+                ),
+                color = if (message.isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Text(
+                    message.text,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    color = if (message.isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        // تقييم سريع لإجابات "البحث الحر" القابلة للتعلّم الذاتي فقط: 👍
+        // يحوّل هذه الإجابة إلى حالة يتعلّمها سيمو تلقائياً لأسئلة مشابهة
+        // لاحقاً، و👎 يتراجع عن أي شيء تعلّمه سابقاً بنفسه لسؤال مشابه.
+        if (!message.isUser && message.learnable) {
+            Row(
+                Modifier.padding(start = 34.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                when (message.feedback) {
+                    null -> {
+                        Text(
+                            "هل كانت هذه الإجابة مفيدة؟",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        GlassIconButton(onClick = { onRate(true) }, size = 26.dp) {
+                            Icon(Icons.Filled.ThumbUp, "مفيدة", modifier = Modifier.size(14.dp))
+                        }
+                        GlassIconButton(onClick = { onRate(false) }, size = 26.dp) {
+                            Icon(Icons.Filled.ThumbDown, "غير مفيدة", modifier = Modifier.size(14.dp))
+                        }
+                    }
+                    true -> Text(
+                        "🌱 شكراً، سيتذكّر سيمو هذه الإجابة لسؤال مشابه لاحقاً.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    false -> Text(
+                        "تم، لن يعتمد سيمو على هذه الإجابة تحديداً مرة أخرى.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
