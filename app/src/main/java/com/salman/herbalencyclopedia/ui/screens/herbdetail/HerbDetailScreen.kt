@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.HerbThumbnail
+import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 
 private data class InfoSection(
     val title: String,
@@ -71,9 +73,9 @@ fun HerbDetailScreen(
             )
         }
     ) { padding ->
+        ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
         LazyColumn(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -118,6 +120,7 @@ fun HerbDetailScreen(
                     }
                 }
             }
+        }
         }
     }
 }
