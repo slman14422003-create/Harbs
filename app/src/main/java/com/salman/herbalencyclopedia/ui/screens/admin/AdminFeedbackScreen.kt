@@ -22,6 +22,8 @@ import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.LoadingView
 import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
+import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -68,8 +70,9 @@ fun AdminFeedbackScreen(
             isLoading && feedback.isEmpty() -> LoadingView(Modifier.padding(padding).fillMaxSize())
             error != null && feedback.isEmpty() -> EmptyView(error, Modifier.padding(padding).fillMaxSize())
             feedback.isEmpty() -> EmptyView("لا توجد ملاحظات حالياً", Modifier.padding(padding).fillMaxSize())
-            else -> LazyColumn(
-                modifier = Modifier.padding(padding).fillMaxSize(),
+            else -> ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -126,6 +129,7 @@ fun AdminFeedbackScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import kotlinx.coroutines.launch
 
 /**
@@ -61,8 +63,9 @@ fun AdminUpdateScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
+        ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
         LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -195,6 +198,7 @@ fun AdminUpdateScreen(
                     Text(if (saving) "جارٍ الحفظ..." else "حفظ الإعدادات")
                 }
             }
+        }
         }
     }
 }
