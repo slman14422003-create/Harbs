@@ -85,7 +85,8 @@ fun SettingsScreen(
     onAdminFeedbackClick: () -> Unit,
     onCheckForUpdate: (android.content.Context) -> Unit,
     onDownloadUpdate: (android.content.Context, AppUpdateInfo) -> Unit,
-    onInstallUpdate: (android.content.Context) -> Unit
+    onInstallUpdate: (android.content.Context) -> Unit,
+    onCancelDownload: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentVersionName = remember {
@@ -111,8 +112,12 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
+        com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent(
+            windowInfo = com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo(),
+            modifier = Modifier.padding(padding)
+        ) {
         LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -156,7 +161,8 @@ fun SettingsScreen(
                         downloadState = downloadState,
                         onCheckForUpdate = { onCheckForUpdate(context) },
                         onDownloadUpdate = { info -> onDownloadUpdate(context, info) },
-                        onInstallUpdate = { onInstallUpdate(context) }
+                        onInstallUpdate = { onInstallUpdate(context) },
+                        onCancelDownload = onCancelDownload
                     )
                 }
             }
@@ -241,6 +247,7 @@ fun SettingsScreen(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
+        }
         }
     }
 }
@@ -583,7 +590,8 @@ private fun UpdateRow(
     downloadState: UpdateDownloadState,
     onCheckForUpdate: () -> Unit,
     onDownloadUpdate: (AppUpdateInfo) -> Unit,
-    onInstallUpdate: () -> Unit
+    onInstallUpdate: () -> Unit,
+    onCancelDownload: () -> Unit = {}
 ) {
     Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -677,7 +685,14 @@ private fun UpdateRow(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(Modifier.height(6.dp))
-                                Text("جارٍ التنزيل... ${downloadState.progress}%", style = MaterialTheme.typography.bodySmall)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "جارٍ التنزيل... ${downloadState.progress}%",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(onClick = onCancelDownload) { Text("إلغاء") }
+                                }
                             }
                         }
                         is UpdateDownloadState.ReadyToInstall -> {
