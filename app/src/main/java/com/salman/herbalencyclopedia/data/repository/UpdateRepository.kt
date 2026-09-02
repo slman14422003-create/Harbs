@@ -145,19 +145,37 @@ class UpdateRepository(
                 releaseNotes = config.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
                 releasePageUrl = releasePageUrl,
                 apkUrl = release?.apkUrl,
-                mandatory = mandatory
+                mandatory = mandatory,
+                useProxyFallback = config.useProxyFallback,
+                customProxyBaseUrl = config.customProxyBaseUrl
             )
         }
+
+    /**
+     * Ordered list of URLs to try when actually downloading [originalUrl] (a plain,
+     * unproxied github.com / objects.githubusercontent.com link): the direct link
+     * first, then each configured proxy mirror in turn — the exact same fallback
+     * chain [fetchLatestReleaseWithFallback] uses for the metadata check, but kept
+     * independent because the asset CDN can be reachable/blocked differently than
+     * the metadata API. Called from [com.salman.herbalencyclopedia.ui.AppViewModel]
+     * so the in-app .apk download gets its own retry chain instead of only reusing
+     * whichever path the earlier metadata check happened to succeed through.
+     */
+    fun downloadCandidates(originalUrl: String, useProxyFallback: Boolean, customProxyBaseUrl: String?): List<String> {
+        if (!useProxyFallback) return listOf(originalUrl)
+        val proxies = buildList {
+            customProxyBaseUrl?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+            addAll(PUBLIC_PROXY_MIRRORS)
+        }
+        return listOf(originalUrl) + proxies.map { viaProxy(it, originalUrl) }
+    }
 
     /**
      * Tries GitHub directly first. If that fails outright (connection refused,
      * timeout, DNS failure — the pattern seen when GitHub is blocked at the
      * network/country level) it retries the exact same request through a
      * proxy mirror, so the update check keeps working without the user
-     * needing a VPN. The successful source is remembered so the resulting
-     * apk/release links can be rewritten through the same working path —
-     * otherwise the check would succeed via proxy but the download link
-     * itself would still point at plain github.com and fail the same way.
+     * needing a VPN.
      */
     private fun fetchLatestReleaseWithFallback(repo: String, config: AppUpdateConfig): ReleaseData? {
         val direct = fetchLatestRelease(repo)
@@ -170,7 +188,7 @@ class UpdateRepository(
         }
         for (proxyBase in proxies) {
             val result = fetchLatestRelease(repo, proxyBase)
-            if (result != null) return result.copy(proxyBaseUrl = proxyBase)
+            if (result != null) return result
         }
         return null
     }
@@ -196,10 +214,11 @@ class UpdateRepository(
     private data class ReleaseData(
         val tagName: String,
         val body: String,
+        /** Always the plain, unproxied github.com URL — never rewritten, even when this
+         *  JSON itself was fetched through a proxy mirror. See [downloadCandidates]. */
         val htmlUrl: String,
-        val apkUrl: String?,
-        /** Set when this data was fetched through a proxy mirror rather than direct. */
-        val proxyBaseUrl: String? = null
+        /** Always the plain, unproxied asset URL, for the same reason. */
+        val apkUrl: String?
     )
 
     /**
@@ -207,9 +226,12 @@ class UpdateRepository(
      * given, the api.github.com request itself is routed through the proxy
      * (some mirrors only proxy github.com/objects.githubusercontent.com, so a
      * connection failure here is treated the same as any other failure — the
-     * caller just moves on to the next mirror), and the returned asset /
-     * release-page links are rewritten through the same proxy so the
-     * follow-up download works too.
+     * caller just moves on to the next mirror). The asset/release-page links
+     * inside the JSON body are themselves already plain github.com URLs
+     * regardless of how we fetched the JSON, so they're returned as-is —
+     * proxying them (if needed at all) happens uniformly later via
+     * [downloadCandidates], instead of guessing here whether the same proxy
+     * that worked for the metadata API will also work for the asset CDN.
      */
     private fun fetchLatestRelease(repo: String, proxyBase: String? = null): ReleaseData? = try {
         val apiUrl = "https://api.github.com/repos/$repo/releases/latest"
@@ -231,7 +253,7 @@ class UpdateRepository(
             val json = JSONObject(text)
             val tag = json.optString("tag_name")
             val body = json.optString("body")
-            var htmlUrl = json.optString("html_url")
+            val htmlUrl = json.optString("html_url")
             var apkUrl: String? = null
             val assets = json.optJSONArray("assets")
             if (assets != null) {
@@ -244,11 +266,9 @@ class UpdateRepository(
                     }
                 }
             }
-            if (proxyBase != null) {
-                apkUrl = apkUrl?.let { viaProxy(proxyBase, it) }
-                if (htmlUrl.isNotBlank()) htmlUrl = viaProxy(proxyBase, htmlUrl)
-            }
-            if (tag.isBlank()) null else ReleaseData(tag, body, htmlUrl, apkUrl, proxyBase)
+            // apkUrl/htmlUrl are left as plain github.com URLs here regardless of
+            // [proxyBase] — see the ReleaseData/downloadCandidates doc comments.
+            if (tag.isBlank()) null else ReleaseData(tag, body, htmlUrl, apkUrl)
         }
     } catch (e: Exception) {
         null
