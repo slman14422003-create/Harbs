@@ -59,13 +59,13 @@ class HerbalApp : Application(), ImageLoaderFactory {
         // builds use Play Integrity; debug builds use Firebase's debug provider.
         if (firebaseApp != null) FirebaseSecurity.install()
 
-        // كان هذا الاستدعاء مفقوداً بالكامل، مما يجعل DictionaryLexicon.isReady
-        // يبقى false للأبد (مؤشر "جارٍ تحميل قاموس المرادفات المحلي…" عالق في
-        // أدوات المطور) ويحرم سيمو والبحث المباشر من كل مرادفات القاموس
-        // المحلي (Rabih Dictionary + Arabic WordNet)، فتفشل أسئلة مشروعة مثل
-        // "عشبة لتحسين النوم" حين لا يرد لفظ السؤال نفسه حرفياً في نص
-        // الموسوعة. يعمل على خيط IO في الخلفية فلا يؤخر بدء التطبيق، وأي فشل
-        // بالتحميل يُعامَل بهدوء تام كما هو موثّق في DictionaryLexicon.
+        // ينسخ قاعدة بيانات القاموس المحلي (SQLite، مُدمَجة كجزء أساسي من
+        // التطبيق) مرة واحدة إلى تخزين التطبيق الداخلي ثم يفتحها — انظر توثيق
+        // DictionaryLexicon لتفصيل لماذا SQLite بدل تحميل ملف JSON ضخم بالكامل
+        // في الذاكرة (كان يسبب OutOfMemoryError صامتاً على الأجهزة محدودة
+        // الرام فيبقى القاموس عالقاً على "جارٍ التحميل…" للأبد). يعمل على خيط
+        // IO في الخلفية فلا يؤخر بدء التطبيق، وأي فشل يُعامَل بهدوء تام كما هو
+        // موثّق في DictionaryLexicon.
         applicationScope.launch { DictionaryLexicon.preload(this@HerbalApp) }
     }
 
