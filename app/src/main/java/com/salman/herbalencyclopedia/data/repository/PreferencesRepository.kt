@@ -48,6 +48,10 @@ class PreferencesRepository(private val context: Context) {
         val AI_SYNONYMS = stringSetPreferencesKey("ai_synonyms")
         val AI_TRAINED_EXAMPLES = stringSetPreferencesKey("ai_trained_examples")
         val AI_TRAINED_THRESHOLD = floatPreferencesKey("ai_trained_threshold")
+        // "التعلّم الذاتي": حالات يتعلّمها سيمو تلقائياً من تقييمات المستخدمين
+        // (👍) على إجابات البحث الحر — منفصلة عن حالات المطوّر اليدوية أعلاه.
+        val AI_AUTO_LEARNED_EXAMPLES = stringSetPreferencesKey("ai_auto_learned_examples")
+        val AI_AUTO_LEARN_ENABLED = booleanPreferencesKey("ai_auto_learn_enabled")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -152,6 +156,8 @@ class PreferencesRepository(private val context: Context) {
             prefs.remove(Keys.AI_SYNONYMS)
             prefs.remove(Keys.AI_TRAINED_EXAMPLES)
             prefs.remove(Keys.AI_TRAINED_THRESHOLD)
+            prefs.remove(Keys.AI_AUTO_LEARNED_EXAMPLES)
+            prefs.remove(Keys.AI_AUTO_LEARN_ENABLED)
         }
     }
 
@@ -189,5 +195,28 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setAiTrainedThreshold(value: Float) {
         context.dataStore.edit { it[Keys.AI_TRAINED_THRESHOLD] = value }
+    }
+
+    // ── التعلّم الذاتي: حالات يتعلّمها سيمو من تقييمات المستخدمين 👍/👎 ──
+
+    val aiAutoLearnedExamples: Flow<List<TrainedExample>> = context.dataStore.data.map { prefs ->
+        (prefs[Keys.AI_AUTO_LEARNED_EXAMPLES] ?: emptySet()).mapNotNull { entry ->
+            val parts = entry.split(AI_ENTRY_SEP, limit = 2)
+            if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) TrainedExample(parts[0], parts[1]) else null
+        }
+    }
+
+    val aiAutoLearnEnabled: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.AI_AUTO_LEARN_ENABLED] ?: AiConfig.defaultAutoLearnEnabled
+    }
+
+    suspend fun setAiAutoLearnedExamples(examples: List<TrainedExample>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AI_AUTO_LEARNED_EXAMPLES] = examples.map { "${it.pattern}$AI_ENTRY_SEP${it.response}" }.toSet()
+        }
+    }
+
+    suspend fun setAiAutoLearnEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AI_AUTO_LEARN_ENABLED] = enabled }
     }
 }
