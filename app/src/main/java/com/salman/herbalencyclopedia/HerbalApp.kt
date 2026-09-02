@@ -8,8 +8,13 @@ import coil.ImageLoaderFactory
 import coil.memory.MemoryCache
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.salman.herbalencyclopedia.data.ai.DictionaryLexicon
 import com.salman.herbalencyclopedia.data.image.DataUriFetcher
 import com.salman.herbalencyclopedia.data.repository.AppContainer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Firebase is initialized manually with the same project configuration the
@@ -27,6 +32,9 @@ class HerbalApp : Application(), ImageLoaderFactory {
 
     lateinit var container: AppContainer
         private set
+
+    /** نطاق حياة التطبيق الكامل، يُستخدم فقط لمهام خلفية عمرها التطبيق نفسه (مثل تحميل القاموس المحلي). */
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +58,15 @@ class HerbalApp : Application(), ImageLoaderFactory {
         // subsequent Firestore/Auth request can carry an attestation token. Release
         // builds use Play Integrity; debug builds use Firebase's debug provider.
         if (firebaseApp != null) FirebaseSecurity.install()
+
+        // كان هذا الاستدعاء مفقوداً بالكامل، مما يجعل DictionaryLexicon.isReady
+        // يبقى false للأبد (مؤشر "جارٍ تحميل قاموس المرادفات المحلي…" عالق في
+        // أدوات المطور) ويحرم سيمو والبحث المباشر من كل مرادفات القاموس
+        // المحلي (Rabih Dictionary + Arabic WordNet)، فتفشل أسئلة مشروعة مثل
+        // "عشبة لتحسين النوم" حين لا يرد لفظ السؤال نفسه حرفياً في نص
+        // الموسوعة. يعمل على خيط IO في الخلفية فلا يؤخر بدء التطبيق، وأي فشل
+        // بالتحميل يُعامَل بهدوء تام كما هو موثّق في DictionaryLexicon.
+        applicationScope.launch { DictionaryLexicon.preload(this@HerbalApp) }
     }
 
     // بدون هذا، Coil (v2.x) لا يعرف كيف يقرأ روابط data: (base64) —
