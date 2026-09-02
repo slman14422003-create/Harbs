@@ -1,6 +1,8 @@
 package com.salman.herbalencyclopedia.data.ai
 
 import com.salman.herbalencyclopedia.data.model.Herb
+import kotlin.math.ln
+import kotlin.math.sqrt
 
 /**
  * إعدادات قابلة للتعديل من "أدوات المطور" داخل التطبيق (AdminToolsScreen)
@@ -34,7 +36,7 @@ object AiConfig {
      * بالضبط. عند سؤال المستخدم شيئاً مشابهاً بدرجة كافية لأحد هذه الأمثلة
      * (حسب [trainedMatchThreshold])، يرد سيمو بالنص المدرَّب مباشرة بدل
      * الاعتماد على المنطق العام — وهذه هي آلية "تطوير النماذج وفهم الحالات"
-     * الفعلية هنا: تعليم مباشر بلا إعادة بناء التطبيق.
+     * اليدوية: تعليم مباشر بلا إعادة بناء التطبيق.
      */
     var trainedExamples: List<TrainedExample> = emptyList()
 
@@ -42,9 +44,26 @@ object AiConfig {
     var trainedMatchThreshold: Double = 0.45
         set(value) { field = value.coerceIn(0.1, 0.95) }
 
+    /**
+     * حالات "تعلّمها سيمو بنفسه" من واقع الاستخدام: عندما يجيب سيمو بحرية
+     * (بحث حر ضمن بيانات الموسوعة) ويُقيّم المستخدم الرد بـ 👍 في شاشة
+     * الدردشة، تُحفَظ نقطة السؤال↔الرد هنا تلقائياً — فتصبح إجابته على أسئلة
+     * مشابهة لاحقاً فورية وواثقة دون أي تدخل من المطوّر. هذا هو المعنى
+     * العملي لعبارة "نموذج يعتمد على الموسوعة ويطوّر نفسه بنفسه": كل حالة
+     * متعلَّمة مصدرها إجابة استُخرجت أصلاً من نصوص الموسوعة، ومصدر الثقة بها
+     * هو تقييم صريح من مستخدم حقيقي، وليس تخميناً. تبقى منفصلة عن
+     * [trainedExamples] (تدريب المطوّر اليدوي المحمي دوماً)، وقابلة للمراجعة
+     * أو الحذف أو "الترقية" لتدريب يدوي دائم من أدوات المطور.
+     */
+    var autoLearnedExamples: List<TrainedExample> = emptyList()
+
+    /** تفعيل/تعطيل التعلّم الذاتي من تقييمات المستخدمين (👍/👎) في شاشة الدردشة. */
+    var autoLearnEnabled: Boolean = true
+
     val defaultSimilarityThreshold = 0.34
     val defaultSearchThreshold = 0.12
     val defaultTrainedThreshold = 0.45
+    val defaultAutoLearnEnabled = true
 
     fun resetToDefaults() {
         similarityThreshold = defaultSimilarityThreshold
@@ -53,6 +72,8 @@ object AiConfig {
         synonyms = emptyMap()
         trainedExamples = emptyList()
         trainedMatchThreshold = defaultTrainedThreshold
+        autoLearnedExamples = emptyList()
+        autoLearnEnabled = defaultAutoLearnEnabled
     }
 }
 
@@ -66,9 +87,15 @@ data class TrainedExample(val pattern: String, val response: String)
  * يحلّلها، يجيب بحرية على أي سؤال، ولا يبني مقارنة منظّمة بين أكثر من عشبة
  * إلا عندما يُطلب منه ذلك صراحة (باختيار عشبتين أو ذكرهما بالاسم في السؤال).
  *
- * "تدريبه" هنا يعني ضبط عتباته وقاموسه من بيانات الموسوعة نفسها (لا يوجد
- * نموذج شبكة عصبية يحتاج تدريباً فعلياً) — انظر [AiConfig] للقيم القابلة
- * للتعديل حياً من أدوات المطور.
+ * "تدريبه" يحدث على مستويين:
+ * 1) يدوياً من أدوات المطور (مرادفات + حالات مدرَّبة، انظر [AiConfig]).
+ * 2) ذاتياً أثناء الاستخدام الفعلي: [CorpusIndex] يُبنى تلقائياً من نصوص
+ *    الموسوعة نفسها ليكتشف أوزان الكلمات وعلاقاتها الضمنية دون أي تدخل
+ *    يدوي، و[recordFeedback] يحوّل تقييمات المستخدمين (👍) على إجابات
+ *    البحث الحر إلى حالات مدرَّبة تلقائياً — أي أن سيمو يعتمد بالكامل على
+ *    بيانات الموسوعة، ثم يراكم فوقها خبرة من استخدامه الفعلي.
+ * لا يوجد هنا نموذج شبكة عصبية يحتاج تدريباً فعلياً؛ هذا "تعلّم" رمزي بحت
+ * (إحصائي + تغذية راجعة) مناسب لتشغيل محلي بالكامل دون إنترنت أو معالجة ثقيلة.
  */
 object HerbAssistant {
 
@@ -105,7 +132,7 @@ object HerbAssistant {
     /**
      * يستبدل كل كلمة بمرادفها القياسي إن وُجد في [AiConfig.synonyms] (بعد
      * تطبيع الطرفين)، بحيث تُحسب "ينفع" و"يفيد" مثلاً ككلمة واحدة أثناء أي
-     * مقارنة أو بحث — هذا هو أثر "تعليم سيمو كلمات جديدة" على أرض الواقع.
+     * مقارنة أو بحث — هذا هو أثر "تعليم سيمو كلمات جديدة" يدوياً على أرض الواقع.
      */
     private fun applySynonyms(words: Set<String>): Set<String> {
         if (AiConfig.synonyms.isEmpty()) return words
@@ -134,26 +161,162 @@ object HerbAssistant {
 
     private fun herbNames(herbs: List<Herb>): String = herbs.joinToString(" و") { it.name }
 
+    // ── فهرس "مفهوم تلقائياً" من نصوص الموسوعة نفسها ────────────────────
+
     /**
-     * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" التي أضافها المطوّر
-     * ([AiConfig.trainedExamples])، ويعيد أقرب رد مخصّص إن تجاوز التشابه
-     * [AiConfig.trainedMatchThreshold]، وإلا يعيد null ليكمل سيمو بمنطقه
-     * العام. هذا يمنح المطوّر أولوية كاملة لتصحيح أو تحسين أي حالة بعينها.
+     * فهرس يُبنى تلقائياً من نصوص الموسوعة نفسها (لا يحتاج أي تدخل يدوي)
+     * ليمنح سيمو فهماً أعمق من مجرد تقاطع كلمات بسيط:
+     *
+     * 1) وزن كل كلمة (IDF تقريبي): كلمة نادرة الورود عبر كل نقاط الموسوعة
+     *    (اسم عرَض أو استخدام مميّز) تعني أكثر من كلمة شائعة جداً (كـ"يساعد")،
+     *    فتُعطى وزناً أعلى عند حساب التشابه بين سؤال المستخدم ونص الموسوعة.
+     * 2) علاقات ضمنية بين الكلمات: كلمتان تتكرران معاً كثيراً نسبياً داخل
+     *    نفس النقطة عبر أعشاب مختلفة تُعتبر "مرتبطتين" تلقائياً (نسخة مبسّطة
+     *    من مقياس PMI)، فيتوسّع فهم سؤال المستخدم بها دون أي مرادف يُضاف
+     *    يدوياً من المطوّر — تعلّم توزيعي بحت من بيانات الموسوعة ذاتها.
+     *
+     * يُعاد بناؤه فقط عند تغيّر قائمة الأعشاب المرجعة (انظر [corpusIndexFor]).
+     */
+    private class CorpusIndex(herbs: List<Herb>) {
+        private val idf: Map<String, Double>
+        private val related: Map<String, List<String>>
+
+        init {
+            val points = mutableListOf<Set<String>>()
+            herbs.forEach { herb ->
+                listOf(herb.benefits, herb.usage, herb.warnings, herb.harms, herb.notes).forEach { field ->
+                    splitPoints(field).forEach { p ->
+                        val w = wordsOf(p)
+                        if (w.isNotEmpty()) points += w
+                    }
+                }
+            }
+            val docCount = points.size.coerceAtLeast(1)
+            val df = mutableMapOf<String, Int>()
+            points.forEach { pts -> pts.forEach { w -> df[w] = (df[w] ?: 0) + 1 } }
+            idf = df.mapValues { (_, d) -> ln(docCount.toDouble() / d.toDouble() + 1.0) }
+
+            val coOccur = mutableMapOf<Pair<String, String>, Int>()
+            points.forEach { pts ->
+                val list = pts.toList()
+                for (i in list.indices) for (j in i + 1 until list.size) {
+                    val a = list[i]; val b = list[j]
+                    val key = if (a < b) a to b else b to a
+                    coOccur[key] = (coOccur[key] ?: 0) + 1
+                }
+            }
+            val relatedMap = mutableMapOf<String, MutableList<Pair<String, Double>>>()
+            coOccur.forEach { (pair, count) ->
+                if (count < 2) return@forEach // تحوّطاً من تطابق عابر لمرة واحدة
+                val (a, b) = pair
+                val score = count.toDouble() / sqrt((df[a] ?: 1).toDouble() * (df[b] ?: 1).toDouble())
+                if (score >= 0.5) {
+                    relatedMap.getOrPut(a) { mutableListOf() } += b to score
+                    relatedMap.getOrPut(b) { mutableListOf() } += a to score
+                }
+            }
+            related = relatedMap.mapValues { (_, l) -> l.sortedByDescending { it.second }.take(3).map { it.first } }
+        }
+
+        fun weightOf(word: String): Double = idf[word] ?: 1.0
+
+        /** يوسّع كلمات السؤال بالعلاقات المكتشَفة تلقائياً (إضافة فهم ضمني، لا حذف). */
+        fun expand(words: Set<String>): Set<String> =
+            if (words.isEmpty()) words else words + words.flatMap { related[it].orEmpty() }
+    }
+
+    // ذاكرة تخزين مؤقت بسيطة: يُعاد بناء الفهرس فقط عند تغيّر مرجع قائمة
+    // الأعشاب (تُنشئ شاشات التطبيق قائمة جديدة عند أي تحديث فعلي للبيانات).
+    private var cachedIndex: CorpusIndex? = null
+    private var cachedForHerbs: List<Herb>? = null
+
+    private fun corpusIndexFor(herbs: List<Herb>): CorpusIndex {
+        val current = cachedIndex
+        if (current != null && cachedForHerbs === herbs) return current
+        val built = CorpusIndex(herbs)
+        cachedIndex = built
+        cachedForHerbs = herbs
+        return built
+    }
+
+    /** تشابه Jaccard موزون بأهمية الكلمات (IDF) بدل عدّها بالتساوي. */
+    private fun weightedSimilarity(index: CorpusIndex, a: Set<String>, b: Set<String>): Double {
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        val union = a union b
+        val unionWeight = union.sumOf { index.weightOf(it) }
+        if (unionWeight == 0.0) return 0.0
+        val interWeight = (a intersect b).sumOf { index.weightOf(it) }
+        return interWeight / unionWeight
+    }
+
+    /**
+     * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" — اليدوية أولاً
+     * ([AiConfig.trainedExamples]، أولوية مطلقة دوماً لأنها من مراجعة
+     * المطوّر مباشرة)، ثم المتعلَّمة ذاتياً ([AiConfig.autoLearnedExamples])
+     * بعتبة أعلى قليلاً تحوّطاً لأنها غير مراجَعة يدوياً. يعيد أقرب رد
+     * مخصّص إن تجاوز التشابه العتبة المناسبة، وإلا يعيد null ليكمل سيمو
+     * بمنطقه العام.
      */
     private fun matchTrainedExample(question: String): String? {
-        if (AiConfig.trainedExamples.isEmpty()) return null
         val qWords = wordsOf(question)
         if (qWords.isEmpty()) return null
-        var bestResponse: String? = null
-        var bestScore = 0.0
+
+        var bestManual: String? = null
+        var bestManualScore = 0.0
         AiConfig.trainedExamples.forEach { example ->
             val score = jaccard(qWords, wordsOf(example.pattern))
-            if (score > bestScore) {
-                bestScore = score
-                bestResponse = example.response
-            }
+            if (score > bestManualScore) { bestManualScore = score; bestManual = example.response }
         }
-        return if (bestScore >= AiConfig.trainedMatchThreshold) bestResponse else null
+        if (bestManualScore >= AiConfig.trainedMatchThreshold) return bestManual
+
+        if (!AiConfig.autoLearnEnabled || AiConfig.autoLearnedExamples.isEmpty()) return null
+        var bestAuto: String? = null
+        var bestAutoScore = 0.0
+        AiConfig.autoLearnedExamples.forEach { example ->
+            val score = jaccard(qWords, wordsOf(example.pattern))
+            if (score > bestAutoScore) { bestAutoScore = score; bestAuto = example.response }
+        }
+        val autoThreshold = (AiConfig.trainedMatchThreshold + 0.15).coerceAtMost(0.95)
+        return if (bestAutoScore >= autoThreshold) bestAuto else null
+    }
+
+    /** أقصى عدد حالات يحتفظ بها التعلّم الذاتي؛ الأقدم يُستبعد أولاً عند التجاوز. */
+    private const val MAX_AUTO_LEARNED_EXAMPLES = 200
+
+    /**
+     * يسجّل تقييم المستخدم (👍/👎) على إجابة "قابلة للتعلّم" (انظر
+     * [AssistantReply.learnable]) في شاشة الدردشة:
+     * - عند الإعجاب: تُحفظ نقطة السؤال↔الرد كحالة يتعلّمها سيمو تلقائياً،
+     *   بشرط ألا تكون قريبة بما يكفي من حالة متعلَّمة سابقاً (تفادي التكرار)،
+     *   مع سقف أقصى لعدد الحالات ([MAX_AUTO_LEARNED_EXAMPLES]) يُستبعد عنده
+     *   الأقدم أولاً.
+     * - عند عدم الإعجاب: يُزال أي مثال متعلَّم ذاتياً يطابق هذا السؤال بدرجة
+     *   كافية — أي أن سيمو "يتراجع" عن خطأ تعلّمه بنفسه — دون أي تأثير على
+     *   حالات تدريب المطوّر اليدوية، المحمية دوماً من هذا المسار.
+     * يعيد القائمة المحدَّثة مباشرة ليحفظها المستدعي (PreferencesRepository).
+     */
+    fun recordFeedback(question: String, reply: String, helpful: Boolean): List<TrainedExample> {
+        val qWords = wordsOf(question)
+        if (qWords.isEmpty()) return AiConfig.autoLearnedExamples
+
+        if (!helpful) {
+            val remaining = AiConfig.autoLearnedExamples.filterNot {
+                jaccard(qWords, wordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
+            }
+            AiConfig.autoLearnedExamples = remaining
+            return remaining
+        }
+
+        if (!AiConfig.autoLearnEnabled) return AiConfig.autoLearnedExamples
+        val alreadyKnown = AiConfig.autoLearnedExamples.any {
+            jaccard(qWords, wordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
+        }
+        if (alreadyKnown) return AiConfig.autoLearnedExamples
+
+        val updated = (AiConfig.autoLearnedExamples + TrainedExample(question.trim(), reply))
+            .takeLast(MAX_AUTO_LEARNED_EXAMPLES)
+        AiConfig.autoLearnedExamples = updated
+        return updated
     }
 
     // ── المقارنة المنظّمة (يُستخدم في بطاقات المقارنة بالشاشة) ─────────
@@ -163,10 +326,12 @@ object HerbAssistant {
 
     /**
      * يبني مقارنة نقطة-بنقطة لحقل معيّن (مثل الفوائد) عبر الأعشاب المختارة:
-     * يجمع النقاط المتشابهة معنوياً من أعشاب مختلفة في نقطة واحدة مشتركة،
-     * ويترك النقاط المنفردة كما هي، بحيث تُعرض النتيجة منظّمة وواضحة.
+     * يجمع النقاط المتشابهة معنوياً من أعشاب مختلفة في نقطة واحدة مشتركة
+     * (بتشابه موزون بأهمية الكلمات عبر [CorpusIndex] بدل عدّ بسيط)، ويترك
+     * النقاط المنفردة كما هي، بحيث تُعرض النتيجة منظّمة وواضحة.
      */
     fun compareField(herbs: List<Herb>, field: (Herb) -> String): List<ComparisonPoint> {
+        val index = corpusIndexFor(herbs)
         val perHerbPoints = herbs.map { it.id to splitPoints(field(it)) }
         val usedFlags = perHerbPoints.map { (_, pts) -> BooleanArray(pts.size) }
         val results = mutableListOf<ComparisonPoint>()
@@ -185,7 +350,7 @@ object HerbAssistant {
                     val (otherId, otherPoints) = perHerbPoints[hj]
                     for (pj in otherPoints.indices) {
                         if (usedFlags[hj][pj]) continue
-                        val sim = jaccard(pw, wordsOf(otherPoints[pj]))
+                        val sim = weightedSimilarity(index, pw, wordsOf(otherPoints[pj]))
                         if (sim >= threshold) {
                             usedFlags[hj][pj] = true
                             if (otherId !in matched) matched += otherId
@@ -257,10 +422,23 @@ object HerbAssistant {
     // ── الدردشة الذكية (إجابة حرة على أسئلة المستخدم) ──────────────────
 
     /**
+     * رد سيمو مع بيان ما إذا كان "قابلاً للتعلّم الذاتي" منه: فقط إجابات
+     * البحث الحر الفعلية (وليست الترحيب/الشكر/إجابة حالة مدرَّبة مسبقاً، إذ
+     * لا معنى لإعادة تعلّم شيء متعلَّم أو ثابت أصلاً) تُعرض معها أزرار تقييم
+     * في شاشة الدردشة، ليقرر المستخدم إن كانت مفيدة فتُحفظ عبر [recordFeedback].
+     */
+    data class AssistantReply(val text: String, val learnable: Boolean)
+
+    /** توافقاً مع الاستدعاءات القديمة (مثل اختبار أدوات المطور) التي تحتاج النص فقط. */
+    fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true): String =
+        answerDetailed(question, herbs, allowCompare).text
+
+    /**
      * يجيب على سؤال حر بالاعتماد على بيانات عشبة واحدة أو أكثر. لا يوجد هنا
      * أي حجب أو تقييد صناعي على المحتوى — المساعد محلي بالكامل ويستخدم فقط
-     * نصوص الموسوعة التي أدخلها المطوّر، فيجيب دوماً بأفضل ما يتوفر لديه من
-     * معلومات، ويوضّح بصراحة عندما لا تتوفر بيانات كافية بدل رفض الإجابة.
+     * نصوص الموسوعة التي أدخلها المطوّر (يدوياً أو عبر التعلّم الذاتي)، فيجيب
+     * دوماً بأفضل ما يتوفر لديه من معلومات، ويوضّح بصراحة عندما لا تتوفر
+     * بيانات كافية بدل رفض الإجابة.
      *
      * [allowCompare] يحدد ما إذا كان مسموحاً تفعيل منطق "المقارنة/الدمج"
      * المنظّم (يتطلب عشبتين محددتين بوضوح عبر اختيار المستخدم أو ذكرهما
@@ -269,14 +447,19 @@ object HerbAssistant {
      * تلقائياً بين عشرات الأعشاب التي لم يطلبها أحد — تماماً كما لا يقارن
      * إلا إذا طُلب منه ذلك صراحة.
      */
-    fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true): String {
-        if (herbs.isEmpty()) return "لم أجد في الموسوعة معلومات كافية للإجابة على هذا السؤال بعد 🌿"
+    fun answerDetailed(question: String, herbs: List<Herb>, allowCompare: Boolean = true): AssistantReply {
+        if (herbs.isEmpty()) {
+            return AssistantReply("لم أجد في الموسوعة معلومات كافية للإجابة على هذا السؤال بعد 🌿", false)
+        }
         val qNorm = normalize(question)
-        if (qNorm.isBlank()) return "تفضّل، اسأل سيمو عن أي عشبة: فوائدها، طريقة استخدامها، أو تحذيراتها."
+        if (qNorm.isBlank()) {
+            return AssistantReply("تفضّل، اسأل سيمو عن أي عشبة: فوائدها، طريقة استخدامها، أو تحذيراتها.", false)
+        }
 
-        // أولوية مطلقة للحالات التي دربها المطوّر يدوياً — إن وُجدت مطابقة
-        // كافية، يستخدم سيمو ردّها مباشرة قبل أي منطق عام آخر.
-        matchTrainedExample(question)?.let { return it }
+        // أولوية مطلقة للحالات المدرَّبة (يدوياً من المطوّر، أو ذاتياً من
+        // تقييمات المستخدمين السابقة) — إن وُجدت مطابقة كافية، يستخدم سيمو
+        // ردّها مباشرة قبل أي منطق عام آخر.
+        matchTrainedExample(question)?.let { return AssistantReply(it, false) }
 
         // "محدَّد" = عدد قليل من الأعشاب المستهدفة فعلياً (باختيار المستخدم أو
         // ذكرها بالاسم) — عندها فقط تُبنى إجابات مفصّلة لكل عشبة على حدة.
@@ -286,27 +469,33 @@ object HerbAssistant {
         val specific = herbs.size <= 3
         return when {
             containsAny(qNorm, listOf("مرحبا", "اهلا", "أهلا", "السلام عليكم", "hello", "hi")) ->
-                "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة."
+                AssistantReply(
+                    "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
+                    false
+                )
 
             containsAny(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور")) ->
-                "عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب."
+                AssistantReply("عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.", false)
 
             allowCompare && specific && herbs.size >= 2 && containsAny(qNorm, listOf("جمع", "دمج", "معا", "معاً", "سوية", "سويا", "نفس الوقت", "تفاعل", "خلط")) ->
-                buildCombineAnswer(herbs)
+                AssistantReply(buildCombineAnswer(herbs), false)
 
             specific && containsAny(qNorm, listOf("خطر", "اضرار", "أضرار", "تحذير", "حامل", "حمل", "رضاعة", "رضاعه", "طفل", "اطفال", "أطفال", "امان", "أمان", "اثار جانبية", "آثار جانبية")) ->
-                buildSafetyAnswer(herbs, qNorm)
+                AssistantReply(buildSafetyAnswer(herbs, qNorm), false)
 
             specific && containsAny(qNorm, listOf("استخدام", "استعمال", "طريقة", "طريقه", "كيف استخدم", "جرعة", "جرعه", "مقدار")) ->
-                buildUsageAnswer(herbs)
+                AssistantReply(buildUsageAnswer(herbs), false)
 
             allowCompare && specific && herbs.size >= 2 && containsAny(qNorm, listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")) ->
-                buildOverview(herbs) + "\n\n" + buildSafetyGlance(herbs)
+                AssistantReply(buildOverview(herbs) + "\n\n" + buildSafetyGlance(herbs), false)
 
             specific && containsAny(qNorm, listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد")) ->
-                buildBenefitsAnswer(herbs)
+                AssistantReply(buildBenefitsAnswer(herbs), false)
 
-            else -> buildGeneralSearchAnswer(question, herbs)
+            else -> {
+                val (text, learnable) = buildGeneralSearchAnswer(question, herbs)
+                AssistantReply(text, learnable)
+            }
         }
     }
 
@@ -386,9 +575,20 @@ object HerbAssistant {
             "عدد التحذيرات المسجّلة متقارب بين الأعشاب المختارة."
     }
 
-    private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>): String {
-        val qWords = wordsOf(question)
-        if (qWords.isEmpty()) return fallbackHelp(herbs)
+    /**
+     * البحث الحر: يعيد النص + بياناً هل عُثر فعلاً على نتائج ذات صلة (`true`)
+     * أم أن الرد كان رسالة تعذّر عامة (`false`) — يُستخدم هذا البيان لتحديد
+     * أهلية الرد للتعلّم الذاتي (انظر [AssistantReply.learnable]).
+     * يوسّع كلمات السؤال تلقائياً بعلاقات [CorpusIndex] المكتشفة من الموسوعة
+     * نفسها، ويرجّح النتائج بأهمية الكلمات (IDF) بدل عدّها بالتساوي — وهذا هو
+     * الفرق العملي بين "بحث عن كلمات" و"فهم اعتماداً على الموسوعة".
+     */
+    private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>): Pair<String, Boolean> {
+        val qWordsBase = wordsOf(question)
+        if (qWordsBase.isEmpty()) return fallbackHelp(herbs) to false
+
+        val index = corpusIndexFor(herbs)
+        val qWords = index.expand(qWordsBase)
 
         data class Hit(val herb: Herb, val field: String, val text: String, val score: Double)
 
@@ -405,22 +605,23 @@ object HerbAssistant {
         herbs.forEach { herb ->
             fieldsLabeled.forEach { (label, getter) ->
                 splitPoints(getter(herb)).forEach { point ->
-                    val sim = jaccard(qWords, wordsOf(point))
+                    val sim = weightedSimilarity(index, qWords, wordsOf(point))
                     if (sim > threshold) hits += Hit(herb, label, point, sim)
                 }
             }
         }
 
         val top = hits.sortedByDescending { it.score }.take(4)
-        if (top.isEmpty()) return fallbackHelp(herbs)
+        if (top.isEmpty()) return fallbackHelp(herbs) to false
 
-        return buildString {
+        val text = buildString {
             append("وجدت هذه المعلومات ذات الصلة:\n\n")
             top.groupBy { it.herb }.forEach { (herb, herbHits) ->
                 append("🔸 ${herb.name}:\n")
                 herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
             }
         }
+        return text to true
     }
 
     private fun fallbackHelp(herbs: List<Herb>): String =
