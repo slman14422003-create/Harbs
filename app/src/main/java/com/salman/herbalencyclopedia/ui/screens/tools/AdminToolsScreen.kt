@@ -229,13 +229,17 @@ private fun AiAssistantDevTools(
     // حالة قاموس المرادفات المحلي (Rabih Dictionary + Arabic WordNet، انظر
     // DictionaryLexicon) — يُحمَّل مرة واحدة في الخلفية عند إقلاع التطبيق،
     // فيُحتمل جداً أنه جاهز بالفعل عند فتح هذه الشاشة. هذا الاستقصاء
-    // (كل 300ms حتى الجاهزية) مجرّد مؤشر حيّ للمطوّر أثناء الاختبار، ويتوقف
-    // فور التأكد من التحميل.
+    // (كل 300ms حتى انتهاء المحاولة) مجرّد مؤشر حيّ للمطوّر أثناء الاختبار.
+    // يتوقف فور *انتهاء* المحاولة (loadAttempted) سواء نجحت أم فشلت — قبلاً
+    // كان يتوقف فقط عند النجاح، فكان الفشل يبدو مطابقاً بصرياً لـ"لا يزال
+    // يُحمَّل" بلا أي طريقة للتمييز بينهما أو معرفة سبب الفشل الفعلي.
     var lexiconReady by remember { mutableStateOf(DictionaryLexicon.isReady) }
+    var lexiconAttempted by remember { mutableStateOf(DictionaryLexicon.loadAttempted) }
     LaunchedEffect(Unit) {
-        while (!lexiconReady) {
+        while (!lexiconAttempted) {
             kotlinx.coroutines.delay(300)
             lexiconReady = DictionaryLexicon.isReady
+            lexiconAttempted = DictionaryLexicon.loadAttempted
         }
     }
 
@@ -256,23 +260,38 @@ private fun AiAssistantDevTools(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // مؤشر بسيط يؤكّد أن قاموس المرادفات المحلي (الذي يوسّع فهم
-            // البحث الحر وشاشتَي البحث المباشر بمرادفات عامة) حُمِّل فعلاً.
+            // مؤشر يؤكّد أن قاموس المرادفات المحلي (الذي يوسّع فهم البحث الحر
+            // وشاشتَي البحث المباشر بمرادفات عامة) حُمِّل فعلاً — بثلاث حالات
+            // مميَّزة بصرياً الآن بدل حالتين: "لا يزال يعمل" تختلف عن "انتهى
+            // بفشل" (وتعرض سبب الفشل الفعلي من Logcat/lastError)، فلا يبقى
+            // فشل حقيقي متنكّراً في هيئة تحميل عالق للأبد.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    if (lexiconReady) Icons.Filled.CheckCircle else Icons.Filled.HourglassEmpty,
+                    when {
+                        lexiconReady -> Icons.Filled.CheckCircle
+                        lexiconAttempted -> Icons.Filled.ErrorOutline
+                        else -> Icons.Filled.HourglassEmpty
+                    },
                     contentDescription = null,
-                    tint = if (lexiconReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = when {
+                        lexiconReady -> MaterialTheme.colorScheme.primary
+                        lexiconAttempted -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    if (lexiconReady)
-                        "قاموس المرادفات المحلي جاهز (${DictionaryLexicon.loadedWordCount} كلمة، Rabih Dictionary + Arabic WordNet)"
-                    else
-                        "جارٍ تحميل قاموس المرادفات المحلي…",
+                    when {
+                        lexiconReady ->
+                            "قاموس المرادفات المحلي جاهز (${DictionaryLexicon.loadedWordCount} كلمة، Rabih Dictionary + Arabic WordNet)"
+                        lexiconAttempted ->
+                            "فشل تحميل قاموس المرادفات المحلي: ${DictionaryLexicon.lastError ?: "خطأ غير معروف"}"
+                        else ->
+                            "جارٍ تحميل قاموس المرادفات المحلي…"
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (lexiconAttempted && !lexiconReady) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
