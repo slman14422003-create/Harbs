@@ -425,6 +425,52 @@ object HerbAssistant {
     }
 
     /**
+     * "تغطية" غير متماثلة: أي نسبة من *وزن كلمات السؤال* (وليس الجملة كاملة)
+     * وُجدت فعلياً ضمن نقطة نص معيّنة. الفارق الجوهري عن [weightedSimilarity]
+     * أعلاه أن المقام هنا هو وزن كلمات *السؤال فقط*، لا وزن كل الكلمات
+     * المجتمعة (سؤال + نقطة) — فنقطة نص طويلة ومفصّلة من الموسوعة (كما هو
+     * شائع في حقل الفوائد) لا تُعاقَب لمجرد طولها طالما أنها تحوي فعلاً
+     * كلمات سؤال المستخدم؛ هذا بالضبط ما كان يجعل أسئلة قصيرة عن مواضيع
+     * مذكورة فعلاً في الموسوعة (مثل "فوائد بذور الكتان" أو "عشبة لتحسين
+     * النوم") لا تظهر أي نتيجة رغم وجود البيانات فعلياً، لأن Jaccard
+     * المتماثل وحده كان يُذيب المطابقة الحقيقية داخل بقية كلمات النقطة
+     * الطويلة. يبقى [weightedSimilarity] كما هو ويُستخدم فقط في مقارنة
+     * نص-بنص بين أعشاب مختلفة ([compareField]/[buildOverview]) حيث الطرفان
+     * متكافئان بالطول عادةً، وهو السياق الصحيح لمقياس متماثل.
+     */
+    private fun queryCoverage(index: CorpusIndex, queryWords: Set<String>, pointWords: Set<String>): Double {
+        if (queryWords.isEmpty() || pointWords.isEmpty()) return 0.0
+        val queryWeight = queryWords.sumOf { index.weightOf(it) }
+        if (queryWeight == 0.0) return 0.0
+        val matchedWeight = (queryWords intersect pointWords).sumOf { index.weightOf(it) }
+        return matchedWeight / queryWeight
+    }
+
+    /** أي نسبة من كلمات السؤال (النصية الخام، بلا وزن) موجودة حرفياً كسلسلة
+     * فرعية داخل نص النقطة المُطبَّع — شبكة أمان أخيرة مستقلة تماماً عن أي
+     * تقطيع كلمات أو قواميس، لضمان أن "البحث الحقيقي بكل البيانات" الذي
+     * يطلبه المستخدم يلتقط حتى الحالات التي يفشل فيها تقطيع الكلمات لأي سبب. */
+    private fun rawContainmentRatio(queryWords: Set<String>, pointNormalized: String): Double {
+        if (queryWords.isEmpty()) return 0.0
+        val matched = queryWords.count { it.length > 1 && pointNormalized.contains(it) }
+        return matched.toDouble() / queryWords.size
+    }
+
+    /**
+     * الدرجة النهائية المستخدمة فعلياً لمطابقة سؤال المستخدم بنقطة نص واحدة
+     * في البحث الحر والاقتراح: أعلى قيمة بين المقاييس الثلاثة أعلاه، بحيث لا
+     * يفوّت سيمو مطابقة حقيقية بسبب ضعف مقياس واحد بعينه في حالة معيّنة.
+     */
+    private fun matchScore(index: CorpusIndex, queryWords: Set<String>, point: String): Double {
+        val pointWords = wordsOf(point)
+        return maxOf(
+            weightedSimilarity(index, queryWords, pointWords),
+            queryCoverage(index, queryWords, pointWords),
+            rawContainmentRatio(queryWords, normalize(point))
+        )
+    }
+
+    /**
      * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" — اليدوية أولاً
      * ([AiConfig.trainedExamples]، أولوية مطلقة دوماً لأنها من مراجعة
      * المطوّر مباشرة)، ثم المتعلَّمة ذاتياً ([AiConfig.autoLearnedExamples])
@@ -561,15 +607,33 @@ object HerbAssistant {
     }
 
     /**
-     * يبحث عن الأعشاب المذكورة صراحةً باسمها داخل نص السؤال الحر (مطابقة
-     * جزئية بعد التطبيع)، ليتمكن "سيمو" من فهم أسئلة مثل "ما فوائد الزنجبيل؟"
-     * أو "قارن بين البابونج والنعناع" دون أن يضطر المستخدم لاختيار أي عشبة
-     * مسبقاً من قائمة — التحديد يتم من نص المحادثة نفسه.
+     * يبحث عن الأعشاب المذكورة صراحةً باسمها داخل نص السؤال الحر، على
+     * مستويين متتاليين (الأدق أولاً) بدل اشتراط تطابق حرفي تام لاسم العشبة
+     * كاملاً كما كان سابقاً — وهو ما كان يفشل بأي فرق بسيط في الصياغة (مثل
+     * "ال" التعريف، أو ترتيب كلمات مختلف، أو ذكر الاسم ضمن عبارة أطول)
+     * فيُحوّل سؤالاً واضحاً عن عشبة محدَّدة إلى بحث عام غامض ضمن كل الموسوعة:
+     * 1) احتواء حرفي كامل لاسم العشبة ضمن نص السؤال (الأدق، وكما كان سابقاً).
+     * 2) إن لم يوجد ذلك: تطابق *كل* كلمات اسم العشبة، كلمة كلمة (باحتواء كل
+     *    كلمة ضمن الأخرى، فيلتقط تلقائياً فرق "ال" التعريف أو صيغة الجمع/
+     *    المفرد)، ضمن كلمات السؤال — يكفي أن تكون كل كلمات الاسم مذكورة
+     *    بأي صيغة قريبة، ولا يشترط ترتيبها أو تطابقها حرفياً بالكامل.
      */
     fun relevantHerbs(question: String, allHerbs: List<Herb>): List<Herb> {
         val qNorm = normalize(question)
         if (qNorm.isBlank()) return emptyList()
-        return allHerbs.filter { herb -> herb.name.isNotBlank() && qNorm.contains(normalize(herb.name)) }
+
+        val literal = allHerbs.filter { herb -> herb.name.isNotBlank() && qNorm.contains(normalize(herb.name)) }
+        if (literal.isNotEmpty()) return literal
+
+        val qTokens = qNorm.split(Regex("\\s+")).filter { it.length > 1 }
+        if (qTokens.isEmpty()) return emptyList()
+
+        return allHerbs.filter { herb ->
+            if (herb.name.isBlank()) return@filter false
+            val nameTokens = normalize(herb.name).split(Regex("\\s+")).filter { it.length > 1 }
+            if (nameTokens.isEmpty()) return@filter false
+            nameTokens.all { nt -> qTokens.any { qt -> qt == nt || qt.contains(nt) || nt.contains(qt) } }
+        }
     }
 
     /** أسئلة سريعة مقترحة تُعرض كأزرار فوق مربع الدردشة. */
@@ -829,7 +893,7 @@ object HerbAssistant {
             searchableFields.forEach { (label, getter) ->
                 val weight = fieldWeight[label] ?: 1.0
                 splitPoints(getter(herb)).forEach { point ->
-                    val sim = weightedSimilarity(index, qWords, wordsOf(point)) * weight
+                    val sim = matchScore(index, qWords, point) * weight
                     val current = bestPerHerb[herb]
                     if (current == null || sim > current.score) {
                         bestPerHerb[herb] = HerbMatch(point, label, sim)
@@ -924,7 +988,7 @@ object HerbAssistant {
         herbs.forEach { herb ->
             searchableFields.forEach { (label, getter) ->
                 splitPoints(getter(herb)).forEach { point ->
-                    val sim = weightedSimilarity(index, qWords, wordsOf(point))
+                    val sim = matchScore(index, qWords, point)
                     if (sim > threshold) hits += SearchHit(herb, label, point, sim)
                 }
             }
