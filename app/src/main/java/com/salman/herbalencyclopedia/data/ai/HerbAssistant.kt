@@ -87,9 +87,12 @@ data class TrainedExample(val pattern: String, val response: String)
  * يحلّلها، يجيب بحرية على أي سؤال، ولا يبني مقارنة منظّمة بين أكثر من عشبة
  * إلا عندما يُطلب منه ذلك صراحة (باختيار عشبتين أو ذكرهما بالاسم في السؤال).
  *
- * "تدريبه" يحدث على مستويين:
+ * "تدريبه" يحدث على ثلاثة مستويات:
  * 1) يدوياً من أدوات المطور (مرادفات + حالات مدرَّبة، انظر [AiConfig]).
- * 2) ذاتياً أثناء الاستخدام الفعلي: [CorpusIndex] يُبنى تلقائياً من نصوص
+ * 2) قاموس عربي عام مرفق محلياً مع التطبيق ([DictionaryLexicon]، مبني من
+ *    Rabih Dictionary وArabic WordNet) يوسّع فهم الكلمات والمرادفات العامة
+ *    بلا أي تدخل يدوي وبلا إنترنت — تفصيل ذلك في توثيق [DictionaryLexicon].
+ * 3) ذاتياً أثناء الاستخدام الفعلي: [CorpusIndex] يُبنى تلقائياً من نصوص
  *    الموسوعة نفسها ليكتشف أوزان الكلمات وعلاقاتها الضمنية دون أي تدخل
  *    يدوي، و[recordFeedback] يحوّل تقييمات المستخدمين (👍) على إجابات
  *    البحث الحر إلى حالات مدرَّبة تلقائياً — أي أن سيمو يعتمد بالكامل على
@@ -791,12 +794,22 @@ object HerbAssistant {
         return composeAnswer(organized) to true
     }
 
-    /** المرحلة ١ — تحليل السؤال: كلمات مفتاحية + توسيع بعلاقات الموسوعة وجذور اللغة. */
+    /**
+     * المرحلة ١ — تحليل السؤال: كلمات مفتاحية، مُوسَّعة على ثلاث مراحل
+     * متتالية (كل مرحلة تضيف احتمالات مطابقة أكثر، بلا حذف لما قبلها):
+     * 1) علاقات الموسوعة الضمنية ([CorpusIndex.expand]).
+     * 2) مرادفات القاموس الخارجي المرفق محلياً ([DictionaryLexicon.expand]
+     *    — Rabih Dictionary + Arabic WordNet، بلا إنترنت ولا تكلفة)، وهذا
+     *    ما يمكّن سيمو من فهم اسم بديل لعشبة أو مرادف عام لكلمة في السؤال
+     *    (مثل "دواء" بدل "علاج") لم تُذكر حرفياً في نص الموسوعة.
+     * 3) جذور اللغة التقريبية ([ArabicLexicon.expand]).
+     */
     private fun analyzeQuestion(question: String, index: CorpusIndex): Set<String> {
         val base = wordsOf(question)
         if (base.isEmpty()) return base
         val expandedByCorpus = index.expand(base)
-        return ArabicLexicon.expand(expandedByCorpus)
+        val expandedByDictionary = DictionaryLexicon.expand(expandedByCorpus)
+        return ArabicLexicon.expand(expandedByDictionary)
     }
 
     /** المرحلة ٢ — "التفكير بالإجابة": مسح كل نقاط كل حقل، وترجيح كل نقطة حسب مدى صلتها الفعلية بالسؤال. */
