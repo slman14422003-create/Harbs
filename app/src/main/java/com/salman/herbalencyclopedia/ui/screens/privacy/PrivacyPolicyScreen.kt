@@ -19,6 +19,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
+import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 
 private data class PolicySection(val title: String, val body: String)
 
@@ -57,8 +59,9 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
+        ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
         LazyColumn(
-            Modifier.padding(padding).fillMaxSize(),
+            Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -121,6 +124,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)
                 )
             }
+        }
         }
     }
 }
