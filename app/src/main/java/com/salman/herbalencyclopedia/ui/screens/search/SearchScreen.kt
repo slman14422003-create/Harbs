@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
+import com.salman.herbalencyclopedia.data.search.HerbSearch
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
 
@@ -32,13 +33,13 @@ fun SearchScreen(
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
-    val results = remember(query, herbs) {
-        if (query.isBlank()) emptyList()
-        else herbs.filter {
-            it.name.contains(query, ignoreCase = true) ||
-                it.benefits.contains(query, ignoreCase = true)
-        }
-    }
+    // كان البحث هنا `contains` حرفياً فقط، فلا يطابق "الزعتر" مع "زعتر"
+    // (أداة تعريف)، ولا نصاً مشكَّلاً، ولا اسماً بديلاً/مرادفاً — وهذا كان
+    // سبب عجز البحث عن إيجاد أعشاب موجودة فعلاً في الموسوعة. [HerbSearch]
+    // يطبّع النص (يزيل التشكيل، يوحّد صور الألف/التاء المربوطة...) ويوسّع
+    // بمرادفات القاموس المحلي المرفق مع التطبيق (بلا إنترنت ولا تكلفة)، مع
+    // ترتيب النتائج حسب دقة المطابقة بدل ترتيب عشوائي.
+    val results = remember(query, herbs) { HerbSearch.search(query, herbs) }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
