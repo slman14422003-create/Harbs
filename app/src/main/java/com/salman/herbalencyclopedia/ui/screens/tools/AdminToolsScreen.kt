@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.ai.AiConfig
+import com.salman.herbalencyclopedia.data.ai.DictionaryLexicon
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.Category
@@ -225,6 +226,19 @@ private fun AiAssistantDevTools(
     var testHerbIds by remember { mutableStateOf(setOf<String>()) }
     var testAnswer by remember { mutableStateOf<String?>(null) }
 
+    // حالة قاموس المرادفات المحلي (Rabih Dictionary + Arabic WordNet، انظر
+    // DictionaryLexicon) — يُحمَّل مرة واحدة في الخلفية عند إقلاع التطبيق،
+    // فيُحتمل جداً أنه جاهز بالفعل عند فتح هذه الشاشة. هذا الاستقصاء
+    // (كل 300ms حتى الجاهزية) مجرّد مؤشر حيّ للمطوّر أثناء الاختبار، ويتوقف
+    // فور التأكد من التحميل.
+    var lexiconReady by remember { mutableStateOf(DictionaryLexicon.isReady) }
+    LaunchedEffect(Unit) {
+        while (!lexiconReady) {
+            kotlinx.coroutines.delay(300)
+            lexiconReady = DictionaryLexicon.isReady
+        }
+    }
+
     Card(
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -241,6 +255,26 @@ private fun AiAssistantDevTools(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            // مؤشر بسيط يؤكّد أن قاموس المرادفات المحلي (الذي يوسّع فهم
+            // البحث الحر وشاشتَي البحث المباشر بمرادفات عامة) حُمِّل فعلاً.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (lexiconReady) Icons.Filled.CheckCircle else Icons.Filled.HourglassEmpty,
+                    contentDescription = null,
+                    tint = if (lexiconReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (lexiconReady)
+                        "قاموس المرادفات المحلي جاهز (${DictionaryLexicon.loadedWordCount} كلمة، Rabih Dictionary + Arabic WordNet)"
+                    else
+                        "جارٍ تحميل قاموس المرادفات المحلي…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("حساسية تجميع النقاط المتشابهة: ${(similarityThreshold * 100).roundToIntPct()}%", style = MaterialTheme.typography.labelLarge)
