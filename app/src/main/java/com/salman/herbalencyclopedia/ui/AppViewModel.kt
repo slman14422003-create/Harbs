@@ -19,6 +19,7 @@ import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -118,6 +119,21 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     // used by installUpdate() to hand off to the system package installer.
     private var lastDownloadedApk: File? = null
 
+    // The coroutine actually streaming the .apk, so cancelDownload() (the "إلغاء"
+    // button next to the progress bar) has something real to stop.
+    private var downloadJob: Job? = null
+
+    // The connection currently being read from. Cancelling the coroutine alone
+    // does NOT interrupt a blocking InputStream.read() call already in flight,
+    // so cancelDownload() disconnects this directly to unblock the read loop
+    // immediately instead of waiting for it to time out on its own.
+    @Volatile private var activeDownloadConnection: HttpURLConnection? = null
+
+    // Set right before cancelling, so the coroutine's own completion handler
+    // knows not to overwrite the Idle state cancelDownload() already set with
+    // a stale Failed/ReadyToInstall result from the connection it just killed.
+    @Volatile private var downloadCancelledByUser = false
+
     /**
      * Downloads the .apk asset in-app (into the private cache dir), reporting progress via
      * [downloadState] so the settings screen can show the usual progress bar — instead of
@@ -125,6 +141,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      *
      * If this release has no .apk asset attached (only a release page), there's nothing to
      * download in-app, so we fall back to opening that page in the browser as before.
+     *
+     * Tries [info.apkUrl] directly first, then — since the release-asset CDN and the
+     * metadata API are independent GitHub domains — falls back through the same proxy
+     * mirrors used for the update check, in case only the asset download needs them.
      */
     fun downloadUpdate(context: Context, info: AppUpdateInfo) {
         lastUpdateInfo = info
@@ -139,11 +159,21 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             return
         }
 
+        val candidates = container.updateRepository.downloadCandidates(
+            apkUrl, info.useProxyFallback, info.customProxyBaseUrl
+        )
         val appContext = context.applicationContext
+        downloadCancelledByUser = false
         _downloadState.value = UpdateDownloadState.Downloading(0)
-        viewModelScope.launch {
+        downloadJob = viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                downloadApkToCache(appContext, apkUrl, info.versionName)
+                downloadApkToCache(appContext, candidates, info.versionName)
+            }
+            if (downloadCancelledByUser) {
+                // cancelDownload() already reset the UI state; don't clobber it
+                // with this now-irrelevant result.
+                downloadCancelledByUser = false
+                return@launch
             }
             _downloadState.value = result.fold(
                 onSuccess = { file ->
@@ -155,13 +185,52 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Streams the .apk to context.cacheDir/updates, publishing percent progress to [downloadState]. */
-    private fun downloadApkToCache(context: Context, url: String, versionName: String): Result<File> = runCatching {
+    /**
+     * Stops an in-progress in-app update download (the "إلغاء" button shown next to the
+     * progress bar). Previously there was no way to cancel a download once started, and
+     * even calling [resetUpdateFlow] (which was itself never wired to any button in the
+     * UI) only reset the state flows — the blocking network read loop kept running
+     * regardless and would silently overwrite that reset a moment later once it finished.
+     * This actually closes the live connection so the read loop unblocks immediately,
+     * cancels the coroutine, deletes the partial .apk, and leaves the UI at Idle.
+     */
+    fun cancelDownload() {
+        val job = downloadJob ?: return
+        downloadCancelledByUser = true
+        activeDownloadConnection?.disconnect()
+        job.cancel()
+        downloadJob = null
+        lastDownloadedApk = null
+        _downloadState.value = UpdateDownloadState.Idle
+    }
+
+    /**
+     * Streams the .apk to context.cacheDir/updates, publishing percent progress to
+     * [downloadState]. Tries each URL in [candidates] in order (direct link first, then
+     * proxy mirrors) and returns on the first one that succeeds.
+     */
+    private fun downloadApkToCache(context: Context, candidates: List<String>, versionName: String): Result<File> {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         // Drop any previous downloaded update(s) so the cache doesn't grow unbounded.
         dir.listFiles()?.forEach { it.delete() }
         val destFile = File(dir, "update-$versionName.apk")
 
+        var lastError: Throwable? = null
+        for (url in candidates) {
+            val attempt = runCatching { downloadOneUrl(url, destFile) }
+            if (attempt.isSuccess) return Result.success(destFile)
+            destFile.delete()
+            val error = attempt.exceptionOrNull()
+            // A user-triggered cancel should stop retrying immediately instead of
+            // ploughing through every remaining mirror first.
+            if (error is CancellationException) throw error
+            lastError = error
+        }
+        return Result.failure(lastError ?: IllegalStateException("فشل تحميل التحديث"))
+    }
+
+    /** Streams a single URL to [destFile], throwing on any failure (caller decides whether to retry). */
+    private fun downloadOneUrl(url: String, destFile: File) {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15000
@@ -169,35 +238,38 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "Harbs-App-Update-Downloader")
         }
-        val code = conn.responseCode
-        if (code !in 200..299) {
-            conn.disconnect()
-            error("فشل الاتصال بالخادم (رمز $code)")
-        }
+        activeDownloadConnection = conn
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                error("فشل الاتصال بالخادم (رمز $code)")
+            }
 
-        val totalSize = conn.contentLength
-        var lastReportedPercent = -1
-        conn.inputStream.use { input ->
-            FileOutputStream(destFile).use { output ->
-                val buffer = ByteArray(8 * 1024)
-                var totalRead = 0L
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read == -1) break
-                    output.write(buffer, 0, read)
-                    totalRead += read
-                    if (totalSize > 0) {
-                        val percent = ((totalRead * 100) / totalSize).toInt().coerceIn(0, 100)
-                        if (percent != lastReportedPercent) {
-                            lastReportedPercent = percent
-                            _downloadState.value = UpdateDownloadState.Downloading(percent)
+            val totalSize = conn.contentLength
+            var lastReportedPercent = -1
+            conn.inputStream.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    val buffer = ByteArray(8 * 1024)
+                    var totalRead = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
+                        totalRead += read
+                        if (totalSize > 0) {
+                            val percent = ((totalRead * 100) / totalSize).toInt().coerceIn(0, 100)
+                            if (percent != lastReportedPercent) {
+                                lastReportedPercent = percent
+                                _downloadState.value = UpdateDownloadState.Downloading(percent)
+                            }
                         }
                     }
                 }
             }
+        } finally {
+            activeDownloadConnection = null
+            conn.disconnect()
         }
-        conn.disconnect()
-        destFile
     }
 
     /**
@@ -242,6 +314,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Resets the update flow back to its initial state (e.g. after a dismissal). */
     fun resetUpdateFlow() {
+        cancelDownload()
         _updateState.value = UpdateCheckState.Idle
         _downloadState.value = UpdateDownloadState.Idle
     }
