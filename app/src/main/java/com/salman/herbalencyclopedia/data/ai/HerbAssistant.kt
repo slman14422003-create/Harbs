@@ -475,21 +475,30 @@ object HerbAssistant {
     }
 
     /**
+    /**
      * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" — اليدوية أولاً
      * ([AiConfig.trainedExamples]، أولوية مطلقة دوماً لأنها من مراجعة
      * المطوّر مباشرة)، ثم المتعلَّمة ذاتياً ([AiConfig.autoLearnedExamples])
      * بعتبة أعلى قليلاً تحوّطاً لأنها غير مراجَعة يدوياً. يعيد أقرب رد
      * مخصّص إن تجاوز التشابه العتبة المناسبة، وإلا يعيد null ليكمل سيمو
      * بمنطقه العام.
+     *
+     * المطابقة تستخدم الآن [richWordsOf] (تجذير + قاموس مرادفات) بدل كلمات
+     * الجملة الحرفية فقط — سابقاً كانت صياغة مرادفة تماماً لسؤال مدرَّب
+     * (مثل "شو ينفع الزنجبيل" بدل "ما فوائد الزنجبيل") قد لا تُطابق الحالة
+     * المدرَّبة إطلاقاً رغم تطابق المعنى، لأن [jaccard] كان يقارن الكلمات
+     * الحرفية فقط دون أي فهم للمرادفات — وهذا بالضبط ما يجعل "تعلّم سيمو"
+     * الذاتي من التقييمات مفيداً فعلياً لصياغات لاحقة مشابهة معنوياً لا
+     * حرفياً فقط.
      */
     private fun matchTrainedExample(question: String): String? {
-        val qWords = wordsOf(question)
+        val qWords = richWordsOf(question)
         if (qWords.isEmpty()) return null
 
         var bestManual: String? = null
         var bestManualScore = 0.0
-        AiConfig.trainedExamples.forEach { example ->
-            val score = jaccard(qWords, wordsOf(example.pattern))
+        exampleWords(AiConfig.trainedExamples).forEach { (example, words) ->
+            val score = jaccard(qWords, words)
             if (score > bestManualScore) { bestManualScore = score; bestManual = example.response }
         }
         if (bestManualScore >= AiConfig.trainedMatchThreshold) return bestManual
@@ -497,12 +506,39 @@ object HerbAssistant {
         if (!AiConfig.autoLearnEnabled || AiConfig.autoLearnedExamples.isEmpty()) return null
         var bestAuto: String? = null
         var bestAutoScore = 0.0
-        AiConfig.autoLearnedExamples.forEach { example ->
-            val score = jaccard(qWords, wordsOf(example.pattern))
+        exampleWords(AiConfig.autoLearnedExamples).forEach { (example, words) ->
+            val score = jaccard(qWords, words)
             if (score > bestAutoScore) { bestAutoScore = score; bestAuto = example.response }
         }
         val autoThreshold = (AiConfig.trainedMatchThreshold + 0.15).coerceAtMost(0.95)
         return if (bestAutoScore >= autoThreshold) bestAuto else null
+    }
+
+    // ذاكرتا تخزين مؤقت لكلمات أنماط الحالات المدرَّبة (يدوياً/ذاتياً) بعد
+    // توسيعها بـ[richWordsOf] — إعادة استعلام قاموس المرادفات (قاعدة
+    // SQLite) لكل الأنماط في كل رسالة دردشة مكلفة بلا داعٍ ما دامت قائمة
+    // الأنماط نفسها لم تتغيّر؛ بنفس أسلوب [corpusIndexFor] (تحقّق من مرجع
+    // القائمة نفسها، لا محتواها، لأن كل شاشة تُنشئ قائمة جديدة عند أي تعديل
+    // فعلي من أدوات المطور أو التعلّم الذاتي).
+    private var cachedTrainedRef: List<TrainedExample>? = null
+    private var cachedTrainedWords: List<Pair<TrainedExample, Set<String>>> = emptyList()
+    private var cachedAutoRef: List<TrainedExample>? = null
+    private var cachedAutoWords: List<Pair<TrainedExample, Set<String>>> = emptyList()
+
+    private fun exampleWords(examples: List<TrainedExample>): List<Pair<TrainedExample, Set<String>>> {
+        val isTrained = examples === AiConfig.trainedExamples
+        if (isTrained) {
+            if (cachedTrainedRef === examples) return cachedTrainedWords
+            val built = examples.map { it to richWordsOf(it.pattern) }
+            cachedTrainedRef = examples
+            cachedTrainedWords = built
+            return built
+        }
+        if (cachedAutoRef === examples) return cachedAutoWords
+        val built = examples.map { it to richWordsOf(it.pattern) }
+        cachedAutoRef = examples
+        cachedAutoWords = built
+        return built
     }
 
     /** أقصى عدد حالات يحتفظ بها التعلّم الذاتي؛ الأقدم يُستبعد أولاً عند التجاوز. */
@@ -518,15 +554,19 @@ object HerbAssistant {
      * - عند عدم الإعجاب: يُزال أي مثال متعلَّم ذاتياً يطابق هذا السؤال بدرجة
      *   كافية — أي أن سيمو "يتراجع" عن خطأ تعلّمه بنفسه — دون أي تأثير على
      *   حالات تدريب المطوّر اليدوية، المحمية دوماً من هذا المسار.
+     * فحص "التكرار" هنا يستخدم [richWordsOf] أيضاً (بدل الكلمات الحرفية)
+     * حتى يتّسق مع [matchTrainedExample] تماماً: لا يُحفَظ سؤال كحالة جديدة
+     * إن كانت هناك حالة مرادفة معنوياً محفوظة أصلاً (لا حرفياً مطابقة فقط)،
+     * فلا تتكدّس نسخ شبه مكرَّرة من نفس المعنى بصياغات مختلفة.
      * يعيد القائمة المحدَّثة مباشرة ليحفظها المستدعي (PreferencesRepository).
      */
     fun recordFeedback(question: String, reply: String, helpful: Boolean): List<TrainedExample> {
-        val qWords = wordsOf(question)
+        val qWords = richWordsOf(question)
         if (qWords.isEmpty()) return AiConfig.autoLearnedExamples
 
         if (!helpful) {
             val remaining = AiConfig.autoLearnedExamples.filterNot {
-                jaccard(qWords, wordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
+                jaccard(qWords, richWordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
             }
             AiConfig.autoLearnedExamples = remaining
             return remaining
@@ -534,7 +574,7 @@ object HerbAssistant {
 
         if (!AiConfig.autoLearnEnabled) return AiConfig.autoLearnedExamples
         val alreadyKnown = AiConfig.autoLearnedExamples.any {
-            jaccard(qWords, wordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
+            jaccard(qWords, richWordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
         }
         if (alreadyKnown) return AiConfig.autoLearnedExamples
 
@@ -1000,18 +1040,39 @@ object HerbAssistant {
      * المرحلة ١ — تحليل السؤال: كلمات مفتاحية، مُوسَّعة على ثلاث مراحل
      * متتالية (كل مرحلة تضيف احتمالات مطابقة أكثر، بلا حذف لما قبلها):
      * 1) علاقات الموسوعة الضمنية ([CorpusIndex.expand]).
-     * 2) مرادفات القاموس الخارجي المرفق محلياً ([DictionaryLexicon.expand]
+     * 2) جذور اللغة التقريبية ([ArabicLexicon.expand]) — تُطبَّق *قبل*
+     *    القاموس عمداً (كانت بعده سابقاً): [DictionaryLexicon.synonymsOf]
+     *    يبحث عن الكلمة بصيغتها المُطبَّعة تماماً كمفتاح أساسي في قاعدة
+     *    البيانات، فكلمة سؤال بصيغة مختلفة عن الصيغة المخزَّنة (جمع، لاحقة
+     *    ضمير، أداة تعريف...) كانت تفوّت أي مرادف موجود فعلياً لجذرها لمجرد
+     *    اختلاف الصيغة — لا لعدم وجود المرادف. تجذير الكلمة أولاً ثم البحث
+     *    عن مرادفات كل من الصيغة الأصلية *و* جذرها يرفع فعلياً عدد المرادفات
+     *    التي يستخدمها سيمو من نفس القاموس المرفق دون أي بيانات إضافية.
+     * 3) مرادفات القاموس الخارجي المرفق محلياً ([DictionaryLexicon.expand]
      *    — Rabih Dictionary + Arabic WordNet، بلا إنترنت ولا تكلفة)، وهذا
      *    ما يمكّن سيمو من فهم اسم بديل لعشبة أو مرادف عام لكلمة في السؤال
      *    (مثل "دواء" بدل "علاج") لم تُذكر حرفياً في نص الموسوعة.
-     * 3) جذور اللغة التقريبية ([ArabicLexicon.expand]).
      */
     private fun analyzeQuestion(question: String, index: CorpusIndex): Set<String> {
         val base = wordsOf(question)
         if (base.isEmpty()) return base
         val expandedByCorpus = index.expand(base)
-        val expandedByDictionary = DictionaryLexicon.expand(expandedByCorpus)
-        return ArabicLexicon.expand(expandedByDictionary)
+        val expandedByStems = ArabicLexicon.expand(expandedByCorpus)
+        return DictionaryLexicon.expand(expandedByStems)
+    }
+
+    /**
+     * توسيع "خفيف" مماثل لِـ[analyzeQuestion] (تجذير + قاموس المرادفات)
+     * لكن بلا حاجة لفهرس موسوعة ([CorpusIndex]) — يُستخدم لمطابقة نصوص
+     * قصيرة مستقلة عن نصوص عشبة معيّنة (حالات التدريب اليدوي/الذاتي)، حتى
+     * تفهم مطابقة الحالات المدرَّبة صياغات مرادفة لا الصياغة الحرفية فقط
+     * — وهذا هو أثر "تعلّم سيمو من المرادفات" فعلياً على الحالات التي
+     * يحفظها من تقييمات المستخدمين.
+     */
+    private fun richWordsOf(text: String): Set<String> {
+        val base = wordsOf(text)
+        if (base.isEmpty()) return base
+        return DictionaryLexicon.expand(ArabicLexicon.expand(base))
     }
 
     /** المرحلة ٢ — "التفكير بالإجابة": مسح كل نقاط كل حقل، وترجيح كل نقطة حسب مدى صلتها الفعلية بالسؤال. */
