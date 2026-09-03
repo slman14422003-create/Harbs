@@ -339,6 +339,46 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    // نتيجة زر "تحقق الآن بهذه الإعدادات" في لوحة الإدارة — منفصلة تماماً عن
+    // [updateState] الخاص بشاشة المستخدم العادية، حتى لا يختلط اختبار الأدمن
+    // لإعدادات لم تُحفَظ بعد مع حالة التحقق الحقيقية التي يراها المستخدمون.
+    private val _adminUpdateTestState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+    val adminUpdateTestState: StateFlow<UpdateCheckState> = _adminUpdateTestState.asStateFlow()
+
+    /**
+     * يختبر [config] كما هو مكتوب في حقول شاشة الإدارة الآن مباشرة — قبل
+     * حفظه وبصرف النظر عمّا هو محفوظ فعلياً في Firestore — فيعرف الأدمن فوراً
+     * إن كانت هذه الإعدادات (المستودع، الرابط المخصّص...) تعمل فعلاً، دون
+     * الحاجة للحفظ ثم الخروج لشاشة المستخدم العادية للتأكد.
+     */
+    fun testUpdateConfig(context: Context, config: AppUpdateConfig) {
+        if (_adminUpdateTestState.value == UpdateCheckState.Checking) return
+        viewModelScope.launch {
+            _adminUpdateTestState.value = UpdateCheckState.Checking
+            val pkgInfo = runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }.getOrNull()
+            val versionName = pkgInfo?.versionName ?: "0.0.0"
+            val versionCode = if (Build.VERSION.SDK_INT >= 28) {
+                (pkgInfo?.longVersionCode ?: 0L).toInt()
+            } else {
+                @Suppress("DEPRECATION") (pkgInfo?.versionCode ?: 0)
+            }
+            val result = runCatching {
+                container.updateRepository.checkForUpdate(config, versionCode, versionName)
+            }
+            _adminUpdateTestState.value = result.fold(
+                onSuccess = { info -> if (info != null) UpdateCheckState.Available(info) else UpdateCheckState.UpToDate },
+                onFailure = { e -> UpdateCheckState.Error(e.localizedMessage ?: "تعذّر التحقق من التحديثات") }
+            )
+        }
+    }
+
+    /** يعيد نتيجة اختبار الإعدادات في لوحة الإدارة إلى الحالة الأولية (مثلاً عند فتح الشاشة من جديد). */
+    fun resetAdminUpdateTest() {
+        _adminUpdateTestState.value = UpdateCheckState.Idle
+    }
+
     init {
         // Live sync: stay subscribed to Firestore for as long as the app is alive, so
         // any change - made here, from another device, or from the web admin panel -
