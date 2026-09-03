@@ -5,13 +5,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
+import com.salman.herbalencyclopedia.ui.UpdateCheckState
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
@@ -28,9 +33,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun AdminUpdateScreen(
     config: AppUpdateConfig,
+    testState: UpdateCheckState = UpdateCheckState.Idle,
     onBack: () -> Unit,
-    onSave: (AppUpdateConfig, (Boolean, String?) -> Unit) -> Unit
+    onSave: (AppUpdateConfig, (Boolean, String?) -> Unit) -> Unit,
+    onTestNow: (android.content.Context, AppUpdateConfig) -> Unit = { _, _ -> }
 ) {
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -48,6 +56,18 @@ fun AdminUpdateScreen(
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
+
+    // الإعدادات كما هي مكتوبة في الحقول الآن — تُستخدم للاختبار الفوري دون
+    // اشتراط حفظها في Firestore أولاً (انظر onTestNow أدناه).
+    fun currentFieldsAsConfig() = AppUpdateConfig(
+        enabled = enabled,
+        githubRepo = repo.trim(),
+        overrideVersionName = versionName.trim().ifBlank { null },
+        releaseNotesOverride = notes.trim().ifBlank { null },
+        minVersionCode = minVersionCode.toIntOrNull() ?: 0,
+        useProxyFallback = useProxyFallback,
+        customProxyBaseUrl = customProxyBaseUrl.trim().ifBlank { null }
+    )
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -175,19 +195,48 @@ fun AdminUpdateScreen(
                 )
             }
             item {
+                OutlinedButton(
+                    enabled = testState != UpdateCheckState.Checking && repo.isNotBlank(),
+                    onClick = { onTestNow(context, currentFieldsAsConfig()) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (testState == UpdateCheckState.Checking) "جارٍ الاختبار..." else "تحقق الآن بهذه الإعدادات")
+                }
+            }
+            when (val state = testState) {
+                is UpdateCheckState.Available -> item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "الإعدادات تعمل: تم العثور على إصدار v${state.info.versionName}" +
+                                (if (state.info.apkUrl != null) " (رابط APK متوفر)." else " (بدون ملف APK مرفق بالإصدار!)."),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                is UpdateCheckState.UpToDate -> item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("الإعدادات تعمل: تم الاتصال بنجاح ولا يوجد إصدار أحدث من هذا الجهاز حالياً.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                is UpdateCheckState.Error -> item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(state.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                else -> {}
+            }
+            item {
                 Button(
                     enabled = !saving && repo.isNotBlank(),
                     onClick = {
                         saving = true
-                        val newConfig = AppUpdateConfig(
-                            enabled = enabled,
-                            githubRepo = repo.trim(),
-                            overrideVersionName = versionName.trim().ifBlank { null },
-                            releaseNotesOverride = notes.trim().ifBlank { null },
-                            minVersionCode = minVersionCode.toIntOrNull() ?: 0,
-                            useProxyFallback = useProxyFallback,
-                            customProxyBaseUrl = customProxyBaseUrl.trim().ifBlank { null }
-                        )
+                        val newConfig = currentFieldsAsConfig()
                         onSave(newConfig) { ok, msg ->
                             saving = false
                             notify(msg ?: if (ok) "تم الحفظ" else "حدث خطأ أثناء الحفظ")
