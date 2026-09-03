@@ -58,7 +58,11 @@ fun HerbCard(
         LiquidGlassSurface(
             shape = shape,
             modifier = Modifier.fillMaxWidth(),
-            tint = MaterialTheme.colorScheme.surfaceContainer
+            tint = MaterialTheme.colorScheme.surfaceContainer,
+            // بطاقة صف قصيرة (~80dp)، وليست بطاقة شبكة مربّعة كبيرة — انظر
+            // توثيق [compact] في LiquidGlassSurface لسبب هذا التبديل (كان
+            // سبب ظهور "مستطيل أبيض" غير متسق فوق بطاقات الأعشاب).
+            compact = true
         ) {
             Row(
                 modifier = Modifier

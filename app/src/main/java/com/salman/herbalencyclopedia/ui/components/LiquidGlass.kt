@@ -63,6 +63,16 @@ fun LiquidGlassSurface(
     // متوقفة، وتُفعَّل صراحة فقط في العناصر الفريدة/البارزة التي تظهر
     // كنسخة واحدة على الشاشة (كالزر الأساسي GlassButton أو شعار شاشة البداية).
     sheen: Boolean = false,
+    // بطاقات الصفوف الصغيرة (HerbCard، BlendCard...) بارتفاع أقل بكثير من
+    // بطاقات الشبكة المربّعة (CategoryCard). فقاعتا التمويه بحجمهما الثابت
+    // السابق (64dp/58dp مع تمويه 46px) كانتا مصمَّمتين لبطاقة مربّعة كبيرة؛
+    // على صف قصير كانت الفقاعتان (المتموضعتان أعلى-يسار وأسفل-يمين) تتداخلان
+    // وتغطيان الصف بالكامل تقريباً، فيظهر مستطيل شبه مصمت (أبيض غالباً بسبب
+    // لون الفقاعة الأولى) بدل الزجاج الشفّاف المقصود — هذا بالضبط "المستطيل
+    // الأبيض" الذي يظهر بشكل غير متسق بين البطاقات (يعتمد على طول نصها
+    // وبالتالي ارتفاعها الفعلي). compact=true يصغّر الفقاعتين ونصف قطر
+    // تمويههما بما يناسب صفاً قصيراً فلا تطغيان على العنصر كاملاً.
+    compact: Boolean = false,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
@@ -80,6 +90,20 @@ fun LiquidGlassSurface(
     // الداكن — فرق تباين بين الوضعين لم يكن مقصوداً. 0.68 يعيد قدراً كافياً
     // من الوضوح دون أن يقترب من ثقل حدّ الوضع الداكن.
     val edgeAlphaScale = if (darkTheme) 1f else 0.68f
+    // فقاعة الضوء الأولى كانت أبيض صريح (Color.White) بغضّ النظر عن الوضع.
+    // في الوضع الداكن هذا يعطي "توهّجاً" مقصوداً وواضحاً فوق خلفية داكنة،
+    // لكن في الوضع الفاتح خلفية البطاقة نفسها فاتحة أصلاً (قريبة من الأبيض)،
+    // فتراكم فقاعة بيضاء إضافية فوقها لا يبدو توهّجاً بل يُبيّض المنطقة كاملة
+    // ويُذيب حدود البطاقة — وهذا جزء من سبب "أخطاء التصميم" الظاهرة بالوضع
+    // النهاري. نُخفّف شفافيتها بوضوح في الوضع الفاتح فقط بدل حذفها كلياً
+    // (لا تزال تعطي إحساساً خفيفاً بالعمق دون أن تطغى).
+    val primaryBubbleAlpha = if (darkTheme) 0.65f else 0.14f
+    val secondaryBubbleAlpha = if (darkTheme) 0.55f else 0.20f
+    val bubbleBlurRadius = if (compact) 22f else 46f
+    val primaryBubbleSize = if (compact) 30.dp else 64.dp
+    val secondaryBubbleSize = if (compact) 26.dp else 58.dp
+    val primaryBubbleOffset = if (compact) (-7).dp to (-8).dp else (-16).dp to (-18).dp
+    val secondaryBubbleOffset = if (compact) 8.dp to 7.dp else 18.dp to 16.dp
 
     Box(modifier = modifier.clip(shape)) {
         if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -88,23 +112,23 @@ fun LiquidGlassSurface(
                     .matchParentSize()
                     .graphicsLayer {
                         renderEffect = RenderEffect
-                            .createBlurEffect(46f, 46f, Shader.TileMode.CLAMP)
+                            .createBlurEffect(bubbleBlurRadius, bubbleBlurRadius, Shader.TileMode.CLAMP)
                             .asComposeRenderEffect()
                     }
             ) {
                 Box(
                     Modifier
                         .align(Alignment.TopStart)
-                        .offset((-16).dp, (-18).dp)
-                        .size(64.dp)
-                        .background(Color.White.copy(alpha = 0.65f), CircleShape)
+                        .offset(primaryBubbleOffset.first, primaryBubbleOffset.second)
+                        .size(primaryBubbleSize)
+                        .background(Color.White.copy(alpha = primaryBubbleAlpha), CircleShape)
                 )
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .offset(18.dp, 16.dp)
-                        .size(58.dp)
-                        .background(glowColor.copy(alpha = 0.55f), CircleShape)
+                        .offset(secondaryBubbleOffset.first, secondaryBubbleOffset.second)
+                        .size(secondaryBubbleSize)
+                        .background(glowColor.copy(alpha = secondaryBubbleAlpha), CircleShape)
                 )
             }
         }
@@ -114,7 +138,14 @@ fun LiquidGlassSurface(
                 .matchParentSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
+                        // نفس ملاحظة الحدّ أعلاه: تدرّج الخلفية الأساسي بقيم
+                        // الشفافية القديمة (0.92/0.74) كان قريباً جداً من لون
+                        // خلفية الصفحة في الوضع الفاتح (كلاهما فاتح جداً بلا
+                        // تشبّع)، فتبدو البطاقة بلا امتلاء واضح مقارنةً بوضوحها
+                        // في الوضع الداكن. رفع الشفافية قليلاً في الوضع الفاتح
+                        // فقط يعطي امتلاءً كافياً يميّز البطاقة عن الخلفية.
+                        if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
+                        else listOf(tint.copy(alpha = 0.97f), tint.copy(alpha = 0.88f))
                     )
                 )
         )

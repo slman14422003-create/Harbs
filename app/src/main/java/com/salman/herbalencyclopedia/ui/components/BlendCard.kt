@@ -49,7 +49,10 @@ fun BlendCard(
         LiquidGlassSurface(
             shape = shape,
             modifier = Modifier.fillMaxWidth(),
-            tint = MaterialTheme.colorScheme.surfaceContainer
+            tint = MaterialTheme.colorScheme.surfaceContainer,
+            // نفس إصلاح HerbCard: بطاقة صف قصيرة، انظر توثيق [compact] في
+            // LiquidGlassSurface.
+            compact = true
         ) {
             Row(
                 modifier = Modifier
