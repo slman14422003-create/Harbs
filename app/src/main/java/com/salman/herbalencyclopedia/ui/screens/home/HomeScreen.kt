@@ -198,13 +198,27 @@ private fun QuickAction(
         tonalElevation = 2.dp
     ) {
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            // كان padding أفقي 16.dp مع Spacer عرضه 8.dp يترك مساحة ضيقة
+            // جداً أمام النص داخل عنصر بعرض ١/٣ الشاشة فقط (ثلاث بطاقات
+            // متجاورة بوزن متساوٍ) — تكفي لكلمة قصيرة مثل "بحث" أو "سيمو"
+            // لكن ليس لكلمة أطول مثل "الخلطات"، فكانت تلتف لسطر ثانٍ ثم
+            // تُقصّ داخل الارتفاع الثابت 54.dp فيظهر السطر الثاني (الحرف
+            // الأخير) وحده مقطوعاً. تقليل الحشو والفراغ بينهما يمنح النص
+            // مساحة إضافية كافية، و maxLines/overflow يبقيان كشبكة أمان
+            // نهائية تمنع تكرار المشكلة مع أي تسمية أطول مستقبلاً.
+            Modifier.fillMaxSize().padding(horizontal = 10.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 }
