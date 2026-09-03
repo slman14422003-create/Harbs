@@ -93,8 +93,19 @@ class UpdateRepository(
 
     /** Returns update info if a newer (or admin-forced) version is available, else null. */
     suspend fun checkForUpdate(currentVersionCode: Int, currentVersionName: String): AppUpdateInfo? =
-        withContext(Dispatchers.IO) {
-            val config = fetchConfig()
+        checkForUpdate(fetchConfig(), currentVersionCode, currentVersionName)
+
+    /**
+     * نفس منطق [checkForUpdate] أعلاه، لكن يأخذ الإعدادات كمعامل مباشر بدل
+     * قراءتها من Firestore — يسمح للوحة الإدارة باختبار إعدادات لم تُحفَظ
+     * بعد (القيم في الحقول حالياً) فوراً، دون الحاجة لحفظها أولاً ثم الخروج
+     * لشاشة المستخدم العادية للتأكد من أنها تعمل كما يُتوقَّع.
+     */
+    suspend fun checkForUpdate(
+        config: AppUpdateConfig,
+        currentVersionCode: Int,
+        currentVersionName: String
+    ): AppUpdateInfo? = withContext(Dispatchers.IO) {
             if (!config.enabled) return@withContext null
             val repo = config.githubRepo.trim().trim('/')
             if (repo.isBlank()) return@withContext null
