@@ -176,6 +176,17 @@ class UpdateRepository(
      * network/country level) it retries the exact same request through a
      * proxy mirror, so the update check keeps working without the user
      * needing a VPN.
+     *
+     * The public mirrors in [PUBLIC_PROXY_MIRRORS] are built and mainly used
+     * for proxying plain github.com / objects.githubusercontent.com *file*
+     * requests (releases, raw files) — not necessarily the api.github.com
+     * REST API this method calls for metadata. In practice this means a
+     * network that blocks GitHub can still leave the *version check* stuck
+     * (silently requiring a VPN) even though the same mirrors would happily
+     * serve the actual .apk afterward. So when every api.github.com attempt
+     * (direct + every proxy) fails, [fetchLatestReleaseViaHtmlFallback] is
+     * tried as a last resort: it never touches api.github.com at all, only
+     * plain github.com pages, which these mirrors are actually built for.
      */
     private fun fetchLatestReleaseWithFallback(repo: String, config: AppUpdateConfig): ReleaseData? {
         val direct = fetchLatestRelease(repo)
@@ -190,12 +201,89 @@ class UpdateRepository(
             val result = fetchLatestRelease(repo, proxyBase)
             if (result != null) return result
         }
-        return null
+        return fetchLatestReleaseViaHtmlFallback(repo, config)
     }
 
     /** Rewrites a github.com/objects.githubusercontent.com URL to go through a proxy prefix. */
     private fun viaProxy(proxyBase: String, url: String): String =
         proxyBase.trimEnd('/') + "/" + url
+
+    /**
+     * Last-resort metadata fetch that avoids api.github.com entirely: it
+     * follows GitHub's ordinary "latest release" redirect (a plain github.com
+     * URL) to discover the release tag, then scans that release page's HTML
+     * for the .apk asset's download link — both are requests the public proxy
+     * mirrors are actually designed to handle, unlike the JSON API above.
+     * Tried direct first, then through the same proxy chain, since the HTML
+     * page can be blocked independently of the API too.
+     */
+    private fun fetchLatestReleaseViaHtmlFallback(repo: String, config: AppUpdateConfig): ReleaseData? {
+        val bases = buildList<String?> {
+            add(null) // مباشر بلا بروكسي
+            config.customProxyBaseUrl?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+            addAll(PUBLIC_PROXY_MIRRORS)
+        }
+        for (proxyBase in bases) {
+            val result = runCatching { fetchLatestReleaseViaHtml(repo, proxyBase) }.getOrNull()
+            if (result != null) return result
+        }
+        return null
+    }
+
+    private fun fetchLatestReleaseViaHtml(repo: String, proxyBase: String?): ReleaseData? {
+        val latestUrl = "https://github.com/$repo/releases/latest"
+        val requestUrl = if (proxyBase != null) viaProxy(proxyBase, latestUrl) else latestUrl
+        // "releases/latest" هو رابط إعادة توجيه دائم من GitHub نحو
+        // ".../releases/tag/<tag>" — لا نتابعه تلقائياً، بل نقرأ رأس
+        // Location مباشرة لاستخراج اسم التاج دون تحميل أي صفحة إضافية.
+        val location = resolveRedirectLocation(requestUrl) ?: return null
+        val tag = location.trimEnd('/').substringAfterLast('/').substringBefore('?')
+        if (tag.isBlank()) return null
+
+        val tagPageUrl = "https://github.com/$repo/releases/tag/$tag"
+        val requestTagUrl = if (proxyBase != null) viaProxy(proxyBase, tagPageUrl) else tagPageUrl
+        val html = fetchText(requestTagUrl) ?: return null
+
+        val apkPath = Regex("""href="(/${Regex.escape(repo)}/releases/download/[^"]+?\.apk)"""")
+            .find(html)?.groupValues?.get(1)
+        val apkUrl = apkPath?.replace("&amp;", "&")?.let { "https://github.com$it" }
+
+        return ReleaseData(tagName = tag, body = "", htmlUrl = tagPageUrl, apkUrl = apkUrl)
+    }
+
+    /** يفتح الرابط بلا اتّباع تحويل تلقائي، ويُرجع رأس Location الخام إن كان رد التحويل (3xx). */
+    private fun resolveRedirectLocation(url: String): String? {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15000
+            readTimeout = 15000
+            instanceFollowRedirects = false
+            setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
+        }
+        return try {
+            val code = conn.responseCode
+            if (code in 300..399) conn.getHeaderField("Location") else null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** يجلب نص صفحة عادية (مع اتّباع أي تحويلات) — يُستخدم لقراءة HTML صفحة الإصدار فقط. */
+    private fun fetchText(url: String): String? {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15000
+            readTimeout = 15000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
+        }
+        return try {
+            val code = conn.responseCode
+            if (code !in 200..299) null else conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     /**
      * Splits a release tag into (versionName, versionCode).
