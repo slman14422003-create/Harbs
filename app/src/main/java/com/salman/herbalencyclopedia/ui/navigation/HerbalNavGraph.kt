@@ -290,10 +290,13 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.AdminUpdate.route) {
                     if (appViewModel.isAdmin) {
                         LaunchedEffect(Unit) { appViewModel.loadUpdateConfig() }
+                        val adminTestState by appViewModel.adminUpdateTestState.collectAsState()
                         com.salman.herbalencyclopedia.ui.screens.admin.AdminUpdateScreen(
                             config = updateConfig,
+                            testState = adminTestState,
                             onBack = { navController.popBackStack() },
-                            onSave = { config, cb -> appViewModel.saveUpdateConfig(config, cb) }
+                            onSave = { config, cb -> appViewModel.saveUpdateConfig(config, cb) },
+                            onTestNow = { ctx, config -> appViewModel.testUpdateConfig(ctx, config) }
                         )
                     }
                 }
