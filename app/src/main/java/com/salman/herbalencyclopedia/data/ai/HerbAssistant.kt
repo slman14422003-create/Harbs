@@ -475,7 +475,6 @@ object HerbAssistant {
     }
 
     /**
-    /**
      * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" — اليدوية أولاً
      * ([AiConfig.trainedExamples]، أولوية مطلقة دوماً لأنها من مراجعة
      * المطوّر مباشرة)، ثم المتعلَّمة ذاتياً ([AiConfig.autoLearnedExamples])
