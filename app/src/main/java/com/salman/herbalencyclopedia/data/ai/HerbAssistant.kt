@@ -187,7 +187,11 @@ object HerbAssistant {
         init {
             val points = mutableListOf<Set<String>>()
             herbs.forEach { herb ->
-                listOf(herb.benefits, herb.usage, herb.warnings, herb.harms, herb.notes).forEach { field ->
+                // الاسم مضاف الآن أيضاً (انظر [searchableFields])، فيدخل في
+                // حساب IDF كبقية الحقول بدل الاعتماد على الوزن الافتراضي 1.0
+                // لكل كلماته — يعكس هذا فعلياً ندرة/شيوع كلمات الاسم عبر
+                // الموسوعة كاملة.
+                listOf(herb.name, herb.benefits, herb.usage, herb.warnings, herb.harms, herb.notes).forEach { field ->
                     splitPoints(field).forEach { p ->
                         val w = wordsOf(p)
                         if (w.isNotEmpty()) points += w
@@ -569,13 +573,28 @@ object HerbAssistant {
                 for (hj in herbs.indices) {
                     if (hj == hi) continue
                     val (otherId, otherPoints) = perHerbPoints[hj]
+                    // كانت هذه الحلقة تضمّ *كل* نقطة من عشبة hj تتجاوز العتبة،
+                    // لا أفضلها فقط — فتُستهلك (تُعلَّم "مستخدمة") نقاط عدة من
+                    // نفس العشبة لنفس نقطة المرساة رغم أن واحدة فقط تظهر فعلياً
+                    // في matched، فتُفقد النقاط الأخرى من نتيجة المقارنة كلياً
+                    // (لا تظهر لا هنا ولا كمجموعة منفصلة لاحقاً) رغم أنها قد
+                    // كانت الأنسب فعلاً لمرساة أخرى ستُفحص بعدها. نختار الآن
+                    // فقط أفضل نقطة غير مستخدمة (الأعلى تشابهاً) من كل عشبة
+                    // أخرى، فلا تُفقد نقاط بلا داعٍ وتكون كل مجموعة مقارنة
+                    // مبنية على أدقّ تطابق متاح فعلاً.
+                    var bestPj = -1
+                    var bestSim = 0.0
                     for (pj in otherPoints.indices) {
                         if (usedFlags[hj][pj]) continue
                         val sim = weightedSimilarity(index, pw, wordsOf(otherPoints[pj]))
-                        if (sim >= threshold) {
-                            usedFlags[hj][pj] = true
-                            if (otherId !in matched) matched += otherId
+                        if (sim >= threshold && sim > bestSim) {
+                            bestSim = sim
+                            bestPj = pj
                         }
+                    }
+                    if (bestPj >= 0) {
+                        usedFlags[hj][bestPj] = true
+                        if (otherId !in matched) matched += otherId
                     }
                 }
                 results += ComparisonPoint(point, matched)
@@ -885,7 +904,12 @@ object HerbAssistant {
 
         val fieldWeight = mapOf(
             "الفوائد" to 1.15, "الاستخدام" to 0.9, "ملاحظات" to 0.85,
-            "التحذيرات" to 0.4, "الأضرار" to 0.4
+            "التحذيرات" to 0.4, "الأضرار" to 0.4,
+            // وزن منخفض عمداً: هدف "الاقتراح" هو الغرض/العرض (نوم، هضم...)
+            // لا اسم العشبة نفسه، فيبقى حقل الاسم مساعداً فقط (مثلاً عندما
+            // يذكر المستخدم اسماً علمياً ضمن سؤاله) دون أن يطغى على تطابق
+            // الفوائد الفعلي.
+            "الاسم" to 0.5
         )
 
         val bestPerHerb = mutableMapOf<Herb, HerbMatch>()
@@ -926,7 +950,16 @@ object HerbAssistant {
 
     private data class SearchHit(val herb: Herb, val field: String, val text: String, val score: Double)
 
+    // اسم العشبة (يحوي غالباً الاسم العلمي بالإنجليزية إلى جانب الاسم الشائع
+    // بالعربية معاً في نفس الحقل، كما هو مخزَّن فعلياً في الموسوعة) لم يكن
+    // يدخل البحث الحر أو الاقتراح إطلاقاً — كان يُفحص فقط عبر [relevantHerbs]
+    // (احتواء حرفي تام). فسؤال حرّ يذكر الاسم العلمي أو جزءاً منه فقط (مثل
+    // "Cucurbita" أو "لب القرع" ضمن سؤال أطول) دون التطابق الحرفي الكامل
+    // الذي يشترطه [relevantHerbs] كان لا يجد العشبة إطلاقاً رغم أن اسمها
+    // يحمل الإجابة مباشرة. إضافته كحقل بحث عادي (بنفس خط أنابيب التحليل/
+    // المطابقة الموزون) توسّع دقة "البحث والمطابقة" دون أي تغيير في المنطق.
     private val searchableFields = listOf<Pair<String, (Herb) -> String>>(
+        "الاسم" to { it.name },
         "الفوائد" to { it.benefits },
         "الاستخدام" to { it.usage },
         "التحذيرات" to { it.warnings },
