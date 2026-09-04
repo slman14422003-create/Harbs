@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -70,38 +71,45 @@ fun CategoryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(26.dp)
+    val shape = RoundedCornerShape(20.dp)
     val accent = colorFor(category)
     val interactionSource = remember { MutableInteractionSource() }
-    val pressScale by rememberPressScale(interactionSource, pressedScale = 0.95f)
+    val pressScale by rememberPressScale(interactionSource, pressedScale = 0.97f)
 
-    // نفس أسلوب الزجاج السائل المستخدم في GlassButton وHerbCard: Surface
-    // شفافة تحمل النقر/الظل، وLiquidGlassSurface يرسم طبقات الزجاج نفسها
-    // (تمويه + توهّج + لمعان) وتحترم وضع الأداء تلقائياً.
+    // كانت البطاقة مربّعة (aspectRatio(1f)) لتُعرض ضمن شبكة بعدة أعمدة،
+    // فتظهر التصنيفات جنباً إلى جنب بدل التتالي رأسياً كما كانت قبل ذلك.
+    // الآن البطاقة صفّ بعرض كامل (نفس طراز HerbCard/BlendCard: أيقونة على
+    // اليمين وعمود نص إلى جانبها)، لتُعرض التصنيفات تحت بعضها في قائمة
+    // واحدة بدل شبكة متعددة الأعمدة.
     Surface(
         onClick = onClick,
         interactionSource = interactionSource,
         modifier = modifier
             .scale(pressScale)
-            .aspectRatio(1f)
+            .fillMaxWidth()
             .shadow(1.dp, shape),
         shape = shape,
         color = Color.Transparent
     ) {
         LiquidGlassSurface(
             shape = shape,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth(),
             tint = MaterialTheme.colorScheme.surfaceContainer,
+            // بطاقة صف قصيرة الآن، وليست بطاقة شبكة مربّعة كبيرة — انظر
+            // توثيق [compact] في LiquidGlassSurface.
+            compact = true,
             sheen = false
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 // أيقونة التصنيف محتوى فوق طبقة الزجاج (content)، فتبقى
                 // واضحة وغير متأثرة بالتمويه خلفها.
                 Box(
-                    Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(
+                    Modifier.size(52.dp).clip(CircleShape).background(
                         Brush.linearGradient(
                             listOf(accent.copy(alpha = 0.22f), accent.copy(alpha = 0.10f))
                         )
@@ -110,12 +118,13 @@ fun CategoryCard(
                 ) {
                     Icon(iconFor(category), contentDescription = null, tint = accent)
                 }
-                Column {
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         category.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(Modifier.height(3.dp))
