@@ -49,6 +49,53 @@ object HerbSearch {
     private data class Scored(val herb: Herb, val score: Int)
 
     /**
+     * تطبيع/تقطيع كل نصوص عشبة واحدة، محسوبة مرة واحدة فقط لكل عشبة (انظر
+     * [indexFor] أدناه) بدل إعادة حسابها من الصفر مع كل ضغطة حرف في مربع
+     * البحث. مشكلة أداء حقيقية كانت هنا: [search] يُستدعى من واجهة البحث
+     * الفوري (مربع بحث يُعيد الفلترة مع كل حرف يكتبه المستخدم)، وكانت
+     * `normalize()` — التي تُجري عدة عمليات Regex.replace على نص — تُطبَّق
+     * من جديد على *كل حقول كل عشبة مجتمعة* (الفوائد + الاستخدام + التحذيرات
+     * + الأضرار + الملاحظات) عند كل ضغطة حرف لكل عشبة لم يُطابق اسمها
+     * الاستعلام مباشرة — وهذا يشمل غالبية الأعشاب في أي بحث نموذجي (يبحث
+     * الناس عادة بعرَض/فائدة لا باسم العشبة). النتيجة: كلفة تتضاعف مع طول
+     * الموسوعة، مكرَّرة بلا داعٍ لأن نصوص العشبة نفسها لا تتغيّر بين ضغطتي
+     * حرف متتاليتين إطلاقاً.
+     */
+    private data class HerbIndex(
+        val nameNorm: String,
+        val nameTokens: List<String>,
+        val fieldsNorm: String,
+        val fieldTokens: Set<String>
+    )
+
+    // ذاكرة تخزين مؤقت بنفس أسلوب [HerbAssistant] (فحص مرجع القائمة، لا
+    // محتواها — تُنشئ شاشات التطبيق قائمة جديدة فقط عند تغيّر فعلي للبيانات
+    // من Firestore، فمقارنة المرجع (`===`) كافية ورخيصة لاكتشاف "لا تغيير").
+    private var cachedHerbsRef: List<Herb>? = null
+    private var cachedIndexById: Map<String, HerbIndex> = emptyMap()
+
+    private fun indexFor(herbs: List<Herb>): Map<String, HerbIndex> {
+        val current = cachedHerbsRef
+        if (current === herbs) return cachedIndexById
+        val built = herbs.associate { herb ->
+            val nameNorm = normalize(herb.name)
+            val fieldsNorm = normalize(
+                herb.benefits + " " + herb.usage + " " + herb.warnings + " " +
+                    herb.harms + " " + herb.notes
+            )
+            herb.id to HerbIndex(
+                nameNorm = nameNorm,
+                nameTokens = tokens(nameNorm),
+                fieldsNorm = fieldsNorm,
+                fieldTokens = tokens(fieldsNorm).toSet()
+            )
+        }
+        cachedHerbsRef = herbs
+        cachedIndexById = built
+        return built
+    }
+
+    /**
      * مسافة تحرير (Levenshtein) محدودة الحجم — تُستخدم فقط لالتقاط خطأ
      * إملائي بسيط في اسم عشبة (حرف زائد/ناقص/مبدَّل) عندما تفشل كل مطابقة
      * نصية أو بمرادف أخرى. الكلمات هنا قصيرة دوماً (أسماء أعشاب مفردة) لذا
@@ -86,6 +133,9 @@ object HerbSearch {
      *    الجملة بالضبط.
      * 3) **تسامح مع خطأ إملائي بسيط** في اسم العشبة (مسافة تحرير ≤ 1) عند
      *    عدم وجود أي تطابق نصي أو بمرادف بعد كل المحاولات السابقة.
+     * 4) **فهرسة مُخزَّنة مؤقتاً لكل عشبة** ([indexFor]) بدل إعادة تطبيع كل
+     *    نصوصها من الصفر مع كل استدعاء — أهم تحسين أداء هنا، انظر توثيق
+     *    [HerbIndex].
      */
     fun search(query: String, herbs: List<Herb>): List<Herb> {
         val qNorm = normalize(query)
@@ -98,9 +148,11 @@ object HerbSearch {
         val dictSynonyms = (qTokens + stemmedTokens).flatMap { DictionaryLexicon.synonymsOf(it) }.toSet()
         val expandedTokens = (qTokens + stemmedTokens).toSet() + dictSynonyms
 
+        val index = indexFor(herbs)
         val scored = herbs.mapNotNull { herb ->
-            val nameNorm = normalize(herb.name)
-            val nameTokens = tokens(nameNorm)
+            val idx = index[herb.id] ?: return@mapNotNull null
+            val nameNorm = idx.nameNorm
+            val nameTokens = idx.nameTokens
             var score = 0
 
             when {
@@ -130,16 +182,11 @@ object HerbSearch {
             }
 
             if (score == 0) {
-                val fieldsNorm = normalize(
-                    herb.benefits + " " + herb.usage + " " + herb.warnings + " " +
-                        herb.harms + " " + herb.notes
-                )
-                if (fieldsNorm.contains(qNorm)) {
+                if (idx.fieldsNorm.contains(qNorm)) {
                     score = 20
                 } else {
-                    val fieldTokens = tokens(fieldsNorm).toSet()
                     val matchedCount = expandedTokens.count { et ->
-                        et.length > 1 && fieldTokens.any { it == et || it.contains(et) || et.contains(it) }
+                        et.length > 1 && idx.fieldTokens.any { it == et || it.contains(et) || et.contains(it) }
                     }
                     if (matchedCount > 0) {
                         // كلما زادت نسبة كلمات الاستعلام المطابَقة فعلياً داخل
