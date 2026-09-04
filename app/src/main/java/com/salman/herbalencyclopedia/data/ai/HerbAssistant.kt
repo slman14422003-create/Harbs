@@ -1,5 +1,6 @@
 package com.salman.herbalencyclopedia.data.ai
 
+import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlin.math.ln
 import kotlin.math.sqrt
@@ -178,24 +179,24 @@ object HerbAssistant {
      *    من مقياس PMI)، فيتوسّع فهم سؤال المستخدم بها دون أي مرادف يُضاف
      *    يدوياً من المطوّر — تعلّم توزيعي بحت من بيانات الموسوعة ذاتها.
      *
-     * يُعاد بناؤه فقط عند تغيّر قائمة الأعشاب المرجعة (انظر [corpusIndexFor]).
+     * يُعاد بناؤه فقط عند تغيّر قائمة الأعشاب أو الخلطات المرجعة (انظر
+     * [corpusIndexFor]).
+     *
+     * يُبنى الآن من قائمة نصوص خام مسطّحة ([fieldTexts]) بدل قائمة أعشاب
+     * مباشرة، بحيث يمكن تغذيته بنصوص الأعشاب *والخلطات* معاً — وهذا هو ما
+     * يجعل "فهم" سيمو (أوزان الكلمات وعلاقاتها الضمنية) يشمل كل الموسوعة
+     * فعلياً بدل الاقتصار على الأعشاب وحدها.
      */
-    private class CorpusIndex(herbs: List<Herb>) {
+    private class CorpusIndex(fieldTexts: List<String>) {
         private val idf: Map<String, Double>
         private val related: Map<String, List<String>>
 
         init {
             val points = mutableListOf<Set<String>>()
-            herbs.forEach { herb ->
-                // الاسم مضاف الآن أيضاً (انظر [searchableFields])، فيدخل في
-                // حساب IDF كبقية الحقول بدل الاعتماد على الوزن الافتراضي 1.0
-                // لكل كلماته — يعكس هذا فعلياً ندرة/شيوع كلمات الاسم عبر
-                // الموسوعة كاملة.
-                listOf(herb.name, herb.benefits, herb.usage, herb.warnings, herb.harms, herb.notes).forEach { field ->
-                    splitPoints(field).forEach { p ->
-                        val w = wordsOf(p)
-                        if (w.isNotEmpty()) points += w
-                    }
+            fieldTexts.forEach { field ->
+                splitPoints(field).forEach { p ->
+                    val w = wordsOf(p)
+                    if (w.isNotEmpty()) points += w
                 }
             }
             val docCount = points.size.coerceAtLeast(1)
@@ -405,16 +406,28 @@ object HerbAssistant {
     }
 
     // ذاكرة تخزين مؤقت بسيطة: يُعاد بناء الفهرس فقط عند تغيّر مرجع قائمة
-    // الأعشاب (تُنشئ شاشات التطبيق قائمة جديدة عند أي تحديث فعلي للبيانات).
+    // الأعشاب أو الخلطات (تُنشئ شاشات التطبيق قائمة جديدة عند أي تحديث فعلي
+    // للبيانات).
     private var cachedIndex: CorpusIndex? = null
     private var cachedForHerbs: List<Herb>? = null
+    private var cachedForBlends: List<Blend>? = null
 
-    private fun corpusIndexFor(herbs: List<Herb>): CorpusIndex {
+    /**
+     * [blends] اختيارية (افتراضياً فارغة) حتى تبقى بقية الاستخدامات الحالية
+     * (المقارنة بين أعشاب محدَّدة، اقتراح عشبة) كما هي بلا أي تغيير — فهرس
+     * مبني من الأعشاب فقط، وهو السياق الصحيح لها. يُمرَّر [blends] فقط من
+     * البحث الحر العام ([buildGeneralSearchAnswer]) حيث "كل الموسوعة" تشمل
+     * الخلطات أيضاً.
+     */
+    private fun corpusIndexFor(herbs: List<Herb>, blends: List<Blend> = emptyList()): CorpusIndex {
         val current = cachedIndex
-        if (current != null && cachedForHerbs === herbs) return current
-        val built = CorpusIndex(herbs)
+        if (current != null && cachedForHerbs === herbs && cachedForBlends === blends) return current
+        val herbTexts = herbs.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.harms, it.notes) }
+        val blendTexts = blends.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.notes) }
+        val built = CorpusIndex(herbTexts + blendTexts)
         cachedIndex = built
         cachedForHerbs = herbs
+        cachedForBlends = blends
         return built
     }
 
@@ -727,8 +740,8 @@ object HerbAssistant {
     data class AssistantReply(val text: String, val learnable: Boolean)
 
     /** توافقاً مع الاستدعاءات القديمة (مثل اختبار أدوات المطور) التي تحتاج النص فقط. */
-    fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true): String =
-        answerDetailed(question, herbs, allowCompare).text
+    fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): String =
+        answerDetailed(question, herbs, allowCompare, blends).text
 
     /**
      * يجيب على سؤال حر بالاعتماد على بيانات عشبة واحدة أو أكثر. لا يوجد هنا
@@ -744,7 +757,7 @@ object HerbAssistant {
      * تلقائياً بين عشرات الأعشاب التي لم يطلبها أحد — تماماً كما لا يقارن
      * إلا إذا طُلب منه ذلك صراحة.
      */
-    fun answerDetailed(question: String, herbs: List<Herb>, allowCompare: Boolean = true): AssistantReply {
+    fun answerDetailed(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): AssistantReply {
         val qNorm = normalize(question)
         if (qNorm.isBlank()) {
             return AssistantReply("تفضّل، اسأل سيمو عن أي عشبة: فوائدها، طريقة استخدامها، أو تحذيراتها.", false)
@@ -769,7 +782,7 @@ object HerbAssistant {
         // من هنا فقط (بعد استبعاد كل ردود المحادثة العامة التي لا تحتاج بيانات)
         // يصبح فحص توفّر بيانات الموسوعة منطقياً: أي سؤال متبقٍ يحتاج فعلاً
         // للبحث ضمن نصوص الأعشاب، فإن لم تتوفر بعد نعتذر بوضوح بدل الانهيار.
-        if (herbs.isEmpty()) {
+        if (herbs.isEmpty() && blends.isEmpty()) {
             return AssistantReply("لم أجد في الموسوعة معلومات كافية للإجابة على هذا السؤال بعد 🌿", false)
         }
 
@@ -815,7 +828,7 @@ object HerbAssistant {
             }
 
             else -> {
-                val (text, learnable) = buildGeneralSearchAnswer(question, herbs)
+                val (text, learnable) = buildGeneralSearchAnswer(question, herbs, blends)
                 AssistantReply(text, learnable)
             }
         }
@@ -1006,6 +1019,47 @@ object HerbAssistant {
         "ملاحظات" to { it.notes }
     )
 
+    // ── دعم الخلطات ("الخلطات" — Blend) في البحث الحر العام ─────────────
+    //
+    // سيمو كان يقرأ فقط مجموعة "herbs" ولا يعرف بوجود مجموعة "blends"
+    // إطلاقاً، رغم أنها جزء أصيل من الموسوعة (تُعرض له شاشتها الخاصة في
+    // التطبيق تماماً كالأعشاب). سؤال حر عن خلطة بالاسم أو عن أي محتوى من
+    // نصوصها كان يحصل دوماً على "لم أجد" رغم توفّر الإجابة فعلاً في قاعدة
+    // البيانات. هذا القسم يوسّع البحث الحر (لا المقارنة المنظّمة بين
+    // عشبتين تحديداً، التي تبقى للأعشاب فقط) ليشمل الخلطات أيضاً، بنفس خط
+    // أنابيب التحليل/المطابقة الموزون المستخدم للأعشاب تماماً.
+
+    private data class BlendHit(val blend: Blend, val field: String, val text: String, val score: Double)
+
+    private val blendSearchableFields = listOf<Pair<String, (Blend) -> String>>(
+        "الاسم" to { it.name },
+        "الفوائد" to { it.benefits },
+        "الاستخدام" to { it.usage },
+        "التحذيرات" to { it.warnings },
+        "ملاحظات" to { it.notes }
+    )
+
+    private fun gatherBlendCandidates(qWords: Set<String>, blends: List<Blend>, index: CorpusIndex): List<BlendHit> {
+        val threshold = AiConfig.searchThreshold
+        val hits = mutableListOf<BlendHit>()
+        blends.forEach { blend ->
+            blendSearchableFields.forEach { (label, getter) ->
+                splitPoints(getter(blend)).forEach { point ->
+                    val sim = matchScore(index, qWords, point)
+                    if (sim > threshold) hits += BlendHit(blend, label, point, sim)
+                }
+            }
+        }
+        return hits
+    }
+
+    private fun organizeBlendHits(hits: List<BlendHit>): Map<Blend, List<BlendHit>> =
+        hits.groupBy { it.blend }
+            .entries
+            .sortedByDescending { (_, blendHits) -> blendHits.maxOf { it.score } }
+            .take(2)
+            .associate { (blend, blendHits) -> blend to blendHits.sortedByDescending { it.score }.take(3) }
+
     /**
      * البحث الحر الكامل في كل نصوص الموسوعة، على مراحل واضحة ومنفصلة —
      * بالضبط تسلسل "سؤال → تحليل → تفكير → تنظيم → تجميع النتيجة وإرسالها":
@@ -1023,16 +1077,18 @@ object HerbAssistant {
      * كان رسالة تعذّر عامة (`false`) — يُستخدم هذا لتحديد أهلية الرد للتعلّم
      * الذاتي (انظر [AssistantReply.learnable]).
      */
-    private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>): Pair<String, Boolean> {
-        val index = corpusIndexFor(herbs)
+    private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>, blends: List<Blend> = emptyList()): Pair<String, Boolean> {
+        val index = corpusIndexFor(herbs, blends)
         val qWords = analyzeQuestion(question, index)
         if (qWords.isEmpty()) return fallbackHelp(herbs) to false
 
         val hits = gatherCandidates(qWords, herbs, index)
-        if (hits.isEmpty()) return fallbackHelp(herbs) to false
+        val blendHits = gatherBlendCandidates(qWords, blends, index)
+        if (hits.isEmpty() && blendHits.isEmpty()) return fallbackHelp(herbs) to false
 
         val organized = organizeHits(hits)
-        return composeAnswer(organized) to true
+        val organizedBlends = organizeBlendHits(blendHits)
+        return composeAnswer(organized, organizedBlends) to true
     }
 
     /**
@@ -1104,12 +1160,25 @@ object HerbAssistant {
             .take(3)
             .associate { (herb, herbHits) -> herb to herbHits.sortedByDescending { it.score }.take(3) }
 
-    /** المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. */
-    private fun composeAnswer(organized: Map<Herb, List<SearchHit>>): String = buildString {
+    /**
+     * المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. تُعرض
+     * نتائج الأعشاب أولاً ثم الخلطات (إن وُجدت) في قسم منفصل بعلامة مميّزة
+     * (🧪) حتى يُدرك المستخدم أن الرد قد يخلط بين نوعين مختلفين من عناصر
+     * الموسوعة.
+     */
+    private fun composeAnswer(
+        organized: Map<Herb, List<SearchHit>>,
+        organizedBlends: Map<Blend, List<BlendHit>> = emptyMap()
+    ): String = buildString {
         append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
         organized.forEach { (herb, herbHits) ->
             append("🔸 ${herb.name}:\n")
             herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
+            append("\n")
+        }
+        organizedBlends.forEach { (blend, blendHits) ->
+            append("🧪 خلطة ${blend.name}:\n")
+            blendHits.forEach { append("• [${it.field}] ${it.text}\n") }
             append("\n")
         }
     }.trimEnd()
