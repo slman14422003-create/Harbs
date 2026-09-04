@@ -2,9 +2,8 @@ package com.salman.herbalencyclopedia.ui.screens.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,7 +24,6 @@ import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.*
 import com.salman.herbalencyclopedia.ui.theme.staggeredEntrance
-import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import java.util.Calendar
 
 /**
@@ -56,13 +54,6 @@ fun HomeScreen(
     onSemoClick: () -> Unit,
     onBlendsClick: () -> Unit
 ) {
-    // كانت الشبكة GridCells.Fixed(2) ثابتة بعمودين دائماً: على تابلت أو
-    // نافذة عريضة هذا يعني بطاقتين متمددتين بعرض هائل بدل الاستفادة من
-    // المساحة. GridCells.Adaptive مع الحد الأدنى القادم من محرك اكتشاف
-    // الشاشة يحسب عدد الأعمدة ديناميكياً من العرض الفعلي المتاح: يبقى
-    // عمودين على جوال عادي، ويزيد تلقائياً إلى 3-5 أعمدة كلما اتسعت
-    // الشاشة، دون أي عتبة مكتوبة يدوياً هنا.
-    val windowInfo = rememberWindowSizeInfo()
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         // هذه الشاشة تظهر دائماً فوق OneUiFloatingNavBar (شاشة جذر ضمن
@@ -180,11 +171,13 @@ fun HomeScreen(
                     // ظاهرة ويُسجّل الخطأ فقط بدل مسحها بالكامل.
                     error != null && categories.isEmpty() -> ErrorView(error, onRetry, Modifier.fillMaxSize())
                     categories.isEmpty() -> EmptyView("لا توجد تصنيفات بعد", Modifier.fillMaxSize())
-                    else -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = windowInfo.gridMinCellWidth),
+                    // كانت هذه شبكة (LazyVerticalGrid) تعرض عدة أعمدة، فتظهر
+                    // بطاقات التصنيفات جنباً إلى جنب. الآن قائمة عمودية واحدة
+                    // (LazyColumn) تعرض كل بطاقة بعرض كامل تحت التي قبلها،
+                    // مثل باقي قوائم التطبيق (الأعشاب/المفضلة/الخلطات).
+                    else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
@@ -196,6 +189,7 @@ fun HomeScreen(
                                 // وتنزلق للأعلى بعد اللي قبلها بفارق بسيط — مرة
                                 // واحدة عند تحميل الشاشة، بلا أي تكرار لانهائي.
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .animateItem()
                                     .staggeredEntrance(index)
                             )
