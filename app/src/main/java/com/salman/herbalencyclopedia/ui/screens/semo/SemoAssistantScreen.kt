@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
+import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
@@ -78,6 +79,11 @@ private data class ChatMessage(
 fun SemoAssistantScreen(
     herbs: List<Herb>,
     onBack: () -> Unit,
+    // ── توسيع "صلاحيات" سيمو ليشمل كل الموسوعة: يمرَّر هنا حيّاً من
+    // UiState.blends (نفس مصدر شاشة الخلطات)، فيدخل ضمن نطاق البحث الحر
+    // العام تلقائياً — دون أي تأثير على منطق مقارنة الأعشاب المحدَّدة، الذي
+    // يبقى كما هو تماماً. ──
+    blends: List<Blend> = emptyList(),
     // ── تعلّم سيمو الذاتي: قائمة الحالات المتعلَّمة تُمرَّر حيّة من
     // DataStore عبر HerbalNavGraph، وأي تقييم 👍/👎 هنا يُحدّثها فوراً عبر
     // onAutoLearnedExamplesChange لتُحفظ وتُطبَّق في كل محادثة قادمة. ──
@@ -110,14 +116,15 @@ fun SemoAssistantScreen(
             // سيمو يبحث بحرية في كامل الموسوعة (وضع محادثة عامة).
             val mentioned = if (attached.isEmpty()) HerbAssistant.relevantHerbs(question, herbs) else emptyList()
             val contextHerbs: List<Herb>
+            val contextBlends: List<Blend>
             val allowCompare: Boolean
             when {
-                attached.isNotEmpty() -> { contextHerbs = attached; allowCompare = true }
-                mentioned.isNotEmpty() -> { contextHerbs = mentioned; allowCompare = true }
-                else -> { contextHerbs = herbs; allowCompare = false }
+                attached.isNotEmpty() -> { contextHerbs = attached; contextBlends = emptyList(); allowCompare = true }
+                mentioned.isNotEmpty() -> { contextHerbs = mentioned; contextBlends = emptyList(); allowCompare = true }
+                else -> { contextHerbs = herbs; contextBlends = blends; allowCompare = false }
             }
 
-            val reply = HerbAssistant.answerDetailed(question, contextHerbs, allowCompare)
+            val reply = HerbAssistant.answerDetailed(question, contextHerbs, allowCompare, contextBlends)
             messages = messages + ChatMessage(
                 text = reply.text,
                 isUser = false,
