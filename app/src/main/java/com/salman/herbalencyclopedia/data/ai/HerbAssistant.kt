@@ -405,6 +405,54 @@ object HerbAssistant {
         }
     }
 
+    // ── مجموعات مرادفات مواضيع صحية شائعة (مشكلة "التنحيف") ─────────────
+
+    /**
+     * مشكلة حقيقية أُبلغ عنها: سؤال عن "التنحيف" (أو اقتراح عشبة له) كان لا
+     * يُطابق أي عشبة تقريباً، رغم وجود بيانات فعلية في الموسوعة تتحدث عن
+     * الموضوع نفسه بكلمات أخرى (إنقاص الوزن، حرق الدهون، الرجيم، السمنة...).
+     * السبب: لا [ArabicLexicon] (تجذير لغوي بحت، لا علاقة صرفية بين
+     * "تنحيف" و"دهون" مثلاً) ولا [DictionaryLexicon] العام (قاموس لغوي
+     * عام، لا يربط بالضرورة بين كل المرادفات العامية/الصحية الشائعة لموضوع
+     * بعينه) يغطّيان هذا النوع من "الترادف الموضوعي" (كلمات مختلفة الجذر
+     * تماماً لكنها تدل على نفس الموضوع الصحي عملياً).
+     *
+     * هذا الحل مخصَّص: مجموعات كلمات يدوية لكل موضوع، أي كلمة في المجموعة
+     * تُوسَّع لتشمل *كل* كلمات مجموعتها عند التحليل — تماماً كمرادفات
+     * [AiConfig.synonyms] لكن مبنية داخل الكود كتغطية أساسية جاهزة فور
+     * التثبيت، بلا حاجة لأي إعداد يدوي من المطوّر. يمكن إضافة مجموعات
+     * جديدة لأي موضوع آخر يتكرر فشل مطابقته لاحقاً بنفس الطريقة.
+     */
+    private object HealthTopicSynonyms {
+        private val rawClusters: List<Set<String>> = listOf(
+            // التنحيف/إنقاص الوزن — المجموعة التي عالجت المشكلة المُبلَغ عنها.
+            setOf(
+                "تنحيف", "تخسيس", "رجيم", "دايت", "حمية", "انقاص", "إنقاص",
+                "الوزن", "وزن", "دهون", "الدهون", "سمنة", "السمنة", "نحافة",
+                "حرق", "خسارة", "تخفيف", "كرش", "الكرش"
+            )
+        )
+
+        private val clusters: List<Set<String>> by lazy { rawClusters.map { c -> c.map { normalize(it) }.toSet() } }
+
+        private val lookup: Map<String, Set<String>> by lazy {
+            val map = mutableMapOf<String, MutableSet<String>>()
+            clusters.forEach { cluster -> cluster.forEach { word -> map.getOrPut(word) { mutableSetOf() }.addAll(cluster) } }
+            map
+        }
+
+        /** كل كلمات كل المجموعات مسطّحة — تُستخدم لتفعيل نية سؤال محدَّد (مثل فروع فائدة/اقتراح). */
+        val allWords: List<String> by lazy { clusters.flatten() }
+
+        /** يوسّع كلمات السؤال بمرادفات مجموعتها الموضوعية إن وُجدت (إضافة فهم، لا حذف). */
+        fun expand(words: Set<String>): Set<String> =
+            if (words.isEmpty()) words else words + words.flatMap { lookup[it].orEmpty() }
+
+        /** يعيد مجموعة الموضوع كاملة إن ذكر نص السؤال (المُطبَّع) أي كلمة منها، وإلا null. */
+        fun clusterMentionedIn(qNorm: String): Set<String>? =
+            clusters.firstOrNull { cluster -> cluster.any { qNorm.contains(it) } }
+    }
+
     // ذاكرة تخزين مؤقت بسيطة: يُعاد بناء الفهرس فقط عند تغيّر مرجع قائمة
     // الأعشاب أو الخلطات (تُنشئ شاشات التطبيق قائمة جديدة عند أي تحديث فعلي
     // للبيانات).
@@ -814,8 +862,8 @@ object HerbAssistant {
             allowCompare && specific && herbs.size >= 2 && containsAny(qNorm, listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")) ->
                 AssistantReply(buildOverview(herbs) + "\n\n" + buildSafetyGlance(herbs), false)
 
-            specific && containsAny(qNorm, listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد")) ->
-                AssistantReply(buildBenefitsAnswer(herbs), false)
+            specific && containsAny(qNorm, listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد") + HealthTopicSynonyms.allWords) ->
+                AssistantReply(buildBenefitsAnswer(herbs, qNorm), false)
 
             // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
             // (لا إرفاق ولا ذكر اسم صريح) — عندها "الاقتراح" له معنى فعلياً،
@@ -877,10 +925,27 @@ object HerbAssistant {
         }
     }
 
-    private fun buildBenefitsAnswer(herbs: List<Herb>): String {
+    /**
+     * [qNorm] (افتراضياً فارغ للتوافق مع الاستدعاءات القديمة) يتيح تمييز
+     * النقاط المرتبطة بموضوع محدَّد ذكره السؤال (مثل "تنحيف"/"وزن"، انظر
+     * [HealthTopicSynonyms]) من بين كل فوائد العشبة، بدل عرض النص كاملاً
+     * بلا تمييز حين يسأل المستخدم فعلياً عن غرض بعينه لا عن الفوائد عموماً
+     * — نفس مبدأ فلترة سؤال الحمل/الرضاعة في [buildSafetyAnswer] تماماً.
+     */
+    private fun buildBenefitsAnswer(herbs: List<Herb>, qNorm: String = ""): String {
         if (herbs.size < 2) {
             val herb = herbs.first()
-            return "🔸 ${herb.name}: ${herb.benefits.ifBlank { "لا توجد فوائد مسجّلة لهذه العشبة في الموسوعة بعد." }}"
+            val points = splitPoints(herb.benefits)
+            if (points.isEmpty()) {
+                return "🔸 ${herb.name}: لا توجد فوائد مسجّلة لهذه العشبة في الموسوعة بعد."
+            }
+            val topic = HealthTopicSynonyms.clusterMentionedIn(qNorm)
+            val relevant = if (topic != null) points.filter { containsAny(normalize(it), topic.toList()) } else emptyList()
+            return if (relevant.isNotEmpty()) {
+                "🔸 ${herb.name}:\n" + relevant.joinToString("\n") { "• $it" }
+            } else {
+                "🔸 ${herb.name}: ${herb.benefits}"
+            }
         }
         val points = compareField(herbs) { it.benefits }
         val shared = points.filter { it.herbIds.size == herbs.size }
@@ -1113,7 +1178,8 @@ object HerbAssistant {
         if (base.isEmpty()) return base
         val expandedByCorpus = index.expand(base)
         val expandedByStems = ArabicLexicon.expand(expandedByCorpus)
-        return DictionaryLexicon.expand(expandedByStems)
+        val expandedByDictionary = DictionaryLexicon.expand(expandedByStems)
+        return HealthTopicSynonyms.expand(expandedByDictionary)
     }
 
     /**
@@ -1127,7 +1193,7 @@ object HerbAssistant {
     private fun richWordsOf(text: String): Set<String> {
         val base = wordsOf(text)
         if (base.isEmpty()) return base
-        return DictionaryLexicon.expand(ArabicLexicon.expand(base))
+        return HealthTopicSynonyms.expand(DictionaryLexicon.expand(ArabicLexicon.expand(base)))
     }
 
     /** المرحلة ٢ — "التفكير بالإجابة": مسح كل نقاط كل حقل، وترجيح كل نقطة حسب مدى صلتها الفعلية بالسؤال. */
