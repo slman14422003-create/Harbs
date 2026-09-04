@@ -178,12 +178,15 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 }
             ) {
                 composable(Screen.Splash.route) {
-                    SplashScreen(onFinished = {
-                        val destination = if (termsAccepted == true) Screen.Home.route else Screen.Welcome.route
-                        navController.navigate(destination) {
-                            popUpTo(Screen.Splash.route) { inclusive = true }
+                    SplashScreen(
+                        isDataReady = !uiState.isLoading,
+                        onFinished = {
+                            val destination = if (termsAccepted == true) Screen.Home.route else Screen.Welcome.route
+                            navController.navigate(destination) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                            }
                         }
-                    })
+                    )
                 }
                 composable(Screen.Welcome.route) {
                     WelcomeScreen(
@@ -206,6 +209,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.SemoAssistant.route) {
                     SemoAssistantScreen(
                         herbs = uiState.herbs,
+                        blends = uiState.blends,
                         onBack = { navController.popBackStack() },
                         onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } }
                     )
