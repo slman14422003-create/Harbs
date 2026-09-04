@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
 import androidx.compose.runtime.*
@@ -21,7 +22,20 @@ import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AllHerbsScreen(herbs: List<Herb>, favoriteIds: Set<String>, onHerbClick: (Herb) -> Unit, onToggleFavorite: (String) -> Unit) {
+fun AllHerbsScreen(
+    herbs: List<Herb>,
+    favoriteIds: Set<String>,
+    onHerbClick: (Herb) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    // "سحب للتحديث" (نفس مبدأ فيسبوك/إنستغرام): يفرض جولة حقيقية إلى خادم
+    // Firestore (تجاوزاً للكاش المحلي) لتأكيد أن ما يُعرض هو أحدث بيانات
+    // فعلاً، بدل انتظار المزامنة الحيّة التلقائية بصمت. القيمتان اختياريتان
+    // (بقيمة افتراضية بلا تأثير) كي تبقى أي استدعاءات سابقة للشاشة صحيحة
+    // دون تعديل، لكن HerbalNavGraph يمرّرهما فعلياً من AppViewModel (انظر
+    // uiState.isLoading و[AppViewModel.refresh] هناك).
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {}
+) {
     var query by remember { mutableStateOf("") }
     // نفس إصلاح شاشة البحث المستقلة (SearchScreen): بحث مطبَّع وموسَّع
     // بمرادفات محلية بدل `contains` حرفي فقط — انظر توثيق [HerbSearch].
@@ -55,26 +69,32 @@ fun AllHerbsScreen(herbs: List<Herb>, favoriteIds: Set<String>, onHerbClick: (He
             )
         }
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                placeholder = { Text("ابحث في الموسوعة") },
-                singleLine = true,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            if (filtered.isEmpty()) {
-                EmptyView(message = "لا توجد نتائج لـ \"$query\"", modifier = Modifier.fillMaxSize())
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 340.dp),
-                    contentPadding = PaddingValues(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(filtered, key = { it.id }) { herb -> HerbCard(herb, herb.id in favoriteIds, { onHerbClick(herb) }, { onToggleFavorite(herb.id) }) }
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    leadingIcon = { Icon(Icons.Filled.Search, null) },
+                    placeholder = { Text("ابحث في الموسوعة") },
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                if (filtered.isEmpty()) {
+                    EmptyView(message = "لا توجد نتائج لـ \"$query\"", modifier = Modifier.fillMaxSize())
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = windowInfo.gridMinCellWidth),
+                        contentPadding = PaddingValues(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filtered, key = { it.id }) { herb -> HerbCard(herb, herb.id in favoriteIds, { onHerbClick(herb) }, { onToggleFavorite(herb.id) }) }
+                    }
                 }
             }
         }
