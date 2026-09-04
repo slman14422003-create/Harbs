@@ -5,6 +5,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -79,6 +80,15 @@ class HerbalApp : Application(), ImageLoaderFactory {
     // الافتراضي) — يقلّل استهلاك كل صورة بالذاكرة للنصف تقريباً بأثر بصري
     // ضئيل جداً على صور صغيرة كصور الأعشاب. على الأجهزة القوية يبقى كل شيء
     // بأعلى جودة كما كان.
+    //
+    // كاش القرص لم يكن مضبوطاً إطلاقاً سابقاً، فكان Coil يستخدم سقفه
+    // الافتراضي (حتى ٢٪ من المساحة الحرة، وقد يصل لـ٢٥٠ ميجابايت على جهاز
+    // بمساحة تخزين كبيرة) — رغم أن صور الموسوعة هنا مصدرها الأصلي أصلاً
+    // base64 محلي داخل بيانات Firestore المتزامنة (انظر DataUriFetcher)،
+    // فتخزينها الفكوك أيضاً على القرص كان تكراراً غير ضروري يستهلك مساحة
+    // إضافية بلا فائدة حقيقية. سقف صريح صغير (٣٠ ميجابايت) يبقي إعادة
+    // العرض السريع لآخر الصور المُشاهدة بلا إبطاء واجهة المستخدم، مع تفادي
+    // تضخم غير محدود بمرور الوقت.
     override fun newImageLoader(): ImageLoader {
         val activityManager = getSystemService(ACTIVITY_SERVICE) as? ActivityManager
         val isLowRam = activityManager?.isLowRamDevice == true
@@ -89,6 +99,12 @@ class HerbalApp : Application(), ImageLoaderFactory {
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(if (isLowRam) 0.15 else 0.25)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(if (isLowRam) 15L * 1024 * 1024 else 30L * 1024 * 1024)
                     .build()
             }
             .apply { if (isLowRam) bitmapConfig(Bitmap.Config.RGB_565) }
