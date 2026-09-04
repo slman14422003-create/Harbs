@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Blender
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -153,29 +154,52 @@ fun HomeScreen(
                 )
             }
 
-            when {
-                isLoading -> LoadingView(Modifier.fillMaxSize())
-                error != null -> ErrorView(error, onRetry, Modifier.fillMaxSize())
-                categories.isEmpty() -> EmptyView("لا توجد تصنيفات بعد", Modifier.fillMaxSize())
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = windowInfo.gridMinCellWidth),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
-                        CategoryCard(
-                            category = category,
-                            herbCount = herbs.count { it.categoryId == category.id },
-                            onClick = { onCategoryClick(category) },
-                            // بدل ظهور كل البطاقات دفعة واحدة، كل بطاقة تتلاشى
-                            // وتنزلق للأعلى بعد اللي قبلها بفارق بسيط — مرة
-                            // واحدة عند تحميل الشاشة، بلا أي تكرار لانهائي.
-                            modifier = Modifier
-                                .animateItem()
-                                .staggeredEntrance(index)
-                        )
+            // "سحب للتحديث" (نفس مبدأ فيسبوك/إنستغرام): يفرض جولة حقيقية إلى
+            // خادم Firestore بدل انتظار المزامنة الحيّة الصامتة. onRetry
+            // كان مربوطاً سابقاً فقط بزر "إعادة المحاولة" الذي يظهر عند
+            // خطأ صريح؛ الآن يُستخدم أيضاً كمصدر تحديث يدوي عبر السحب لأسفل
+            // في أي وقت، لا عند الخطأ فقط.
+            PullToRefreshBox(
+                isRefreshing = isLoading && categories.isNotEmpty(),
+                onRefresh = onRetry,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                when {
+                    // كان الشرط هنا `isLoading` وحدها: أي تحديث يدوي (حتى
+                    // سحب-للتحديث فوق بيانات مُحمَّلة أصلاً) يُخفي الشبكة
+                    // كاملة خلف مؤشّر تحميل عام لحظياً، فيختفي كل المحتوى
+                    // المعروض فعلاً ثم يظهر من جديد — وهذا يُبطل الغرض من
+                    // "سحب للتحديث" على طريقة فيسبوك أصلاً (يبقى المحتوى
+                    // القديم ظاهراً أثناء التحديث، ومؤشر السحب وحده يدل على
+                    // التقدّم). الآن يظهر مؤشر التحميل الكامل فقط في التحميل
+                    // الأول الحقيقي (لا بيانات معروضة أصلاً بعد).
+                    isLoading && categories.isEmpty() -> LoadingView(Modifier.fillMaxSize())
+                    // بنفس المبدأ: خطأ أثناء تحديث بيانات مُحمَّلة أصلاً لا
+                    // يجب أن يُخفي تلك البيانات — تماماً كما يبقي معالج
+                    // المزامنة الحيّة في AppViewModel.init البيانات القديمة
+                    // ظاهرة ويُسجّل الخطأ فقط بدل مسحها بالكامل.
+                    error != null && categories.isEmpty() -> ErrorView(error, onRetry, Modifier.fillMaxSize())
+                    categories.isEmpty() -> EmptyView("لا توجد تصنيفات بعد", Modifier.fillMaxSize())
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = windowInfo.gridMinCellWidth),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
+                            CategoryCard(
+                                category = category,
+                                herbCount = herbs.count { it.categoryId == category.id },
+                                onClick = { onCategoryClick(category) },
+                                // بدل ظهور كل البطاقات دفعة واحدة، كل بطاقة تتلاشى
+                                // وتنزلق للأعلى بعد اللي قبلها بفارق بسيط — مرة
+                                // واحدة عند تحميل الشاشة، بلا أي تكرار لانهائي.
+                                modifier = Modifier
+                                    .animateItem()
+                                    .staggeredEntrance(index)
+                            )
+                        }
                     }
                 }
             }
