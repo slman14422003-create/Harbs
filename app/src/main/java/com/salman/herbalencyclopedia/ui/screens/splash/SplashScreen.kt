@@ -46,17 +46,40 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
+/** الحد الأدنى لعرض المرحلة الثانية (النص + النقاط) قبل التحقق من جهوزية البيانات. */
+private const val SPLASH_MIN_STAGE2_MS = 900L
+
+/**
+ * حد أقصى إضافي (بعد الحد الأدنى) لانتظار بيانات الموسوعة الفعلية —
+ * تحوّطاً من تعليق شاشة البداية للأبد لو تأخرت الشبكة أو انعدم الاتصال؛
+ * بعد هذه المهلة يُكمَل المستخدم إلى الشاشة الرئيسية بغض النظر، والتي
+ * تملك أصلاً مؤشر تحميل/خطأ خاصاً بها.
+ */
+private const val SPLASH_MAX_EXTRA_WAIT_MS = 3500L
+
 /**
  * شاشة البداية المخصصة داخل Compose (تظهر بعد شاشة النظام
  * Theme.HerbalEncyclopedia.Splash القصيرة). أُعيد تصميمها لتعطي طابعاً
  * نباتياً هادئاً وفخماً بدل الشاشة السابقة: خلفية متدرّجة بلون الهوية،
  * وميض عضوي خلف الأيقونة، أوراق زخرفية خافتة في الزوايا، وظهور متتابع
  * للعناصر بدل ظهورها دفعة واحدة.
+ *
+ * [isDataReady] تحسين لتجربة أول تشغيل بعد التثبيت تحديداً: سابقاً كانت
+ * الشاشة تنتقل دوماً بعد مهلة ثابتة (١٫٧٥ ثانية) بغض النظر عن وصول بيانات
+ * الموسوعة من Firestore أم لا، فكان أول تثبيت (بلا أي كاش محلي بعد) يهبط
+ * غالباً على شاشة رئيسية فارغة يتبعها مؤشر تحميل منفصل هناك — انتقال أقل
+ * سلاسة من الاستمرار بحركة شاشة البداية نفسها لبضع لحظات إضافية فقط. الآن
+ * تنتظر الشاشة (بعد حدها الأدنى الثابت [SPLASH_MIN_STAGE2_MS] الذي يضمن
+ * ظهور الحركة كاملة دوماً) حتى [isDataReady] تصبح `true`، بحد أقصى
+ * [SPLASH_MAX_EXTRA_WAIT_MS] كي لا تتعلّق الشاشة بلا نهاية عند انعدام
+ * الاتصال. القيمة الافتراضية `true` تُبقي الاستخدام القديم (بلا تمرير هذه
+ * الوسيطة) يعمل تماماً كما كان.
  */
 @Composable
-fun SplashScreen(onFinished: () -> Unit) {
+fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
     var stage by remember { mutableStateOf(0) }
     val highQuality = com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode.current.isHighQuality
+    val dataReadyState = androidx.compose.runtime.rememberUpdatedState(isDataReady)
 
     val iconScale by animateFloatAsState(
         targetValue = if (stage >= 1) 1f else 0.6f,
@@ -82,7 +105,11 @@ fun SplashScreen(onFinished: () -> Unit) {
         stage = 1
         delay(250)
         stage = 2
-        delay(1500)
+        delay(SPLASH_MIN_STAGE2_MS)
+        val deadline = System.currentTimeMillis() + SPLASH_MAX_EXTRA_WAIT_MS
+        while (!dataReadyState.value && System.currentTimeMillis() < deadline) {
+            delay(100)
+        }
         onFinished()
     }
 
