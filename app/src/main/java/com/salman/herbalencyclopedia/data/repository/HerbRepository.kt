@@ -28,10 +28,15 @@ import kotlinx.coroutines.tasks.await
  * - [fetchHerbs] / [fetchCategories] remain available as one-shot reads
  *   (used for the manual "retry/refresh" action and for the admin tools that
  *   need a definite snapshot, like [restoreBackup] verification).
- * - Offline persistence is enabled with an unlimited cache size so the full
- *   catalog (including base64 image data) stays available offline and all
- *   local writes made offline queue up and sync automatically once the
- *   connection returns.
+ * - Offline persistence is enabled with a *bounded* cache size (see
+ *   [PERSISTENT_CACHE_BYTES]) so the full catalog (including base64 image
+ *   data) still stays available offline and all local writes made offline
+ *   still queue up and sync automatically once the connection returns, but
+ *   Firestore's own garbage collector now trims the least-recently-used
+ *   documents once the cache grows past the cap instead of retaining every
+ *   historical snapshot forever. An unlimited cache was the main reason the
+ *   app's on-disk footprint kept climbing well past the actual catalog size
+ *   the longer the app stayed installed and synced.
  * - [observeCollection] auto-retries with exponential backoff on listener
  *   errors instead of permanently ending the live sync (see its retryWhen).
  */
@@ -42,7 +47,7 @@ class HerbRepository(
         db.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
             .setLocalCacheSettings(
                 com.google.firebase.firestore.PersistentCacheSettings.newBuilder()
-                    .setSizeBytes(com.google.firebase.firestore.FirebaseFirestoreSettings.CACHE_SIZE_UNLIMITED)
+                    .setSizeBytes(PERSISTENT_CACHE_BYTES)
                     .build()
             )
             .build()
@@ -233,6 +238,19 @@ class HerbRepository(
     }
 
     companion object {
+        /**
+         * سقف كاش Firestore المحلي (٤٠ ميجابايت). كانت القيمة السابقة
+         * CACHE_SIZE_UNLIMITED تعني عدم وجود أي سقف إطلاقاً، فيستمر الكاش
+         * بالتضخم بلا حدود مع كل مزامنة أو تحديث حتى لصور/مستندات لم تعد
+         * تُعرض فعلياً — وهذا هو السبب الرئيسي لكون حجم التطبيق بعد التثبيت
+         * والاستخدام أكبر بكثير من حجم بيانات الموسوعة الفعلي. بسقف محدود،
+         * Firestore يشغّل تنظيفاً تلقائياً (LRU garbage collection) يحذف أقدم
+         * المستندات غير المستخدمة عند تجاوز هذا الحد، مع إبقاء العمل بلا
+         * إنترنت يعمل بشكل طبيعي تماماً (الموسوعة كاملة أصغر من هذا السقف
+         * بمراحل، فتبقى كل البيانات الفعلية محفوظة محلياً دوماً).
+         */
+        private const val PERSISTENT_CACHE_BYTES: Long = 40L * 1024 * 1024
+
         /** Turns a Firestore/network exception into a short, user-facing Arabic message. */
         fun describeError(e: Throwable): String {
             val code = (e as? FirebaseFirestoreException)?.code
