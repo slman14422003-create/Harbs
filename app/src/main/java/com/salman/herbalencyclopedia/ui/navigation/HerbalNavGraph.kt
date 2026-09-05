@@ -211,7 +211,15 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                         herbs = uiState.herbs,
                         blends = uiState.blends,
                         onBack = { navController.popBackStack() },
-                        onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } }
+                        onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
+                        // مزامنة بين الأجهزة: يرفع نفس الحالة المحفوظة محلياً
+                        // للتو إلى Firestore (👍 = صوت إيجابي/إنشاء، 👎 = صوت
+                        // سلبي) عبر AppViewModel — انظر توثيق SemoAssistantScreen
+                        // وAppViewModel.contributeSemoLearning/demoteSemoLearning.
+                        onFeedbackRecorded = { question, answer, helpful ->
+                            if (helpful) appViewModel.contributeSemoLearning(question, answer)
+                            else appViewModel.demoteSemoLearning(question)
+                        }
                     )
                 }
                 composable(Screen.Help.route) { HelpScreen { navController.popBackStack() } }
