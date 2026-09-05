@@ -46,7 +46,48 @@ object HerbSearch {
     private fun tokens(normalizedText: String): List<String> =
         normalizedText.split(SPACES).filter { it.length > 1 }
 
-    private data class Scored(val herb: Herb, val score: Int)
+    private data class Scored(
+        val herb: Herb,
+        val score: Int,
+        val matchedByName: Boolean,
+        val matchLabel: String? = null,
+        val matchSnippet: String? = null
+    )
+
+    /** حقول العشبة النصية (غير الاسم)، بترتيب الأولوية عند شرح "أين وُجدت المطابقة" —
+     * الفوائد أولاً لأنها الأكثر أهمية للمستخدم، ثم الاستخدام، فالتحذيرات/الأضرار،
+     * فالملاحظات أخيراً. الاسم العربي في كل زوج هو ما يُعرض فعلياً في واجهة نتائج البحث. */
+    private val LABELED_FIELDS: List<Pair<String, (Herb) -> String>> = listOf(
+        "الفوائد" to Herb::benefits,
+        "طريقة الاستخدام" to Herb::usage,
+        "التحذيرات" to Herb::warnings,
+        "الأضرار" to Herb::harms,
+        "ملاحظات" to Herb::notes
+    )
+
+    private const val SNIPPET_MAX_LEN = 90
+
+    /**
+     * عندما تُطابق عشبة بحثاً ما دون أن يحتوي اسمها على أي جزء من الاستعلام (أي أن
+     * المطابقة جاءت من الفوائد/الاستخدام/التحذيرات إلخ)، يبحث هذا عن أول حقل يحتوي
+     * فعلياً كلمة من الاستعلام (أو مرادفها) ويقتطع منه مقطعاً قصيراً — كي تشرح واجهة
+     * البحث للمستخدم *لماذا* ظهرت هذه العشبة، بدل عرضها بلا أي تفسير.
+     */
+    private fun findMatchSnippet(herb: Herb, qNorm: String, expandedTokens: Set<String>): Pair<String, String>? {
+        for ((label, getter) in LABELED_FIELDS) {
+            val raw = getter(herb)
+            if (raw.isBlank()) continue
+            val norm = normalize(raw)
+            val matches = norm.contains(qNorm) || tokens(norm).any { ft ->
+                expandedTokens.any { et -> et == ft || ft.contains(et) || et.contains(ft) }
+            }
+            if (matches) {
+                val snippet = if (raw.length > SNIPPET_MAX_LEN) raw.take(SNIPPET_MAX_LEN).trimEnd() + "…" else raw
+                return label to snippet
+            }
+        }
+        return null
+    }
 
     /**
      * تطبيع/تقطيع كل نصوص عشبة واحدة، محسوبة مرة واحدة فقط لكل عشبة (انظر
@@ -118,6 +159,16 @@ object HerbSearch {
         return dp[a.length][b.length]
     }
 
+    /** نتيجة بحث واحدة: العشبة نفسها، وهل طابقتها بالاسم مباشرة، وإن لم يكن كذلك —
+     * أين وُجدت المطابقة فعلاً (أي حقل) ومقطع قصير منه، لعرضه في واجهة البحث بدل ترك
+     * المستخدم بلا تفسير لسبب ظهور عشبة لا يحتوي اسمها على ما بحث عنه. */
+    data class HerbSearchResult(
+        val herb: Herb,
+        val matchedByName: Boolean,
+        val matchLabel: String? = null,
+        val matchSnippet: String? = null
+    )
+
     /**
      * يبحث عن كل الأعشاب المطابقة للاستعلام، مرتّبة تنازلياً حسب دقة
      * المطابقة. يعيد قائمة فارغة إن كان الاستعلام فارغاً (بدل كل الأعشاب)،
@@ -136,8 +187,13 @@ object HerbSearch {
      * 4) **فهرسة مُخزَّنة مؤقتاً لكل عشبة** ([indexFor]) بدل إعادة تطبيع كل
      *    نصوصها من الصفر مع كل استدعاء — أهم تحسين أداء هنا، انظر توثيق
      *    [HerbIndex].
+     * 5) **شرح المطابقة**: عندما تُطابق عشبة بحثاً عبر حقولها الأخرى لا
+     *    اسمها، تحمل نتيجتها ([HerbSearchResult.matchLabel]/[matchSnippet])
+     *    الحقل الفعلي الذي وُجدت فيه المطابقة، بدل تركها بلا تفسير في
+     *    الواجهة. أعشاب الاسم المطابق تبقى دوماً أعلى الترتيب (نقاطها
+     *    ≥30 مقابل ≤20 كحدّ أقصى لمطابقة الحقول وحدها) فتظهر أولاً كما هي.
      */
-    fun search(query: String, herbs: List<Herb>): List<Herb> {
+    fun search(query: String, herbs: List<Herb>): List<HerbSearchResult> {
         val qNorm = normalize(query)
         if (qNorm.isBlank()) return emptyList()
 
@@ -181,6 +237,8 @@ object HerbSearch {
                 if (hasCloseTypo) score = 55
             }
 
+            val matchedByName = score > 0
+
             if (score == 0) {
                 if (idx.fieldsNorm.contains(qNorm)) {
                     score = 20
@@ -198,9 +256,17 @@ object HerbSearch {
                 }
             }
 
-            if (score > 0) Scored(herb, score) else null
+            if (score == 0) return@mapNotNull null
+
+            val (matchLabel, matchSnippet) = if (!matchedByName) {
+                findMatchSnippet(herb, qNorm, expandedTokens) ?: (null to null)
+            } else null to null
+
+            Scored(herb, score, matchedByName, matchLabel, matchSnippet)
         }
 
-        return scored.sortedByDescending { it.score }.map { it.herb }
+        return scored.sortedByDescending { it.score }.map {
+            HerbSearchResult(it.herb, it.matchedByName, it.matchLabel, it.matchSnippet)
+        }
     }
 }
