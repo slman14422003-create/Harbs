@@ -2,6 +2,7 @@ package com.salman.herbalencyclopedia.data.ai
 
 import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Herb
+import java.security.MessageDigest
 import kotlin.math.ln
 import kotlin.math.sqrt
 
@@ -97,7 +98,11 @@ data class TrainedExample(val pattern: String, val response: String)
  *    الموسوعة نفسها ليكتشف أوزان الكلمات وعلاقاتها الضمنية دون أي تدخل
  *    يدوي، و[recordFeedback] يحوّل تقييمات المستخدمين (👍) على إجابات
  *    البحث الحر إلى حالات مدرَّبة تلقائياً — أي أن سيمو يعتمد بالكامل على
- *    بيانات الموسوعة، ثم يراكم فوقها خبرة من استخدامه الفعلي.
+ *    بيانات الموسوعة، ثم يراكم فوقها خبرة من استخدامه الفعلي. هذه الخبرة
+ *    ليست محصورة بجهاز واحد: [learningKey] و[mergeLearnedExamples] يدعمان
+ *    مزامنتها بين كل الأجهزة عبر SemoLearningRepository (Firestore)، فما
+ *    يتعلّمه سيمو من مستخدم على جهاز يصل تلقائياً لبقية الأجهزة، بدل أن
+ *    يحتاج كل جهاز لتعلّم نفس الشيء بنفسه من الصفر.
  * لا يوجد هنا نموذج شبكة عصبية يحتاج تدريباً فعلياً؛ هذا "تعلّم" رمزي بحت
  * (إحصائي + تغذية راجعة) مناسب لتشغيل محلي بالكامل دون إنترنت أو معالجة ثقيلة.
  */
@@ -714,6 +719,60 @@ object HerbAssistant {
             .takeLast(MAX_AUTO_LEARNED_EXAMPLES)
         AiConfig.autoLearnedExamples = updated
         return updated
+    }
+
+    // ── مزامنة التعلّم الذاتي بين الأجهزة (انظر SemoLearningRepository) ──
+    // كل ما سبق ([recordFeedback] وقائمة [AiConfig.autoLearnedExamples])
+    // كان يبقى محصوراً محلياً على DataStore الخاص بكل جهاز (انظر
+    // PreferencesRepository) — إن تعلّم سيمو شيئاً من مستخدم على جهاز، لا
+    // يستفيد منه مستخدم آخر على جهاز مختلف إطلاقاً، ويُعاد "تعليمه" نفس
+    // الشيء من الصفر لو صادف نفس السؤال لاحقاً. الدالتان أدناه هما نقطة
+    // الوصل بين هذا التعلّم المحلي وطبقة المزامنة الشبكية (Firestore):
+    // [learningKey] يبني معرّفاً مستقراً يُستخدم مُعرِّف مستند في Firestore،
+    // و[mergeLearnedExamples] يدمج ما وصل من الأجهزة الأخرى ضمن القائمة
+    // المحلية بأمان (بلا تكرار دلالي).
+
+    /**
+     * معرّف ثابت (بصمة SHA-256) لسؤال معيّن، يُستخدم مُعرِّف مستند التعلّم
+     * المشترك في Firestore بدل مُعرِّف عشوائي، حتى تتّحد حالتان بنفس المعنى
+     * الدلالي (لا نفس الحروف بالضبط) من جهازين مختلفين تحت نفس المستند —
+     * فيُصوَّت للحالة القيّمة فعلاً بدل تكديس نسخ شبه مكرَّرة منها بصياغات
+     * مختلفة. يعتمد على نفس التوسيع الدلالي المستخدم في فحص التكرار بـ
+     * [recordFeedback] ([richWordsOf])، مع ترتيب الكلمات أبجدياً كي لا
+     * يغيّر ترتيب كتابتها في السؤال الأصلي المعرّف الناتج.
+     */
+    fun learningKey(question: String): String {
+        val words = richWordsOf(question).sorted().joinToString("|")
+        val source = words.ifEmpty { normalize(question) }
+        val digest = MessageDigest.getInstance("SHA-256").digest(source.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }.take(32)
+    }
+
+    /**
+     * يدمج حالات تعلّم واردة من مصدر آخر (النسخة المشتركة من أجهزة أخرى عبر
+     * Firestore) مع القائمة المحلية الحالية لهذا الجهاز، بنفس فحص التكرار
+     * الدلالي المستخدم في [recordFeedback] (لا تكرار حرفي فقط) — فسؤال ورد
+     * تعلّمه جهاز آخر بصياغة مختلفة عن حالة موجودة أصلاً محلياً لا يُضاف من
+     * جديد. هذا فعلياً ما يجعل جهازاً ثانياً "يعرف" ما تعلّمه جهاز أول من
+     * تقييمات مستخدميه دون أي حاجة لتكرار نفس التعلّم فيه من الصفر. يُبقي
+     * على نفس سقف [MAX_AUTO_LEARNED_EXAMPLES]، مستبعِداً الأقدم أولاً عند
+     * تجاوزه بعد الدمج.
+     */
+    fun mergeLearnedExamples(local: List<TrainedExample>, incoming: List<TrainedExample>): List<TrainedExample> {
+        if (incoming.isEmpty()) return local
+        val merged = local.toMutableList()
+        val mergedWords = merged.map { richWordsOf(it.pattern) }.toMutableList()
+        incoming.forEach { candidate ->
+            val cWords = richWordsOf(candidate.pattern)
+            if (cWords.isEmpty()) return@forEach
+            val alreadyKnown = mergedWords.any { jaccard(it, cWords) >= AiConfig.trainedMatchThreshold }
+            if (!alreadyKnown) {
+                merged += candidate
+                mergedWords += cWords
+            }
+        }
+        if (merged.size == local.size) return local
+        return merged.takeLast(MAX_AUTO_LEARNED_EXAMPLES)
     }
 
     // ── المقارنة المنظّمة (يُستخدم في بطاقات المقارنة بالشاشة) ─────────
