@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.data.model.Blend
@@ -467,6 +468,53 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 }
                 .collect { state -> _uiState.value = state }
         }
+
+        // ── مزامنة "تعلّم سيمو الذاتي" بين الأجهزة ───────────────────────
+        // كانت [PreferencesRepository.aiAutoLearnedExamples] مصدراً محلياً
+        // بحتاً (DataStore على هذا الجهاز فقط): أي حالة يتعلّمها سيمو من
+        // تقييم 👍 هنا لا يستفيد منها أي تثبيت آخر للتطبيق إطلاقاً. هذا
+        // المستمع يبقى مفتوحاً طوال حياة العملية (كمستمعي Firestore أعلاه)
+        // ليدمج، عند كل تغيير محلي أو وصول شبكي جديد، القائمة المحلية مع
+        // النسخة المشتركة الحيّة من SemoLearningRepository (انظر توثيقها
+        // وتوثيق [HerbAssistant.mergeLearnedExamples])، ثم يحفظ الناتج
+        // المدموج محلياً — فيصل تلقائياً لـ AiConfig عبر نفس مسار
+        // HerbalNavGraph الحالي دون أي تعديل عليه. فشل الشبكة هنا لا يوقف
+        // شيئاً: [SemoLearningRepository.observeSharedLearnedExamples] يبتلع
+        // أخطاءه بنفسه ويستمر سيمو بالعمل بآخر بيانات محلية معروفة.
+        viewModelScope.launch {
+            combine(
+                container.preferencesRepository.aiAutoLearnedExamples,
+                container.semoLearningRepository.observeSharedLearnedExamples()
+            ) { local, shared -> local to shared }
+                .catch { /* المزامنة انتهازية فقط؛ لا تُسقِط التطبيق أو تُعطّل سيمو محلياً. */ }
+                .collect { (local, shared) ->
+                    val merged = HerbAssistant.mergeLearnedExamples(local, shared)
+                    if (merged !== local) {
+                        container.preferencesRepository.setAiAutoLearnedExamples(merged)
+                    }
+                }
+        }
+    }
+
+    /**
+     * يُستدعى بعد تسجيل تقييم 👍 على رد قابل للتعلّم في شاشة سيمو (انظر
+     * SemoAssistantScreen.rateMessage): يرفع نفس الحالة إلى المجموعة
+     * المشتركة على Firestore بلا انتظار (fire-and-forget) — الحفظ المحلي
+     * عبر [HerbAssistant.recordFeedback] يحدث مستقلاً عن هذا الاستدعاء
+     * ولا ينتظره، فتبقى الشاشة سريعة الاستجابة حتى بلا إنترنت.
+     */
+    fun contributeSemoLearning(question: String, response: String) {
+        viewModelScope.launch { container.semoLearningRepository.contribute(question, response) }
+    }
+
+    /**
+     * يُستدعى بعد تسجيل تقييم 👎: يزيد صوتاً سلبياً على نفس الحالة في
+     * المجموعة المشتركة إن كانت قد شُوركت شبكياً أصلاً من هذا الجهاز أو
+     * جهاز آخر (انظر [com.salman.herbalencyclopedia.data.repository.SemoLearningRepository.demote]
+     * لسبب عدم الحذف المباشر).
+     */
+    fun demoteSemoLearning(question: String) {
+        viewModelScope.launch { container.semoLearningRepository.demote(question) }
     }
 
     /** Manual retry: forces a real server round-trip to confirm connectivity and clear any error. */
