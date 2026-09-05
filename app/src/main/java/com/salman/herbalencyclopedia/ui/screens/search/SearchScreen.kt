@@ -38,7 +38,8 @@ fun SearchScreen(
     // سبب عجز البحث عن إيجاد أعشاب موجودة فعلاً في الموسوعة. [HerbSearch]
     // يطبّع النص (يزيل التشكيل، يوحّد صور الألف/التاء المربوطة...) ويوسّع
     // بمرادفات القاموس المحلي المرفق مع التطبيق (بلا إنترنت ولا تكلفة)، مع
-    // ترتيب النتائج حسب دقة المطابقة بدل ترتيب عشوائي.
+    // ترتيب النتائج حسب دقة المطابقة بدل ترتيب عشوائي: عشبة طابق اسمها
+    // الاستعلام تظهر دوماً قبل عشبة طابقتها فقط عبر الفوائد/الاستخدام/غيرها.
     val results = remember(query, herbs) { HerbSearch.search(query, herbs) }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -114,14 +115,31 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(results, key = { it.id }) { herb ->
-                    HerbCard(
-                        herb = herb,
-                        isFavorite = herb.id in favoriteIds,
-                        onClick = { onHerbClick(herb) },
-                        onToggleFavorite = { onToggleFavorite(herb.id) },
-                        modifier = Modifier.animateItem()
-                    )
+                items(results, key = { it.herb.id }) { result ->
+                    Column(modifier = Modifier.animateItem()) {
+                        HerbCard(
+                            herb = result.herb,
+                            isFavorite = result.herb.id in favoriteIds,
+                            onClick = { onHerbClick(result.herb) },
+                            onToggleFavorite = { onToggleFavorite(result.herb.id) }
+                        )
+                        // العشبة هنا لم يطابق اسمها الاستعلام (وإلا لَما احتجنا
+                        // شرحاً) — بطاقتها وحدها تعرض "الفوائد" دوماً بصرف النظر
+                        // عن سبب المطابقة الفعلي، فتظهر أحياناً بلا أي علاقة
+                        // ظاهرة بما بحث عنه المستخدم. هذا السطر يوضح الحقل الذي
+                        // وُجدت فيه المطابقة فعلاً (الاستخدام/التحذيرات/...) مع
+                        // مقطع منه، كي لا تبدو النتيجة عشوائية.
+                        if (!result.matchedByName && result.matchLabel != null && result.matchSnippet != null) {
+                            Text(
+                                text = "ورد في ${result.matchLabel}: ${result.matchSnippet}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
