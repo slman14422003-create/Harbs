@@ -827,7 +827,26 @@ object HerbAssistant {
         }
     }
 
-    /** أسئلة سريعة مقترحة تُعرض كأزرار فوق مربع الدردشة. */
+    /**
+     * أسئلة سريعة مقترحة تُعرض كأزرار فوق مربع الدردشة.
+     *
+     * كانت هذه الدالة تُرجع دائماً نفس السؤالين مبنيين على أول عشبتين في
+     * القائمة (`take(2)`) — أي نفس الاقتراحين بالضبط في كل مرة يُفتح فيها
+     * سيمو، بغضّ النظر عن حجم الموسوعة الفعلي، ونفس السؤالين العامّين
+     * الثابتين دوماً. الآن تختار عشبتين عشوائيتين من الموسوعة (فتتنوّع
+     * الاقتراحات بين مرة وأخرى وتُظهر تنوّع الموسوعة الفعلي بدل نفس
+     * العشبتين الأوليين أبداً)، وتختار سؤالين عامّين عشوائياً من مجموعة
+     * أوسع بدل سؤالين ثابتين لا يتغيّران.
+     */
+    private val generalSuggestionPool = listOf(
+        "ما هي الأعشاب الآمنة أثناء الحمل؟",
+        "اقترح عشبة لتحسين النوم",
+        "ما الأعشاب المفيدة لتقوية المناعة؟",
+        "ما الأعشاب التي تساعد على الهضم؟",
+        "أعطني عشبة تخفّف التوتر والقلق",
+        "ما الأعشاب المفيدة لآلام المفاصل؟"
+    )
+
     fun quickSuggestions(selectedHerbs: List<Herb>, allHerbs: List<Herb> = emptyList()): List<String> = when {
         selectedHerbs.size >= 2 -> listOf(
             "ما أبرز الفروقات بينها؟",
@@ -841,11 +860,10 @@ object HerbAssistant {
             "هل لها تحذيرات؟"
         )
         else -> buildList {
-            val sample = allHerbs.filter { it.name.isNotBlank() }.take(2)
+            val sample = allHerbs.filter { it.name.isNotBlank() }.shuffled().take(2)
             if (sample.isNotEmpty()) add("ما فوائد ${sample[0].name}؟")
             if (sample.size >= 2) add("قارن بين ${sample[0].name} و ${sample[1].name}")
-            add("ما هي الأعشاب الآمنة أثناء الحمل؟")
-            add("اقترح عشبة لتحسين النوم")
+            addAll(generalSuggestionPool.shuffled().take(2))
         }
     }
 
