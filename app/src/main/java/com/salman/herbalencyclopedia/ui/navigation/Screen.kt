@@ -10,6 +10,7 @@ sealed class Screen(val route: String) {
     data object Search : Screen("search")
     data object SemoAssistant : Screen("semo_assistant")
     data object Help : Screen("help")
+    data object Support : Screen("support")
     data object PrivacyPolicy : Screen("privacy_policy")
     data object Terms : Screen("terms")
     data object CategoryHerbs : Screen("category/{categoryId}/{categoryName}") {

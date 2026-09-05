@@ -47,6 +47,10 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     // null = لم تُقرأ بعد من DataStore. نتعامل معها كـ "لم يوافق بعد" (نفس
     // معاملة false) لتفادي أي وميض للشاشة الرئيسية قبل عرض شاشة الترحيب.
     val termsAccepted by preferencesRepository.termsAccepted.collectAsState(initial = null)
+    // شاشة ترحيب/شروط سيمو المنفصلة (انظر SemoIntroScreen) — initial = null
+    // (لا true ولا false) حتى لا تُخطَف بلمحة سريعة من شاشة سيمو الحقيقية
+    // قبل اكتمال قراءة القيمة الفعلية من DataStore عند أول رسم للشاشة.
+    val semoIntroSeen by preferencesRepository.semoIntroSeen.collectAsState(initial = null)
     val dynamicColor by preferencesRepository.dynamicColor.collectAsState(initial = true)
     val fontScale by preferencesRepository.fontScale.collectAsState(initial = 0)
     val themePalette by preferencesRepository.themePalette.collectAsState(
@@ -204,25 +208,38 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.SemoAssistant.route) }, { navController.navigate(Screen.Blends.route) }) }
                 composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite, uiState.isLoading, appViewModel::refresh) }
                 composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }, { appViewModel.cancelDownload() }) }
+                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.Support.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }, { appViewModel.cancelDownload() }) }
                 composable(Screen.Search.route) { SearchScreen(uiState.herbs, favoriteIds, { navController.popBackStack() }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.SemoAssistant.route) {
-                    SemoAssistantScreen(
-                        herbs = uiState.herbs,
-                        blends = uiState.blends,
-                        onBack = { navController.popBackStack() },
-                        onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
-                        // مزامنة بين الأجهزة: يرفع نفس الحالة المحفوظة محلياً
-                        // للتو إلى Firestore (👍 = صوت إيجابي/إنشاء، 👎 = صوت
-                        // سلبي) عبر AppViewModel — انظر توثيق SemoAssistantScreen
-                        // وAppViewModel.contributeSemoLearning/demoteSemoLearning.
-                        onFeedbackRecorded = { question, answer, helpful ->
-                            if (helpful) appViewModel.contributeSemoLearning(question, answer)
-                            else appViewModel.demoteSemoLearning(question)
-                        }
-                    )
+                    // أول فتح لسيمو فقط: تُعرض شاشة الترحيب/الشروط الخاصة به
+                    // قبل أي محادثة فعلية (انظر SemoIntroScreen وتوثيق
+                    // semoIntroSeen أعلاه). null = لم تُقرأ القيمة بعد، فلا
+                    // نعرض أي شيء لحظياً تفادياً لومضة شاشة خاطئة.
+                    if (semoIntroSeen == false) {
+                        com.salman.herbalencyclopedia.ui.screens.semo.SemoIntroScreen(
+                            onAccept = { scope.launch { preferencesRepository.setSemoIntroSeen(true) } }
+                        )
+                    } else if (semoIntroSeen == true) {
+                        SemoAssistantScreen(
+                            herbs = uiState.herbs,
+                            blends = uiState.blends,
+                            onBack = { navController.popBackStack() },
+                            onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
+                            // مزامنة بين الأجهزة: يرفع نفس الحالة المحفوظة محلياً
+                            // للتو إلى Firestore (👍 = صوت إيجابي/إنشاء، 👎 = صوت
+                            // سلبي) عبر AppViewModel — انظر توثيق SemoAssistantScreen
+                            // وAppViewModel.contributeSemoLearning/demoteSemoLearning.
+                            onFeedbackRecorded = { question, answer, helpful ->
+                                if (helpful) appViewModel.contributeSemoLearning(question, answer)
+                                else appViewModel.demoteSemoLearning(question)
+                            }
+                        )
+                    }
                 }
                 composable(Screen.Help.route) { HelpScreen { navController.popBackStack() } }
+                composable(Screen.Support.route) {
+                    com.salman.herbalencyclopedia.ui.screens.support.SupportScreen { navController.popBackStack() }
+                }
                 composable(Screen.PrivacyPolicy.route) {
                     com.salman.herbalencyclopedia.ui.screens.privacy.PrivacyPolicyScreen { navController.popBackStack() }
                 }
