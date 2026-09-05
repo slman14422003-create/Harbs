@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.*
@@ -79,6 +80,7 @@ fun SettingsScreen(
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
+    onSupportClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
     onTermsClick: () -> Unit,
     onAdminToolsClick: () -> Unit,
@@ -175,6 +177,14 @@ fun SettingsScreen(
                         title = "المساعدة",
                         subtitle = "الأسئلة الشائعة وطريقة الاستخدام",
                         onClick = onHelpClick
+                    )
+                    SettingsDivider()
+                    ActionRow(
+                        icon = Icons.Filled.SupportAgent,
+                        iconTint = Color(0xFF25D366),
+                        title = "الدعم الفني",
+                        subtitle = "تواصل مباشر معنا عبر واتساب",
+                        onClick = onSupportClick
                     )
                     SettingsDivider()
                     ActionRow(
