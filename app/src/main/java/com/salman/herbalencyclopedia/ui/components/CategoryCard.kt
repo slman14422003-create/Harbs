@@ -5,7 +5,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -80,9 +79,9 @@ fun CategoryCard(
     // يبدو كمستطيل ضخم فارغ بصرياً: مساحة اللون شبه الموحّدة بين الأيقونة
     // والحافة اليمنى بلا أي عنصر آخر تكسر رتابتها. هذه النسخة أخفّ وأصغر
     // ارتفاعاً (Surface مسطّحة بلون بطاقة عادي بدل طبقات الزجاج الثقيلة)،
-    // وتضيف شارة صغيرة بعدد الأعشاب + سهماً للتنقّل في الطرف الآخر، فيمتلئ
-    // الصفّ بعناصر مفيدة بدل الفراغ، ويبقى التصنيف مقروءاً كصفّ واحد ضمن
-    // قائمة (تحت بعضها) بدل شبكة متعددة الأعمدة.
+    // وتضيف شارة صغيرة بعدد الأعشاب على يمين الاسم، فيمتلئ الصفّ بعناصر
+    // مفيدة بدل الفراغ، ويبقى التصنيف مقروءاً كصفّ واحد ضمن قائمة (تحت
+    // بعضها) بدل شبكة متعددة الأعمدة.
     Surface(
         onClick = onClick,
         interactionSource = interactionSource,
@@ -134,13 +133,6 @@ fun CategoryCard(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                 )
             }
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
