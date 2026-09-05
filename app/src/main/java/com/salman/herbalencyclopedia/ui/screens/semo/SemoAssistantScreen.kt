@@ -262,7 +262,7 @@ fun SemoAssistantScreen(
                     }
                     val showScrollToBottom = totalItems > 0 && lastVisibleIndex < totalItems - 1
 
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = showScrollToBottom,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
                         enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { it / 2 },
