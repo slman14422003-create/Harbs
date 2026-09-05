@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
@@ -247,6 +248,38 @@ fun SemoAssistantScreen(
                         }
                         if (isThinking) item(key = "typing") { TypingBubble() }
                     }
+
+                    // زر "السكرول للأسفل" لم يكن موجوداً أصلاً: عند التمرير
+                    // لأعلى لقراءة رسائل قديمة في محادثة طويلة، لا توجد أي
+                    // وسيلة للعودة السريعة لآخر رسالة سوى السحب اليدوي حتى
+                    // النهاية. يظهر الآن فقط عندما يكون آخر عنصر في القائمة
+                    // غير ظاهر فعلياً على الشاشة (المستخدم مبتعد عن الأسفل)،
+                    // ويختفي تلقائياً بمجرد الوصول لآخر رسالة — بدل زر ثابت
+                    // دائم الظهور بلا فائدة حين تكون المحادثة قصيرة أصلاً.
+                    val totalItems by remember { derivedStateOf { chatListState.layoutInfo.totalItemsCount } }
+                    val lastVisibleIndex by remember {
+                        derivedStateOf { chatListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                    }
+                    val showScrollToBottom = totalItems > 0 && lastVisibleIndex < totalItems - 1
+
+                    AnimatedVisibility(
+                        visible = showScrollToBottom,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { it / 2 },
+                        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { it / 2 }
+                    ) {
+                        SmallFloatingActionButton(
+                            onClick = {
+                                scope.launch {
+                                    val target = messages.size - 1 + if (isThinking) 1 else 0
+                                    if (target >= 0) chatListState.animateScrollToItem(target)
+                                }
+                            },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "النزول لآخر رسالة")
+                        }
+                    }
                 }
             }
 
@@ -317,7 +350,7 @@ private fun WelcomeState(attached: List<Herb>, allHerbs: List<Herb>, onSuggestio
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
         Spacer(Modifier.height(20.dp))
-        val suggestions = HerbAssistant.quickSuggestions(attached, allHerbs)
+        val suggestions = remember(attached, allHerbs) { HerbAssistant.quickSuggestions(attached, allHerbs) }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             suggestions.forEach { suggestion ->
                 SuggestionCard(suggestion) { onSuggestionClick(suggestion) }
