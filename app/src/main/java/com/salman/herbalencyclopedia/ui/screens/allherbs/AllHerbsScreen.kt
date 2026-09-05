@@ -1,9 +1,8 @@
 package com.salman.herbalencyclopedia.ui.screens.allherbs
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
@@ -18,7 +17,6 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.search.HerbSearch
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
-import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,12 +38,12 @@ fun AllHerbsScreen(
     // نفس إصلاح شاشة البحث المستقلة (SearchScreen): بحث مطبَّع وموسَّع
     // بمرادفات محلية بدل `contains` حرفي فقط — انظر توثيق [HerbSearch].
     val filtered = remember(query, herbs) { if (query.isBlank()) herbs else HerbSearch.search(query, herbs) }
-    // كانت هذه القائمة LazyColumn بعمود واحد ثابت: على تابلت أو نافذة
-    // عريضة تتمدد بطاقة العشبة بعرض الشاشة كاملاً (قد يتجاوز 800dp) بدل
-    // الاستفادة من العرض. LazyVerticalGrid مع Adaptive تُبقي عموداً واحداً
-    // بجوال عادي (لأن عرض البطاقة الطبيعي ~340dp أعرض من عرض الجوال) وتزيد
-    // الأعمدة تلقائياً كلما اتسعت الشاشة فعلياً.
-    val windowInfo = rememberWindowSizeInfo()
+    // كانت هذه القائمة شبكة (LazyVerticalGrid) متعددة الأعمدة: بطاقة العشبة
+    // (HerbCard) مصمَّمة أصلاً كصفّ بعرض كامل (صورة + عنوان + وصف بسطرين +
+    // زر مفضّلة) وليست بطاقة مربّعة، فضغطها إلى عمود بعرض النصف كان يقصّ
+    // نصّها ويُظهر البطاقات جنباً إلى جنب بدل قائمة مقروءة. LazyColumn بعمود
+    // واحد يعرض كل عشبة بعرض كامل تحت التي قبلها، بنفس طراز شاشتي المفضّلة
+    // والبحث.
     // This screen is a bottom-nav root destination (see HerbalNavGraph), so it
     // intentionally has no back arrow — matches HomeScreen's top bar. Title
     // now uses the same icon-badge + subtitle style as Home/Favorites instead
@@ -87,10 +85,8 @@ fun AllHerbsScreen(
                 if (filtered.isEmpty()) {
                     EmptyView(message = "لا توجد نتائج لـ \"$query\"", modifier = Modifier.fillMaxSize())
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = windowInfo.gridMinCellWidth),
+                    LazyColumn(
                         contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(filtered, key = { it.id }) { herb -> HerbCard(herb, herb.id in favoriteIds, { onHerbClick(herb) }, { onToggleFavorite(herb.id) }) }
