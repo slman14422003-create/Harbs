@@ -89,8 +89,17 @@ fun SemoAssistantScreen(
     blends: List<Blend> = emptyList(),
     // ── تعلّم سيمو الذاتي: قائمة الحالات المتعلَّمة تُمرَّر حيّة من
     // DataStore عبر HerbalNavGraph، وأي تقييم 👍/👎 هنا يُحدّثها فوراً عبر
-    // onAutoLearnedExamplesChange لتُحفظ وتُطبَّق في كل محادثة قادمة. ──
-    onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit = {}
+    // onAutoLearnedExamplesChange لتُحفظ وتُطبَّق في كل محادثة قادمة محلياً
+    // على هذا الجهاز. ──
+    onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit = {},
+    // ── مزامنة التعلّم بين الأجهزة: يُستدعى بنفس لحظة التقييم (helpful=true
+    // بعد 👍، false بعد 👎) بجانب onAutoLearnedExamplesChange أعلاه، منفصلاً
+    // عمداً عنه — الحفظ المحلي عبر onAutoLearnedExamplesChange مضمون
+    // ومستقل دوماً حتى بلا إنترنت، بينما هذا الاستدعاء يرفع نفس الحالة
+    // (fire-and-forget) إلى مجموعة "semo_learned" المشتركة على Firestore
+    // (انظر AppViewModel.contributeSemoLearning/demoteSemoLearning) كي
+    // تستفيد منها بقية الأجهزة دون تعلّمها من الصفر. ──
+    onFeedbackRecorded: (question: String, answer: String, helpful: Boolean) -> Unit = { _, _, _ -> }
 ) {
     var attachedIds by remember { mutableStateOf<List<String>>(emptyList()) }
     val attached = attachedIds.mapNotNull { id -> herbs.firstOrNull { it.id == id } }
@@ -163,6 +172,7 @@ fun SemoAssistantScreen(
                 HerbAssistant.recordFeedback(target.sourceQuestion, target.text, helpful)
             }
             onAutoLearnedExamplesChange(updated)
+            onFeedbackRecorded(target.sourceQuestion, target.text, helpful)
             messages = messages.map { if (it.id == messageId) it.copy(feedback = helpful) else it }
         }
     }
