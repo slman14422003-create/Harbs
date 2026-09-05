@@ -936,6 +936,29 @@ object HerbAssistant {
      */
     data class AssistantReply(val text: String, val learnable: Boolean)
 
+    /**
+     * هل يحتاج سيمو فعلاً لـ"تفكير وبحث" ملحوظ قبل الإجابة على هذا السؤال؟
+     * تُستخدم في واجهة الدردشة (SemoAssistantScreen) لعرض فقاعة "حسناً، دعني
+     * أفكر وأبحث في الموسوعة 🌿" *قبل* استدعاء [answerDetailed] الثقيل،
+     * فيشعر المستخدم أن سيمو يفكّر فعلاً بدل أن تظهر الإجابة فجأة بلا أي
+     * سياق — تماماً كما يوضّح مساعد جيد خطته قبل تنفيذها.
+     *
+     * بنفس شروط `if` الأولى في [answerDetailed] بالضبط (لا تكرار منطق
+     * مختلف قد ينحرف عنها الاحقاً): سؤال فارغ، أو مطابق لحالة مدرَّبة
+     * (يدوياً أو ذاتياً)، أو تحية/شكر أو أي عبارة محادثة مبدئية أخرى
+     * ([ConversationalSeed]) — كل هذه إجابات فورية جاهزة لا تحتاج أي بحث
+     * فعلي في بيانات الموسوعة، فلا داعي لإظهار "أفكر وأبحث" قبلها. أي
+     * سؤال آخر (مقارنة، أمان، استخدام، فوائد، اقتراح، أو بحث حر) يستدعي
+     * فعلاً مسح بيانات الموسوعة، فيُعرض التفكير قبله.
+     */
+    fun needsThinking(question: String): Boolean {
+        val qNorm = normalize(question)
+        if (qNorm.isBlank()) return false
+        if (matchTrainedExample(question) != null) return false
+        if (ConversationalSeed.match(question) != null) return false
+        return true
+    }
+
     /** توافقاً مع الاستدعاءات القديمة (مثل اختبار أدوات المطور) التي تحتاج النص فقط. */
     fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): String =
         answerDetailed(question, herbs, allowCompare, blends).text
@@ -1206,17 +1229,34 @@ object HerbAssistant {
             }
         }
 
-        val ranked = bestPerHerb.entries
+        var ranked = bestPerHerb.entries
             .filter { it.value.score > AiConfig.searchThreshold }
             .sortedByDescending { it.value.score }
             .take(3)
 
+        // نفس مبدأ "يحاول قبل أن يستسلم" المستخدم في [buildGeneralSearchAnswer]:
+        // لا نتيجة بالعتبة المعتادة؟ نحاول مرة ثانية بعتبة أخفّ قبل الإقرار
+        // الصريح بعدم وجود اقتراح مناسب.
+        var triedHarder = false
         if (ranked.isEmpty()) {
-            return "لم أجد في بيانات الموسوعة عشبة ترتبط مباشرة بما طلبته. جرّب صياغة الهدف بكلمة مختلفة، أو اذكر عرضاً أو فائدة أكثر تحديداً." to false
+            val relaxedThreshold = (AiConfig.searchThreshold * 0.4).coerceAtLeast(0.02)
+            ranked = bestPerHerb.entries
+                .filter { it.value.score > relaxedThreshold }
+                .sortedByDescending { it.value.score }
+                .take(3)
+            triedHarder = true
+        }
+
+        if (ranked.isEmpty()) {
+            return "لم أجد في بيانات الموسوعة عشبة ترتبط مباشرة بما طلبته، رغم أنني وسّعت البحث أكثر من مرة. جرّب صياغة الهدف بكلمة مختلفة، أو اذكر عرضاً أو فائدة أكثر تحديداً." to false
         }
 
         val text = buildString {
-            append("بحثت وحلّلت بيانات الموسوعة، وهذه أنسب الأعشاب المتوفرة لهدفك:\n\n")
+            if (triedHarder) {
+                append("وسّعت البحث أكثر من مرة في بيانات الموسوعة، وهذه أقرب الأعشاب المتوفرة لهدفك:\n\n")
+            } else {
+                append("بحثت وحلّلت بيانات الموسوعة، وهذه أنسب الأعشاب المتوفرة لهدفك:\n\n")
+            }
             ranked.forEachIndexed { i, entry ->
                 val herb = entry.key
                 val match = entry.value
@@ -1267,8 +1307,12 @@ object HerbAssistant {
         "ملاحظات" to { it.notes }
     )
 
-    private fun gatherBlendCandidates(qWords: Set<String>, blends: List<Blend>, index: CorpusIndex): List<BlendHit> {
-        val threshold = AiConfig.searchThreshold
+    private fun gatherBlendCandidates(
+        qWords: Set<String>,
+        blends: List<Blend>,
+        index: CorpusIndex,
+        threshold: Double = AiConfig.searchThreshold
+    ): List<BlendHit> {
         val hits = mutableListOf<BlendHit>()
         blends.forEach { blend ->
             blendSearchableFields.forEach { (label, getter) ->
@@ -1289,6 +1333,16 @@ object HerbAssistant {
             .associate { (blend, blendHits) -> blend to blendHits.sortedByDescending { it.score }.take(3) }
 
     /**
+     * يختار أهمّ [take] كلمات من كلمات السؤال حسب وزنها الفعلي في الموسوعة
+     * (IDF عبر [CorpusIndex.weightOf]) — تُستخدم في المحاولة الأخيرة من
+     * [buildGeneralSearchAnswer] لتبسيط سؤال طويل إلى "جوهره" فقط، فقد تكون
+     * كلمة ثانوية ضمن السؤال (لا صلة فعلية لها بالموسوعة) هي ما خفّض
+     * التشابه الإجمالي دون داعٍ في المحاولتين الأوليين.
+     */
+    private fun coreWordsOf(qWords: Set<String>, index: CorpusIndex, take: Int): Set<String> =
+        qWords.sortedByDescending { index.weightOf(it) }.take(take).toSet()
+
+    /**
      * البحث الحر الكامل في كل نصوص الموسوعة، على مراحل واضحة ومنفصلة —
      * بالضبط تسلسل "سؤال → تحليل → تفكير → تنظيم → تجميع النتيجة وإرسالها":
      * 1) [analyzeQuestion]  — يحلّل سؤال المستخدم إلى كلمات مفتاحية،
@@ -1304,19 +1358,55 @@ object HerbAssistant {
      * يعيد النص + بياناً هل عُثر فعلاً على نتائج ذات صلة (`true`) أم أن الرد
      * كان رسالة تعذّر عامة (`false`) — يُستخدم هذا لتحديد أهلية الرد للتعلّم
      * الذاتي (انظر [AssistantReply.learnable]).
+     *
+     * "يحاول قبل أن يعطي الإجابة": سيمو لا يستسلم عند أول محاولة فارغة، بل
+     * يمرّ بثلاث محاولات متدرّجة الصرامة (بالضبط بشروط `if` صريحة، لا خوارزمية
+     * ضمنية) قبل أن يقرّ فعلاً بعدم وجود إجابة — يحاكي بذلك التفكير خطوة
+     * بخطوة قبل إعطاء إجابة نهائية:
+     * - المحاولة ١: العتبة المعتادة [AiConfig.searchThreshold] — الأدق.
+     * - المحاولة ٢ (فقط إن فشلت ١): عتبة مخفَّضة، بحثاً بمرونة أكبر بنفس
+     *   كلمات السؤال الموسَّعة، قبل التسليم بعدم وجود شيء.
+     * - المحاولة ٣ (فقط إن فشلت ٢ أيضاً): تبسيط السؤال إلى أهمّ كلماته فقط
+     *   ([coreWordsOf]) بعتبة شبه منعدمة — آخر محاولة ممكنة قبل الاعتراف
+     *   الصريح بعدم توفّر إجابة (عبر [fallbackHelp]).
      */
     private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>, blends: List<Blend> = emptyList()): Pair<String, Boolean> {
         val index = corpusIndexFor(herbs, blends)
         val qWords = analyzeQuestion(question, index)
         if (qWords.isEmpty()) return fallbackHelp(herbs) to false
 
-        val hits = gatherCandidates(qWords, herbs, index)
-        val blendHits = gatherBlendCandidates(qWords, blends, index)
+        // المحاولة ١ — العتبة المعتادة.
+        var hits = gatherCandidates(qWords, herbs, index, AiConfig.searchThreshold)
+        var blendHits = gatherBlendCandidates(qWords, blends, index, AiConfig.searchThreshold)
+        var triedHarder = false
+
+        // المحاولة ٢ — لم يُعثر على شيء بعد؟ نخفّض عتبة القبول قبل الاستسلام،
+        // تماماً كما يعيد إنسان البحث بكلمات أوسع لو لم يجد بالبحث الدقيق أول مرة.
+        if (hits.isEmpty() && blendHits.isEmpty()) {
+            val relaxedThreshold = (AiConfig.searchThreshold * 0.4).coerceAtLeast(0.02)
+            hits = gatherCandidates(qWords, herbs, index, relaxedThreshold)
+            blendHits = gatherBlendCandidates(qWords, blends, index, relaxedThreshold)
+            triedHarder = true
+        }
+
+        // المحاولة ٣ — لا تزال فارغة؟ نُبسّط السؤال إلى أهمّ كلمتين فقط
+        // (الأعلى وزناً في الموسوعة)، فقد تكون كلمة ثانوية في السؤال هي ما
+        // أفسد المطابقة الإجمالية في المحاولتين السابقتين.
+        if (hits.isEmpty() && blendHits.isEmpty()) {
+            val coreWords = coreWordsOf(qWords, index, take = 2)
+            if (coreWords.isNotEmpty() && coreWords != qWords) {
+                hits = gatherCandidates(coreWords, herbs, index, threshold = 0.02)
+                blendHits = gatherBlendCandidates(coreWords, blends, index, threshold = 0.02)
+            }
+            triedHarder = true
+        }
+
+        // بعد كل هذه المحاولات: لا شيء فعلاً — الآن فقط يُقرّ سيمو بذلك.
         if (hits.isEmpty() && blendHits.isEmpty()) return fallbackHelp(herbs) to false
 
         val organized = organizeHits(hits)
         val organizedBlends = organizeBlendHits(blendHits)
-        return composeAnswer(organized, organizedBlends) to true
+        return composeAnswer(organized, organizedBlends, triedHarder) to true
     }
 
     /**
@@ -1360,8 +1450,12 @@ object HerbAssistant {
     }
 
     /** المرحلة ٢ — "التفكير بالإجابة": مسح كل نقاط كل حقل، وترجيح كل نقطة حسب مدى صلتها الفعلية بالسؤال. */
-    private fun gatherCandidates(qWords: Set<String>, herbs: List<Herb>, index: CorpusIndex): List<SearchHit> {
-        val threshold = AiConfig.searchThreshold
+    private fun gatherCandidates(
+        qWords: Set<String>,
+        herbs: List<Herb>,
+        index: CorpusIndex,
+        threshold: Double = AiConfig.searchThreshold
+    ): List<SearchHit> {
         val hits = mutableListOf<SearchHit>()
         herbs.forEach { herb ->
             searchableFields.forEach { (label, getter) ->
@@ -1393,13 +1487,20 @@ object HerbAssistant {
      * المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. تُعرض
      * نتائج الأعشاب أولاً ثم الخلطات (إن وُجدت) في قسم منفصل بعلامة مميّزة
      * (🧪) حتى يُدرك المستخدم أن الرد قد يخلط بين نوعين مختلفين من عناصر
-     * الموسوعة.
+     * الموسوعة. [triedHarder] = هل احتاج سيمو لمحاولة ثانية/ثالثة أوسع
+     * (انظر [buildGeneralSearchAnswer]) قبل الوصول لهذه النتائج؟ إن كان
+     * كذلك، تُستخدم صياغة افتتاحية مختلفة تعكس أن البحث لم يكن مباشراً.
      */
     private fun composeAnswer(
         organized: Map<Herb, List<SearchHit>>,
-        organizedBlends: Map<Blend, List<BlendHit>> = emptyMap()
+        organizedBlends: Map<Blend, List<BlendHit>> = emptyMap(),
+        triedHarder: Boolean = false
     ): String = buildString {
-        append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
+        if (triedHarder) {
+            append("بحثت في كل زوايا الموسوعة ووسّعت البحث أكثر من مرة قبل أن أصل لهذا:\n\n")
+        } else {
+            append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
+        }
         organized.forEach { (herb, herbHits) ->
             append("🔸 ${herb.name}:\n")
             herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
