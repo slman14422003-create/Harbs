@@ -3,7 +3,17 @@ name: Build APK and Release
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: >-
+          تحديد رقم الإصدار يدويًا (مثال: 1.0) بدل الزيادة التلقائية عن آخر
+          تاج — استخدمها لإعادة ترقيم الإصدار (مثلاً بعد استقرار نسخة معيّنة
+          وإرادة تسميتها "1.0" بصرف النظر عن آخر تاج مرفوع فعلاً). اتركها
+          فارغة للسلوك المعتاد (١.٠ ← ١.١ ← ١.٢ ...). لا تُستخدم إطلاقًا في
+          تشغيل تلقائي عبر push، فقط عند تشغيل الووركفلو يدويًا من GitHub.
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -48,26 +58,38 @@ jobs:
           # نجلب كل التاجات المرفوعة سابقًا للمستودع
           git fetch --tags --force >/dev/null 2>&1 || true
 
-          # آخر تاج بصيغة vMAJOR.MINOR فقط (مثل v1.0, v1.1, v2.3) — نتجاهل أي
-          # صيغة قديمة (مثل v2.0.0-45) حتى لا تتعارض مع النظام الجديد.
-          LAST_TAG=$(git tag --list 'v*' \
-            | sed 's/^v//' \
-            | grep -E '^[0-9]+\.[0-9]+$' \
-            | sort -t. -k1,1n -k2,2n \
-            | tail -1)
+          MANUAL_VNAME="${{ github.event.inputs.version_name }}"
 
-          if [ -z "$LAST_TAG" ]; then
-            # لا يوجد أي تاج بالصيغة الجديدة بعد → نبدأ من 1.0
-            NEXT_VNAME="1.0"
+          if [ -n "$MANUAL_VNAME" ]; then
+            # تشغيل يدوي حدَّد رقم إصدار صراحة: يُستخدم كما هو، متجاوزاً آخر
+            # تاج موجود بالكامل (مثلاً لإعادة تسمية أول إصدار مستقر "1.0" حتى
+            # لو كانت هناك تاجات أعلى منه من تجارب سابقة). versionCode يبقى
+            # دومًا رقم تشغيل الووركفلو أدناه بصرف النظر عن هذا، لذا هذا لا
+            # يكسر تحديث المستخدمين ممن ثبّتوا إصدارًا أحدث فعلياً — فقط
+            # الاسم الظاهر لهم يتغيّر.
+            NEXT_VNAME="$MANUAL_VNAME"
           else
-            MAJOR=$(echo "$LAST_TAG" | cut -d. -f1)
-            MINOR=$(echo "$LAST_TAG" | cut -d. -f2)
-            MINOR=$((MINOR + 1))
-            if [ "$MINOR" -ge 10 ]; then
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
+            # آخر تاج بصيغة vMAJOR.MINOR فقط (مثل v1.0, v1.1, v2.3) — نتجاهل أي
+            # صيغة قديمة (مثل v2.0.0-45) حتى لا تتعارض مع النظام الجديد.
+            LAST_TAG=$(git tag --list 'v*' \
+              | sed 's/^v//' \
+              | grep -E '^[0-9]+\.[0-9]+$' \
+              | sort -t. -k1,1n -k2,2n \
+              | tail -1)
+
+            if [ -z "$LAST_TAG" ]; then
+              # لا يوجد أي تاج بالصيغة الجديدة بعد → نبدأ من 1.0
+              NEXT_VNAME="1.0"
+            else
+              MAJOR=$(echo "$LAST_TAG" | cut -d. -f1)
+              MINOR=$(echo "$LAST_TAG" | cut -d. -f2)
+              MINOR=$((MINOR + 1))
+              if [ "$MINOR" -ge 10 ]; then
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+              fi
+              NEXT_VNAME="${MAJOR}.${MINOR}"
             fi
-            NEXT_VNAME="${MAJOR}.${MINOR}"
           fi
 
           # versionCode يجب أن يبقى رقمًا صحيحًا متزايدًا دائمًا (شرط أساسي في
