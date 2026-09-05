@@ -6,6 +6,9 @@ import com.google.firebase.firestore.Source
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -42,7 +45,9 @@ class UpdateRepository(
             "https://ghfast.top/",
             "https://gh-proxy.com/",
             "https://ghproxy.net/",
-            "https://mirror.ghproxy.com/"
+            "https://mirror.ghproxy.com/",
+            "https://ghproxy.homeboyc.cn/",
+            "https://github.akams.cn/"
         )
     }
 
@@ -182,64 +187,70 @@ class UpdateRepository(
     }
 
     /**
-     * Tries GitHub directly first. If that fails outright (connection refused,
-     * timeout, DNS failure — the pattern seen when GitHub is blocked at the
-     * network/country level) it retries the exact same request through a
-     * proxy mirror, so the update check keeps working without the user
-     * needing a VPN.
+     * Tries GitHub directly AND every proxy mirror at the same time, and takes
+     * whichever one answers first — instead of the old direct → mirror 1 →
+     * mirror 2 → ... chain tried one at a time. That sequential approach was
+     * the actual cause of the update check "not working" on networks that
+     * block GitHub outright: each attempt only fails after its own multi-
+     * second timeout, so a fully-blocked connection had to sit through
+     * direct + every mirror's timeout back to back (up to a minute or more)
+     * before ever reaching the one that would have worked. Racing them means
+     * the check finishes as soon as the *fastest* reachable path answers,
+     * whether that's straight to GitHub, or one specific mirror the local
+     * network doesn't block — no VPN required either way.
      *
      * The public mirrors in [PUBLIC_PROXY_MIRRORS] are built and mainly used
      * for proxying plain github.com / objects.githubusercontent.com *file*
      * requests (releases, raw files) — not necessarily the api.github.com
-     * REST API this method calls for metadata. In practice this means a
-     * network that blocks GitHub can still leave the *version check* stuck
-     * (silently requiring a VPN) even though the same mirrors would happily
-     * serve the actual .apk afterward. So when every api.github.com attempt
-     * (direct + every proxy) fails, [fetchLatestReleaseViaHtmlFallback] is
-     * tried as a last resort: it never touches api.github.com at all, only
-     * plain github.com pages, which these mirrors are actually built for.
+     * REST API this method calls for metadata. So this races the JSON API
+     * first (direct + every mirror); only if every single one of those comes
+     * back empty does it race a second time against plain github.com release
+     * pages instead, which is what these mirrors are actually built for.
      */
-    private fun fetchLatestReleaseWithFallback(repo: String, config: AppUpdateConfig): ReleaseData? {
-        val direct = fetchLatestRelease(repo)
-        if (direct != null) return direct
-        if (!config.useProxyFallback) return null
+    private suspend fun fetchLatestReleaseWithFallback(repo: String, config: AppUpdateConfig): ReleaseData? {
+        val bases: List<String?> = listOf(null) + if (config.useProxyFallback) {
+            buildList {
+                config.customProxyBaseUrl?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+                addAll(PUBLIC_PROXY_MIRRORS)
+            }
+        } else emptyList()
 
-        val proxies = buildList {
-            config.customProxyBaseUrl?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
-            addAll(PUBLIC_PROXY_MIRRORS)
+        val viaJson = raceFirstSuccess(bases.map { proxyBase -> suspend { fetchLatestRelease(repo, proxyBase) } })
+        if (viaJson != null) return viaJson
+
+        return raceFirstSuccess(bases.map { proxyBase -> suspend { fetchLatestReleaseViaHtml(repo, proxyBase) } })
+    }
+
+    /**
+     * Runs every attempt in [candidates] at once and returns whichever result
+     * comes back non-null first, cancelling the rest immediately. Used to turn
+     * the old "try each URL one at a time until one works" chains into a race,
+     * which is what actually fixes slow/blocked-network update checks — see
+     * [fetchLatestReleaseWithFallback].
+     */
+    private suspend fun <T> raceFirstSuccess(candidates: List<suspend () -> T?>): T? = coroutineScope {
+        if (candidates.isEmpty()) return@coroutineScope null
+        val results = Channel<T?>(candidates.size)
+        val jobs = candidates.map { attempt ->
+            launch(Dispatchers.IO) {
+                val value = runCatching { attempt() }.getOrNull()
+                results.trySend(value)
+            }
         }
-        for (proxyBase in proxies) {
-            val result = fetchLatestRelease(repo, proxyBase)
-            if (result != null) return result
+        var winner: T? = null
+        repeat(candidates.size) {
+            if (winner == null) {
+                val value = results.receive()
+                if (value != null) winner = value
+            }
         }
-        return fetchLatestReleaseViaHtmlFallback(repo, config)
+        jobs.forEach { it.cancel() }
+        winner
     }
 
     /** Rewrites a github.com/objects.githubusercontent.com URL to go through a proxy prefix. */
     private fun viaProxy(proxyBase: String, url: String): String =
         proxyBase.trimEnd('/') + "/" + url
-
-    /**
-     * Last-resort metadata fetch that avoids api.github.com entirely: it
-     * follows GitHub's ordinary "latest release" redirect (a plain github.com
-     * URL) to discover the release tag, then scans that release page's HTML
-     * for the .apk asset's download link — both are requests the public proxy
-     * mirrors are actually designed to handle, unlike the JSON API above.
-     * Tried direct first, then through the same proxy chain, since the HTML
-     * page can be blocked independently of the API too.
-     */
-    private fun fetchLatestReleaseViaHtmlFallback(repo: String, config: AppUpdateConfig): ReleaseData? {
-        val bases = buildList<String?> {
-            add(null) // مباشر بلا بروكسي
-            config.customProxyBaseUrl?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
-            addAll(PUBLIC_PROXY_MIRRORS)
-        }
-        for (proxyBase in bases) {
-            val result = runCatching { fetchLatestReleaseViaHtml(repo, proxyBase) }.getOrNull()
-            if (result != null) return result
-        }
-        return null
-    }
 
     private fun fetchLatestReleaseViaHtml(repo: String, proxyBase: String?): ReleaseData? {
         val latestUrl = "https://github.com/$repo/releases/latest"
@@ -266,8 +277,8 @@ class UpdateRepository(
     private fun resolveRedirectLocation(url: String): String? {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 15000
-            readTimeout = 15000
+            connectTimeout = 8000
+            readTimeout = 8000
             instanceFollowRedirects = false
             setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
         }
@@ -283,8 +294,8 @@ class UpdateRepository(
     private fun fetchText(url: String): String? {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 15000
-            readTimeout = 15000
+            connectTimeout = 8000
+            readTimeout = 8000
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
         }
@@ -337,8 +348,8 @@ class UpdateRepository(
         val requestUrl = if (proxyBase != null) viaProxy(proxyBase, apiUrl) else apiUrl
         val conn = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 15000
-            readTimeout = 15000
+            connectTimeout = 8000
+            readTimeout = 8000
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
         }
