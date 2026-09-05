@@ -37,7 +37,11 @@ fun AllHerbsScreen(
     var query by remember { mutableStateOf("") }
     // نفس إصلاح شاشة البحث المستقلة (SearchScreen): بحث مطبَّع وموسَّع
     // بمرادفات محلية بدل `contains` حرفي فقط — انظر توثيق [HerbSearch].
-    val filtered = remember(query, herbs) { if (query.isBlank()) herbs else HerbSearch.search(query, herbs) }
+    // هذه القائمة لا تحتاج شرح "أين وُجدت المطابقة" (ذاك خاص بشاشة البحث
+    // المخصصة)، فتُستخرج الأعشاب فقط من النتائج المُفصَّلة.
+    val filtered = remember(query, herbs) {
+        if (query.isBlank()) herbs else HerbSearch.search(query, herbs).map { it.herb }
+    }
     // كانت هذه القائمة شبكة (LazyVerticalGrid) متعددة الأعمدة: بطاقة العشبة
     // (HerbCard) مصمَّمة أصلاً كصفّ بعرض كامل (صورة + عنوان + وصف بسطرين +
     // زر مفضّلة) وليست بطاقة مربّعة، فضغطها إلى عمود بعرض النصف كان يقصّ
