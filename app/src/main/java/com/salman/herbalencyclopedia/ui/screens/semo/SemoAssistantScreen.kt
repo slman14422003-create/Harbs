@@ -594,7 +594,7 @@ private fun TypingBubble() {
 }
 
 @Composable
-private fun AssistantAvatar(size: androidx.compose.ui.unit.Dp) {
+internal fun AssistantAvatar(size: androidx.compose.ui.unit.Dp) {
     Box(
         Modifier
             .size(size)
