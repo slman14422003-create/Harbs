@@ -22,6 +22,8 @@ import com.salman.herbalencyclopedia.data.repository.HerbRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -166,9 +168,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         downloadCancelledByUser = false
         _downloadState.value = UpdateDownloadState.Downloading(0)
         downloadJob = viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                downloadApkToCache(appContext, candidates, info.versionName)
-            }
+            val result = downloadApkToCache(appContext, candidates, info.versionName)
             if (downloadCancelledByUser) {
                 // cancelDownload() already reset the UI state; don't clobber it
                 // with this now-irrelevant result.
@@ -206,18 +206,34 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     /**
      * Streams the .apk to context.cacheDir/updates, publishing percent progress to
-     * [downloadState]. Tries each URL in [candidates] in order (direct link first, then
-     * proxy mirrors) and returns on the first one that succeeds.
+     * [downloadState].
+     *
+     * [candidates] (direct link + proxy mirrors) are first probed all at once with a
+     * quick, cheap request (see [probeReachable]) instead of downloading the full file
+     * from each one in turn until something works. On a network that blocks GitHub
+     * outright, that old one-at-a-time approach meant sitting through a full download
+     * timeout on the direct link, then again on every mirror, before ever reaching the
+     * one that would have worked — and it risked pulling the same multi-megabyte .apk
+     * more than once. Racing a tiny probe first finds the one reachable path in a few
+     * seconds, and the actual .apk is then streamed from that single URL only.
      */
-    private fun downloadApkToCache(context: Context, candidates: List<String>, versionName: String): Result<File> {
+    private suspend fun downloadApkToCache(context: Context, candidates: List<String>, versionName: String): Result<File> {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         // Drop any previous downloaded update(s) so the cache doesn't grow unbounded.
         dir.listFiles()?.forEach { it.delete() }
         val destFile = File(dir, "update-$versionName.apk")
 
+        val reachable = raceFirstReachable(candidates)
+        // ordered so the reachable one (if any) is tried first, falling back through
+        // the rest only if it turns out to fail on the real download for some reason
+        // (e.g. it answered the quick probe but then dropped the connection).
+        val orderedCandidates = if (reachable != null) {
+            listOf(reachable) + candidates.filter { it != reachable }
+        } else candidates
+
         var lastError: Throwable? = null
-        for (url in candidates) {
-            val attempt = runCatching { downloadOneUrl(url, destFile) }
+        for (url in orderedCandidates) {
+            val attempt = withContext(Dispatchers.IO) { runCatching { downloadOneUrl(url, destFile) } }
             if (attempt.isSuccess) return Result.success(destFile)
             destFile.delete()
             val error = attempt.exceptionOrNull()
@@ -227,6 +243,56 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             lastError = error
         }
         return Result.failure(lastError ?: IllegalStateException("فشل تحميل التحديث"))
+    }
+
+    /**
+     * Probes every URL in [candidates] at once with a cheap request (HEAD, or a
+     * 1-byte ranged GET if a mirror doesn't support HEAD) and returns the first one
+     * that answers successfully, or null if none do within a few seconds. This is
+     * what lets [downloadApkToCache] skip straight to the one working path instead
+     * of discovering it through a slow, sequential full-download attempt on each URL.
+     */
+    private suspend fun raceFirstReachable(candidates: List<String>): String? = coroutineScope {
+        if (candidates.isEmpty()) return@coroutineScope null
+        val results = Channel<String?>(candidates.size)
+        val jobs = candidates.map { url ->
+            launch(Dispatchers.IO) {
+                val ok = runCatching { probeReachable(url) }.getOrDefault(false)
+                results.trySend(if (ok) url else null)
+            }
+        }
+        var winner: String? = null
+        repeat(candidates.size) {
+            if (winner == null) {
+                val value = results.receive()
+                if (value != null) winner = value
+            }
+        }
+        jobs.forEach { it.cancel() }
+        winner
+    }
+
+    /** Cheap reachability check for a single URL: HEAD first, falling back to a 1-byte ranged GET. */
+    private fun probeReachable(url: String): Boolean {
+        fun attempt(method: String): Boolean {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                connectTimeout = 6000
+                readTimeout = 6000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Harbs-App-Update-Downloader")
+                if (method == "GET") setRequestProperty("Range", "bytes=0-0")
+            }
+            return try {
+                val code = conn.responseCode
+                code in 200..299 || code == 206
+            } catch (e: Exception) {
+                false
+            } finally {
+                conn.disconnect()
+            }
+        }
+        return runCatching { attempt("HEAD") }.getOrDefault(false) || runCatching { attempt("GET") }.getOrDefault(false)
     }
 
     /** Streams a single URL to [destFile], throwing on any failure (caller decides whether to retry). */
