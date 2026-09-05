@@ -3,9 +3,9 @@ package com.salman.herbalencyclopedia.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -71,16 +71,18 @@ fun CategoryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(18.dp)
     val accent = colorFor(category)
     val interactionSource = remember { MutableInteractionSource() }
     val pressScale by rememberPressScale(interactionSource, pressedScale = 0.97f)
 
-    // كانت البطاقة مربّعة (aspectRatio(1f)) لتُعرض ضمن شبكة بعدة أعمدة،
-    // فتظهر التصنيفات جنباً إلى جنب بدل التتالي رأسياً كما كانت قبل ذلك.
-    // الآن البطاقة صفّ بعرض كامل (نفس طراز HerbCard/BlendCard: أيقونة على
-    // اليمين وعمود نص إلى جانبها)، لتُعرض التصنيفات تحت بعضها في قائمة
-    // واحدة بدل شبكة متعددة الأعمدة.
+    // الشكل السابق (صفّ بعرض الشاشة الكامل بخلفية زجاجية شبه معتمة) كان
+    // يبدو كمستطيل ضخم فارغ بصرياً: مساحة اللون شبه الموحّدة بين الأيقونة
+    // والحافة اليمنى بلا أي عنصر آخر تكسر رتابتها. هذه النسخة أخفّ وأصغر
+    // ارتفاعاً (Surface مسطّحة بلون بطاقة عادي بدل طبقات الزجاج الثقيلة)،
+    // وتضيف شارة صغيرة بعدد الأعشاب + سهماً للتنقّل في الطرف الآخر، فيمتلئ
+    // الصفّ بعناصر مفيدة بدل الفراغ، ويبقى التصنيف مقروءاً كصفّ واحد ضمن
+    // قائمة (تحت بعضها) بدل شبكة متعددة الأعمدة.
     Surface(
         onClick = onClick,
         interactionSource = interactionSource,
@@ -89,52 +91,56 @@ fun CategoryCard(
             .fillMaxWidth()
             .shadow(1.dp, shape),
         shape = shape,
-        color = Color.Transparent
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 1.dp
     ) {
-        LiquidGlassSurface(
-            shape = shape,
-            modifier = Modifier.fillMaxWidth(),
-            tint = MaterialTheme.colorScheme.surfaceContainer,
-            // بطاقة صف قصيرة الآن، وليست بطاقة شبكة مربّعة كبيرة — انظر
-            // توثيق [compact] في LiquidGlassSurface.
-            compact = true,
-            sheen = false
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(
+                    Brush.linearGradient(
+                        listOf(accent.copy(alpha = 0.24f), accent.copy(alpha = 0.10f))
+                    )
+                ),
+                contentAlignment = Alignment.Center
             ) {
-                // أيقونة التصنيف محتوى فوق طبقة الزجاج (content)، فتبقى
-                // واضحة وغير متأثرة بالتمويه خلفها.
-                Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(
-                        Brush.linearGradient(
-                            listOf(accent.copy(alpha = 0.22f), accent.copy(alpha = 0.10f))
-                        )
-                    ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(iconFor(category), contentDescription = null, tint = accent)
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        category.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "$herbCount عشبة",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Icon(iconFor(category), contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
             }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                category.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            // شارة صغيرة بلون التصنيف بدل نص عادي أسفل العنوان، لتمييز
+            // العدد بصرياً وملء الفراغ على يمين الصفّ.
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = accent.copy(alpha = 0.14f)
+            ) {
+                Text(
+                    "$herbCount",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accent,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
