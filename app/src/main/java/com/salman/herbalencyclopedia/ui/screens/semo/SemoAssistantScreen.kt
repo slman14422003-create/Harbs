@@ -52,6 +52,18 @@ import kotlinx.coroutines.withContext
 private const val MAX_ATTACHED = 3
 
 /**
+ * عبارات "سيمو يفكّر" المعروضة كفقاعة حقيقية (لا مجرد نقاط متحرّكة) قبل
+ * البحث الفعلي في الموسوعة — انظر [HerbAssistant.needsThinking] وsendMessage
+ * أدناه. عشوائية الاختيار حتى لا تتكرر نفس الجملة بالضبط في كل مرة.
+ */
+private val thinkingPhrasePool = listOf(
+    "أممم، حسناً، دعني أفكر وأبحث في الموسوعة 🌿",
+    "لحظة، سأبحث في بيانات الموسوعة عن أفضل إجابة لك 🔎",
+    "حسناً، دعني أراجع كل ما لدي عن هذا في الموسوعة 🌿",
+    "طيب، سأبحث بعمق في الموسوعة قبل أن أجيبك 🔎"
+)
+
+/**
  * [learnable] = هل هذا الرد ناتج عن بحث حر فعلي (وليس ترحيباً/شكراً/حالة
  * مدرَّبة مسبقاً)؟ في هذه الحالة فقط تُعرض أزرار تقييم 👍/👎 تحت الفقاعة،
  * وتقييم المستخدم هو ما يغذّي "تعلّم سيمو الذاتي" (انظر [HerbAssistant.recordFeedback]).
@@ -64,6 +76,12 @@ private data class ChatMessage(
     val sourceQuestion: String = "",
     val learnable: Boolean = false,
     val feedback: Boolean? = null,
+    // ── فقاعة "أفكّر وأبحث" المؤقتة (انظر sendMessage): تُعرض فور استلام
+    // سؤال يحتاج بحثاً فعلياً ([HerbAssistant.needsThinking])، بنفس مُعرِّف
+    // [id] الذي يُستبدَل محتواه لاحقاً بالإجابة الحقيقية بمجرد جهوزها —
+    // بدل إضافة فقاعة جديدة منفصلة، فيبدو الأمر كأن سيمو "أكمل تفكيره" في
+    // نفس الفقاعة لا أنه أرسل رسالتين. ──
+    val isPlaceholder: Boolean = false,
     val id: Long = System.nanoTime()
 )
 
@@ -123,6 +141,26 @@ fun SemoAssistantScreen(
         scope.launch {
             delay((400L..750L).random())
 
+            // ── "أفكّر قبل أن أجيب": بنفس شروط `if` الأولى التي يستخدمها
+            // [HerbAssistant.answerDetailed] لتمييز الردود الفورية الجاهزة
+            // (ترحيب/شكر/حالة مدرَّبة) عن الأسئلة التي تحتاج بحثاً فعلياً —
+            // فقط النوع الثاني يستحق فقاعة "دعني أفكر وأبحث" قبل الإجابة،
+            // تماماً كما يوضّح مساعد جيد خطته قبل تنفيذها بدل إجابة تظهر
+            // فجأة بلا سياق.
+            val showThinkingBubble = withContext(Dispatchers.Default) {
+                HerbAssistant.needsThinking(question)
+            }
+            var thinkingMessageId: Long? = null
+            if (showThinkingBubble) {
+                val placeholder = ChatMessage(
+                    text = thinkingPhrasePool.random(),
+                    isUser = false,
+                    isPlaceholder = true
+                )
+                thinkingMessageId = placeholder.id
+                messages = messages + placeholder
+            }
+
             // لا مقارنة أو استعراض تفصيلي إلا بطلب واضح: إما بإرفاق عشبة أو
             // أكثر يدوياً، أو بذكر اسمها صراحة داخل نص السؤال. غير ذلك يبقى
             // سيمو يبحث بحرية في كامل الموسوعة (وضع محادثة عامة).
@@ -151,12 +189,29 @@ fun SemoAssistantScreen(
             val reply = withContext(Dispatchers.Default) {
                 HerbAssistant.answerDetailed(question, contextHerbs, allowCompare, contextBlends)
             }
-            messages = messages + ChatMessage(
-                text = reply.text,
-                isUser = false,
-                sourceQuestion = question,
-                learnable = reply.learnable
-            )
+
+            // إن كانت فقاعة "أفكّر" معروضة، تُستبدَل هي نفسها بالإجابة النهائية
+            // (بنفس المُعرِّف id، فلا يهتز ترتيب القائمة ولا يبدو الأمر كرسالتين
+            // منفصلتين)؛ غير ذلك (رد فوري بلا تفكير) تُضاف الإجابة كرسالة عادية.
+            messages = if (thinkingMessageId != null) {
+                messages.map { msg ->
+                    if (msg.id == thinkingMessageId) {
+                        msg.copy(
+                            text = reply.text,
+                            sourceQuestion = question,
+                            learnable = reply.learnable,
+                            isPlaceholder = false
+                        )
+                    } else msg
+                }
+            } else {
+                messages + ChatMessage(
+                    text = reply.text,
+                    isUser = false,
+                    sourceQuestion = question,
+                    learnable = reply.learnable
+                )
+            }
             isThinking = false
         }
     }
@@ -460,9 +515,15 @@ private fun ChatBubble(message: ChatMessage, onRate: (Boolean) -> Unit = {}) {
             ) {
                 Text(
                     message.text,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .alpha(if (message.isPlaceholder) 0.75f else 1f),
                     color = if (message.isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = if (message.isPlaceholder) {
+                        MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                    } else {
+                        MaterialTheme.typography.bodyMedium
+                    }
                 )
             }
         }
@@ -553,7 +614,10 @@ private fun AssistantAvatar(size: androidx.compose.ui.unit.Dp) {
 private fun buildChatShareText(messages: List<ChatMessage>): String = buildString {
     appendLine("محادثة مع سيمو المساعد")
     appendLine()
-    messages.forEach { m ->
+    // نستبعد فقاعة "أفكّر وأبحث" المؤقتة إن كانت ما تزال معروضة لحظة
+    // المشاركة (نادر) — نصّها انتقالي فقط ولا معنى لتضمينه في نسخة محفوظة
+    // من المحادثة.
+    messages.filterNot { it.isPlaceholder }.forEach { m ->
         appendLine(if (m.isUser) "أنت: ${m.text}" else "سيمو: ${m.text}")
         appendLine()
     }
