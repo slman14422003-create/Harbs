@@ -43,8 +43,10 @@ import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val MAX_ATTACHED = 3
 
@@ -114,7 +116,19 @@ fun SemoAssistantScreen(
             // لا مقارنة أو استعراض تفصيلي إلا بطلب واضح: إما بإرفاق عشبة أو
             // أكثر يدوياً، أو بذكر اسمها صراحة داخل نص السؤال. غير ذلك يبقى
             // سيمو يبحث بحرية في كامل الموسوعة (وضع محادثة عامة).
-            val mentioned = if (attached.isEmpty()) HerbAssistant.relevantHerbs(question, herbs) else emptyList()
+            //
+            // كان استدعاء [HerbAssistant] بأكمله (تحليل نص + مسح كل حقول كل
+            // الأعشاب والخلطات + حساب تشابه موزون لكل نقطة) يعمل مباشرة على
+            // نطاق rememberCoroutineScope الافتراضي، وهو مرتبط بخيط الواجهة
+            // الرئيسي (Dispatchers.Main.immediate) — أي أن كل هذا الحساب
+            // الثقيل كان يُنفَّذ فعلياً على خيط الواجهة نفسه، فيُجمِّد الرسوم
+            // المتحركة (نبض "سيمو يكتب…"، تمرير المحادثة) لحظياً مع كل رسالة
+            // على موسوعة كبيرة. withContext(Dispatchers.Default) ينقل الحساب
+            // فقط إلى خيط خلفية مخصَّص للمعالجة الثقيلة، ويعود تلقائياً لخيط
+            // الواجهة بعد انتهائه لتحديث الحالة (messages) بأمان.
+            val mentioned = if (attached.isEmpty()) {
+                withContext(Dispatchers.Default) { HerbAssistant.relevantHerbs(question, herbs) }
+            } else emptyList()
             val contextHerbs: List<Herb>
             val contextBlends: List<Blend>
             val allowCompare: Boolean
@@ -124,7 +138,9 @@ fun SemoAssistantScreen(
                 else -> { contextHerbs = herbs; contextBlends = blends; allowCompare = false }
             }
 
-            val reply = HerbAssistant.answerDetailed(question, contextHerbs, allowCompare, contextBlends)
+            val reply = withContext(Dispatchers.Default) {
+                HerbAssistant.answerDetailed(question, contextHerbs, allowCompare, contextBlends)
+            }
             messages = messages + ChatMessage(
                 text = reply.text,
                 isUser = false,
@@ -137,9 +153,17 @@ fun SemoAssistantScreen(
 
     fun rateMessage(messageId: Long, helpful: Boolean) {
         val target = messages.firstOrNull { it.id == messageId } ?: return
-        val updated = HerbAssistant.recordFeedback(target.sourceQuestion, target.text, helpful)
-        onAutoLearnedExamplesChange(updated)
-        messages = messages.map { if (it.id == messageId) it.copy(feedback = helpful) else it }
+        scope.launch {
+            // نفس السبب أعلاه: [HerbAssistant.recordFeedback] يعيد تحليل نص
+            // السؤال والرد الحاليين لمطابقتهما مع الحالات المتعلَّمة سابقاً —
+            // حساب أخف من [answerDetailed] لكنه يبقى تحليل نص، فيُفضَّل عدم
+            // تنفيذه على خيط الواجهة كذلك.
+            val updated = withContext(Dispatchers.Default) {
+                HerbAssistant.recordFeedback(target.sourceQuestion, target.text, helpful)
+            }
+            onAutoLearnedExamplesChange(updated)
+            messages = messages.map { if (it.id == messageId) it.copy(feedback = helpful) else it }
+        }
     }
 
     LaunchedEffect(messages.size, isThinking) {
