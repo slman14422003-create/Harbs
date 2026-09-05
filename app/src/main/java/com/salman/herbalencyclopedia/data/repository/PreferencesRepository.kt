@@ -37,6 +37,10 @@ class PreferencesRepository(private val context: Context) {
         val THEME_PALETTE = stringPreferencesKey("theme_palette")
         val PERFORMANCE_MODE = stringPreferencesKey("performance_mode")
         val TERMS_ACCEPTED = booleanPreferencesKey("terms_accepted")
+        // هل شاهد المستخدم شاشة ترحيب/شروط استخدام سيمو تحديداً (منفصلة عن
+        // شاشة ترحيب التطبيق العامة أعلاه)؟ تُعرض مرة واحدة فقط عند أول
+        // فتح لسيمو بعد التثبيت — انظر SemoIntroScreen وHerbalNavGraph.
+        val SEMO_INTRO_SEEN = booleanPreferencesKey("semo_intro_seen")
         // إعدادات "مساعد المقارنة الذكي" (HerbAssistant) — قابلة للتعديل من
         // أدوات المطور (AdminToolsScreen) لضبط/"تدريب" سلوك المطابقة النصية
         // المحلية دون الحاجة لإعادة بناء التطبيق.
@@ -64,6 +68,11 @@ class PreferencesRepository(private val context: Context) {
      *  Firestore، فتُمسَح فقط إذا حذف المستخدم بيانات التطبيق أو أزاله. */
     val termsAccepted: Flow<Boolean> = context.dataStore.data.map {
         it[Keys.TERMS_ACCEPTED] ?: false
+    }
+
+    /** هل شاهد المستخدم شاشة ترحيب/شروط استخدام سيمو من قبل؟ انظر [Keys.SEMO_INTRO_SEEN]. */
+    val semoIntroSeen: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.SEMO_INTRO_SEEN] ?: false
     }
 
     val darkMode: Flow<Boolean?> = context.dataStore.data.map {
@@ -125,6 +134,11 @@ class PreferencesRepository(private val context: Context) {
     /** يُستدعى مرة واحدة فقط عند ضغط "أوافق" في شاشة الترحيب الأولى. */
     suspend fun setTermsAccepted(accepted: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.TERMS_ACCEPTED] = accepted }
+    }
+
+    /** يُستدعى مرة واحدة فقط عند ضغط "فهمت، لنبدأ" في شاشة ترحيب سيمو الأولى. */
+    suspend fun setSemoIntroSeen(seen: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.SEMO_INTRO_SEEN] = seen }
     }
 
     // ── إعدادات مساعد المقارنة الذكي (HerbAssistant) ────────────────────
