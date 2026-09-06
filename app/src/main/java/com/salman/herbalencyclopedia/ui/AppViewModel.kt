@@ -705,6 +705,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { runCatching { container.herbRepository.deleteCategory(id) }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
 
+    // ── تعديل (إعادة تسمية) تصنيف موجود ──────────────────────────────────
+    // كانت شاشة أدوات الإدارة (AdminToolsScreen) تسمح فقط بإضافة تصنيف جديد
+    // أو حذف تصنيف موجود، رغم أن HerbRepository.updateCategory كانت موجودة
+    // فعلاً في طبقة البيانات بلا أي واجهة تستدعيها إطلاقاً — فلم يكن هناك أي
+    // طريق للمسؤول لتصحيح اسم تصنيف أُدخل خطأً سوى حذفه وإضافته من جديد
+    // (فيفقد كل الأعشاب المرتبطة به تصنيفها). هذه الدالة تكمل الوصلة الناقصة.
+    fun updateCategory(id: String, name: String, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch { runCatching { container.herbRepository.updateCategory(id, name) }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
+    }
+
     fun deleteAllHerbs(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch { runCatching { container.herbRepository.deleteAllHerbs() }.onSuccess { onResult(true, null) }.onFailure { onResult(false, HerbRepository.describeError(it)) } }
     }
