@@ -132,6 +132,15 @@ fun SemoAssistantScreen(
     var inputText by remember { mutableStateOf("") }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
+    // ── ذاكرة المحادثة: آخر عشبة/أعشاب كانت "محور تركيز" الحديث فعلياً
+    // (سواء عبر إرفاق يدوي أو ذكر اسم صريح في السؤال). تُستخدم لاحقاً في
+    // sendMessage عندما يسأل المستخدم سؤال متابعة واضح (انظر
+    // [HerbAssistant.isFollowUpQuestion]) دون تكرار اسم العشبة، فيبقى سيمو
+    // "متذكّراً" موضوع الحديث بدل السقوط في بحث عام بكل الموسوعة فقط لأن
+    // الاسم لم يُكرَّر. تُصفَّر تلقائياً حين ينتقل الحديث فعلياً لسؤال عام
+    // جديد لا علاقة له بالعشبة السابقة (انظر منطق التحديث في sendMessage).
+    var focusHerbs by remember { mutableStateOf<List<Herb>>(emptyList()) }
+
     fun sendMessage(raw: String) {
         val question = raw.trim()
         if (question.isBlank() || isThinking) return
@@ -177,13 +186,38 @@ fun SemoAssistantScreen(
             val mentioned = if (attached.isEmpty()) {
                 withContext(Dispatchers.Default) { HerbAssistant.relevantHerbs(question, herbs) }
             } else emptyList()
+            val hasExplicitHerb = attached.isNotEmpty() || mentioned.isNotEmpty()
+
+            // ── ذاكرة المحادثة: لا سؤال فيه اسم عشبة صريح، لكن سؤال متابعة
+            // واضح (انظر HerbAssistant.isFollowUpQuestion)، وعندنا فعلاً
+            // عشبة/أعشاب "محور تركيز" محفوظة من رسالة سابقة؟ عندها نعيد
+            // استخدامها بدل السقوط في بحث عام بكل الموسوعة. تُحسب فقط لأسئلة
+            // تحتاج بحثاً فعلياً (showThinkingBubble) حتى لا تُخطف تحية أو
+            // شكر بمنطق المتابعة.
+            val useFollowUp = showThinkingBubble && !hasExplicitHerb && focusHerbs.isNotEmpty() &&
+                withContext(Dispatchers.Default) { HerbAssistant.isFollowUpQuestion(question) }
+
             val contextHerbs: List<Herb>
             val contextBlends: List<Blend>
             val allowCompare: Boolean
             when {
                 attached.isNotEmpty() -> { contextHerbs = attached; contextBlends = emptyList(); allowCompare = true }
                 mentioned.isNotEmpty() -> { contextHerbs = mentioned; contextBlends = emptyList(); allowCompare = true }
+                useFollowUp -> { contextHerbs = focusHerbs; contextBlends = emptyList(); allowCompare = true }
                 else -> { contextHerbs = herbs; contextBlends = blends; allowCompare = false }
+            }
+
+            // تحديث/تصفير "محور التركيز": فقط لأسئلة تحتاج بحثاً فعلياً، حتى
+            // لا تمحو تحية أو شكر عابر ذاكرة عشبة كانت قيد النقاش قبلها.
+            // سؤال بعشبة صريحة (إرفاق أو ذكر اسم) يعيّن التركيز الجديد؛ سؤال
+            // متابعة يُبقيه كما هو؛ أي سؤال آخر (عام كلياً، بلا عشبة ولا
+            // متابعة) يعني انتقال الحديث فعلياً لموضوع جديد فيُصفَّر التركيز.
+            if (showThinkingBubble) {
+                focusHerbs = when {
+                    hasExplicitHerb -> contextHerbs
+                    useFollowUp -> focusHerbs
+                    else -> emptyList()
+                }
             }
 
             val reply = withContext(Dispatchers.Default) {
@@ -291,6 +325,26 @@ fun SemoAssistantScreen(
                             trailingIcon = { Icon(Icons.Filled.Close, null, modifier = Modifier.size(16.dp)) }
                         )
                     }
+                }
+            }
+
+            // ── مؤشر "ذاكرة المحادثة": يظهر فقط حين لا يوجد إرفاق يدوي (ذاك
+            // يظهر أصلاً في الشريط أعلاه) وتوجد فعلاً عشبة/أعشاب محفوظة من
+            // سؤال سابق يستخدمها سيمو تلقائياً للمتابعة (انظر focusHerbs في
+            // sendMessage) — حتى يفهم المستخدم لماذا أجاب سيمو عن عشبة لم
+            // يذكرها في آخر سؤال، ويملك خياراً صريحاً لمسح هذا التركيز.
+            AnimatedVisibility(visible = attached.isEmpty() && focusHerbs.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AssistChip(
+                        onClick = { focusHerbs = emptyList() },
+                        label = { Text("🧠 يتابع الحديث عن: ${focusHerbs.joinToString(" و") { it.name }}") },
+                        trailingIcon = { Icon(Icons.Filled.Close, null, modifier = Modifier.size(14.dp)) }
+                    )
                 }
             }
 
