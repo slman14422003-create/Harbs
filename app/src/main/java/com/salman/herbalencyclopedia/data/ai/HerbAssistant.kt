@@ -141,7 +141,38 @@ object HerbAssistant {
         val base = normalize(text).split(Regex("\\s+"))
             .filter { it.length > 1 && it !in stopWords }
             .toSet()
-        return applySynonyms(base)
+        return applySynonyms(DialectNormalizer.expand(base))
+    }
+
+    /**
+     * قدرة جديدة: طبقة "فهم لهجات" مدمجة بالتطبيق نفسه (لا تحتاج أي إعداد
+     * يدوي من المطوّر، بعكس [AiConfig.synonyms] القابلة للتعديل من أدوات
+     * المطور) — تغطي كلمات عامية شائعة جداً بالعربية الدارجة (خليجي/شامي/
+     * مصري) لمفاهيم صحية عامة متكررة (جيد/سيّئ/يفيد/يؤلم...)، فيفهمها سيمو
+     * فور التثبيت بلا أي تدخل. منفصلة عمداً عن [HealthTopicSynonyms] (تلك
+     * مجموعات مواضيع كاملة تتوسّع فيما بينها بحثاً عن هدف صحي) وعن
+     * [AiConfig.synonyms] (تلك يضيفها المطوّر يدوياً حسب حاجته) — هذه كلمات
+     * مفردة عامة تُستبدل بمرادفها الفصيح القياسي واحدة تلو الأخرى، لتوسيع
+     * "إدراك" سيمو للصياغات العامية بلا حصر ذلك بقوالب التحية/الشكر فقط.
+     */
+    private object DialectNormalizer {
+        private val rawMap = mapOf(
+            "دوا" to "علاج", "الدوا" to "العلاج", "دوى" to "علاج",
+            "بيقطع" to "يوقف", "بيوقف" to "يوقف", "قاطع" to "موقف",
+            "بينشف" to "يجفف", "منيح" to "جيد", "منيحة" to "جيدة",
+            "زين" to "جيد", "كويس" to "جيد", "كويسة" to "جيدة",
+            "بيهدي" to "يهدئ", "بيريح" to "يريح", "مريح" to "مهدئ",
+            "وجعة" to "ألم", "توجعني" to "يؤلمني", "بيوجع" to "يؤلم",
+            "بينفع" to "يفيد", "ينفع" to "يفيد", "نافع" to "مفيد",
+            "مضر" to "ضار", "بيضر" to "يضر", "ضرر" to "ضار",
+            "حبة" to "حبوب", "دقة" to "مسحوق", "مطحون" to "مسحوق",
+            "بيسمن" to "يزيد الوزن", "بينحف" to "ينقص الوزن"
+        )
+        private val map: Map<String, String> by lazy {
+            rawMap.mapKeys { normalize(it.key) }.mapValues { normalize(it.value) }
+        }
+        fun apply(word: String): String = map[word] ?: word
+        fun expand(words: Set<String>): Set<String> = words.map { apply(it) }.toSet()
     }
 
     /**
@@ -175,6 +206,62 @@ object HerbAssistant {
         terms.any { normalizedText.contains(normalize(it)) }
 
     private fun herbNames(herbs: List<Herb>): String = herbs.joinToString(" و") { it.name }
+
+    // ── قدرة جديدة: فهم النفي ────────────────────────────────────────────
+
+    private val negationTriggers = setOf("لا", "ما", "مو", "مب", "مش", "بدون", "غير", "عدا", "إلا")
+
+    /**
+     * هل ذُكر [term] (عادة اسم عشبة) بصيغة منفية داخل السؤال؟ نفي "حقيقي" =
+     * وجود أداة نفي ضمن ٣ كلمات قبل ورود أول كلمة من [term] مباشرة، لا نفي
+     * عشوائي بأي مكان من الجملة — مثال واقعي: "اقترح عشبة للنوم بس مو
+     * البابونج" ينفي "البابونج" تحديداً لا "النوم". يُستخدم لاستبعاد عشبة
+     * ذكر المستخدم صراحة أنه لا يريدها من نتائج الاقتراح، بدل تجاهل النفي
+     * كلياً وترشيحها له رغم ذلك.
+     */
+    private fun isNegatedMention(qNorm: String, term: String): Boolean {
+        val termNorm = normalize(term)
+        if (termNorm.isBlank()) return false
+        val words = qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val firstTermWord = termNorm.split(Regex("\\s+")).firstOrNull { it.isNotBlank() } ?: return false
+        val idx = words.indexOfFirst { it == firstTermWord || it.contains(firstTermWord) || firstTermWord.contains(it) }
+        if (idx < 0) return false
+        val windowStart = (idx - 3).coerceAtLeast(0)
+        return (windowStart until idx).any { words[it] in negationTriggers }
+    }
+
+    // ── قدرة جديدة: تلميحات عمرية/مدة صريحة بالسؤال ──────────────────────
+
+    private val childMentionWords = listOf("طفل", "أطفال", "اطفال", "رضيع", "رضع", "صغير", "صغيرة")
+
+    /**
+     * قدرة جديدة: التقاط تلميحات "عمرية/مدة استخدام" صريحة بالسؤال (طفل/
+     * رضيع، عمر برقم محدَّد، أو مدة كأسبوع/أشهر) — تفاصيل نادراً ما تحويها
+     * الموسوعة بدقة كافية لأي عمر/مدة بعينها. بدل تجاهلها كلياً وعرض جواب
+     * عام وكأنه يغطيها، تُضاف ملاحظة صريحة بنهاية الجواب تنبّه أن هذا
+     * التفصيل بالذات يستحق تأكيداً من مختص، لا افتراض أن الجواب العام يكفي.
+     * `null` إن لم يذكر السؤال أي تلميح من هذا النوع، فلا تُضاف أي ملاحظة.
+     */
+    private fun contextHint(question: String): String? {
+        val qNorm = normalize(question)
+        val hasChild = containsAny(qNorm, childMentionWords)
+        val hasAgeNumber = Regex("\\d+\\s*(سنة|سنين|شهر|اشهر|أشهر)").containsMatchIn(qNorm)
+        val hasDuration = containsAny(qNorm, listOf("اسبوع", "أسبوع", "اسابيع", "أسابيع", "شهرين", "أشهر", "اشهر"))
+        return when {
+            hasChild || hasAgeNumber ->
+                "📌 لاحظت إنك بتسأل عن حالة عمرية محدَّدة (طفل/عمر معيّن) — بيانات الموسوعة عامة وغير مفصَّلة حسب العمر، فاستشارة طبيب أو صيدلاني هون أهم من العادة."
+            hasDuration ->
+                "📌 لاحظت إنك ذكرت مدة استخدام محدَّدة — الموسوعة لا تحدد مدة استخدام آمنة بدقة، يُفضَّل تأكيدها من مختص قبل الالتزام بها."
+            else -> null
+        }
+    }
+
+    /** يُلحق [contextHint] بنهاية الجواب إن وُجد تلميح فعلاً، وإلا يُعاد النص كما هو دون أي تعديل. */
+    private fun withContextHint(text: String, question: String): String {
+        val hint = contextHint(question) ?: return text
+        return "$text\n\n$hint"
+    }
+
 
     // ── فهرس "مفهوم تلقائياً" من نصوص الموسوعة نفسها ────────────────────
 
@@ -1064,14 +1151,28 @@ object HerbAssistant {
      * فلا معنى لتضييقه على التركيز السابق)، مع بقاء السؤال قصيراً نسبياً
      * (١٢ كلمة كحد أقصى) تحوّطاً من اعتبار سؤال طويل جديد كلياً امتداداً
      * لحديث سابق لمجرد احتوائه كلمة نية عابرة ضمن موضوع مختلف تماماً.
+     *
+     * قدرة جديدة — تكملة موضوعية بلا كلمة نية صريحة: مشكلة حقيقية كانت
+     * تفوت هنا: سؤال متابعة قصير مثل "طيب وشو عن الحامل؟" أو "بس كم المدة؟"
+     * قد لا يحوي أي كلمة من قوائم النيّات حرفياً، فيُعامَل كسؤال عام جديد
+     * يفقد التركيز السابق رغم وضوح أنه استكمال لنفس الحديث لأي قارئ. الآن،
+     * إن فشل شرط كلمة النية، يُفحَص شرط أخف: سؤال قصير جداً (٨ كلمات كحد
+     * أقصى) يبدأ بأداة "استكمال حديث" شائعة (طيب/وشو/وهل/بس/كمان...) — هذه
+     * الأدوات نادراً ما تبدأ سؤالاً مستقلاً كلياً بلا سياق سابق، فوجودها في
+     * بداية سؤال قصير مؤشر قوي على أنه تكملة لا بداية جديدة.
      */
+    private val followUpCues = listOf(
+        "طيب", "وشو", "وهل", "بس", "كمان", "وماذا", "وايش", "ومتى", "وكم", "ليش", "وين"
+    )
+
     fun isFollowUpQuestion(question: String): Boolean {
         val qNorm = normalize(question)
         if (qNorm.isBlank()) return false
         if (isSuggestionIntent(qNorm)) return false
         val wordCount = qNorm.split(Regex("\\s+")).count { it.isNotBlank() }
         if (wordCount > 12) return false
-        return rankedIntents(qNorm).isNotEmpty()
+        if (rankedIntents(qNorm).isNotEmpty()) return true
+        return wordCount <= 8 && followUpCues.any { qNorm.startsWith(normalize(it)) }
     }
 
     /** توافقاً مع الاستدعاءات القديمة (مثل اختبار أدوات المطور) التي تحتاج النص فقط. */
@@ -1151,27 +1252,46 @@ object HerbAssistant {
         // في الترتيب بدل السقوط مباشرة للبحث الحر العام. عند تعادل الدرجات
         // يُحافَظ على ترتيب الأولوية الطبي الآمن نفسه (دمج > أمان > استخدام
         // > مقارنة > فوائد) لأن التحذيرات يجب أن تسبق الفوائد دوماً.
-        for (intent in rankedIntents(qNorm)) {
+        val ranked = rankedIntents(qNorm)
+
+        // "دمج" و"خطة" حصريتان دوماً كما كانتا: إن تحققت شروطهما تُعطيان
+        // الأولوية المطلقة وتُرجعان فوراً بلا أي دمج مع نيات أخرى، لأن كلتيهما
+        // أصلاً رد مركَّب من عدة حقول معاً (لا معنى لدمجه بحقل منفصل آخر).
+        for (intent in ranked) {
             when (intent) {
                 "combine" -> if (allowCompare && specific && herbs.size >= 2) {
-                    return AssistantReply(buildCombineAnswer(herbs), false)
+                    return AssistantReply(withContextHint(buildCombineAnswer(herbs), question), false)
                 }
                 "plan" -> if (specific) {
-                    return AssistantReply(buildPlanAnswer(herbs), false)
-                }
-                "safety" -> if (specific) {
-                    return AssistantReply(buildSafetyAnswer(herbs, qNorm), false)
-                }
-                "usage" -> if (specific) {
-                    return AssistantReply(buildUsageAnswer(herbs), false)
-                }
-                "compare" -> if (allowCompare && specific && herbs.size >= 2) {
-                    return AssistantReply(buildOverview(herbs), false)
-                }
-                "benefits" -> if (specific) {
-                    return AssistantReply(buildBenefitsAnswer(herbs, qNorm), false)
+                    return AssistantReply(withContextHint(buildPlanAnswer(herbs), question), false)
                 }
             }
+        }
+
+        // قدرة جديدة: أسئلة "مركّبة" تحمل أكثر من نية قابلة للدمج معاً (أمان/
+        // استخدام/مقارنة/فائدة) بنفس الجملة — بدل الاكتفاء بأقوى نية وتجاهل
+        // البقية كما كان سابقاً، تُجمَع كل النيات المطابقة فعلياً (بحد أقصى
+        // ٣ لتبقى الإجابة مقروءة) بجواب واحد بعناوين واضحة لكل قسم. إن
+        // طابقت نية واحدة فقط، يبقى السلوك مطابقاً تماماً لما كان سابقاً
+        // (نفس دالة البناء ونفس الصياغة) بلا أي تغيير ملحوظ.
+        val combinable = ranked.filter { it == "safety" || it == "usage" || it == "compare" || it == "benefits" }
+            .filter { intent ->
+                when (intent) {
+                    "compare" -> allowCompare && specific && herbs.size >= 2
+                    else -> specific
+                }
+            }
+        if (combinable.size >= 2) {
+            return AssistantReply(withContextHint(buildCombinedAnswer(combinable.take(3), herbs, qNorm), question), false)
+        }
+        if (combinable.size == 1) {
+            val text = when (combinable.first()) {
+                "safety" -> buildSafetyAnswer(herbs, qNorm)
+                "usage" -> buildUsageAnswer(herbs)
+                "compare" -> buildOverview(herbs)
+                else -> buildBenefitsAnswer(herbs, qNorm)
+            }
+            return AssistantReply(withContextHint(text, question), false)
         }
 
         // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
@@ -1181,11 +1301,36 @@ object HerbAssistant {
         // (فتُغطّى أصلاً عبر فروع الفائدة/الاستخدام أعلاه) بدل خطفها هنا.
         if (!specific && isSuggestionIntent(qNorm)) {
             val (text, learnable) = buildSuggestionAnswer(question, herbs)
-            return AssistantReply(text, learnable)
+            return AssistantReply(withContextHint(text, question), learnable)
         }
 
         val (text, learnable) = buildGeneralSearchAnswer(question, herbs, blends)
-        return AssistantReply(text, learnable)
+        return AssistantReply(withContextHint(text, question), learnable)
+    }
+
+    /**
+     * قدرة جديدة: دمج أكثر من نية "قابلة للدمج" (أمان/استخدام/مقارنة/فائدة)
+     * في جواب واحد بعناوين واضحة لكل قسم، بدل إجبار المستخدم على سؤال كل
+     * نية على حدة عندما يسألها فعلياً بنفس الجملة (مثال حقيقي: "ما أضرار
+     * وطريقة استخدام الزنجبيل؟" — تحذير + استخدام معاً بنفس السؤال).
+     */
+    private fun buildCombinedAnswer(intents: List<String>, herbs: List<Herb>, qNorm: String): String {
+        val sectionTitles = mapOf(
+            "safety" to "⚠️ التحذيرات والأضرار",
+            "usage" to "💊 طريقة الاستخدام",
+            "compare" to "🔍 المقارنة",
+            "benefits" to "🌿 الفوائد"
+        )
+        return intents.joinToString("\n\n") { intent ->
+            val title = sectionTitles[intent] ?: intent
+            val body = when (intent) {
+                "safety" -> buildSafetyAnswer(herbs, qNorm)
+                "usage" -> buildUsageAnswer(herbs)
+                "compare" -> buildOverview(herbs)
+                else -> buildBenefitsAnswer(herbs, qNorm)
+            }
+            "$title:\n${body.trim()}"
+        }
     }
 
     private val combineIntentWords = listOf("جمع", "دمج", "معا", "معاً", "سوية", "سويا", "نفس الوقت", "تفاعل", "خلط")
@@ -1404,8 +1549,16 @@ object HerbAssistant {
             "الاسم" to 0.5
         )
 
+        // قدرة جديدة — فهم النفي: "اقترح عشبة للنوم بس مو البابونج" يجب ألا
+        // يرشّح البابونج رغم مطابقته الموضوع، لأن المستخدم استبعده صراحة.
+        // تُستبعد أي عشبة ذُكر اسمها بصيغة منفية قبل بناء المرشَّحين أصلاً،
+        // لا بعد الترشيح، حتى لا تُزاحم عشبة مستبعدة عشبة أخرى فعلاً مناسبة
+        // من حصص "أفضل ٣" أدناه.
+        val excludedByNegation = herbs.filter { isNegatedMention(qNorm, it.name) }.toSet()
+        val candidateHerbs = if (excludedByNegation.isEmpty()) herbs else herbs.filterNot { it in excludedByNegation }
+
         val bestPerHerb = mutableMapOf<Herb, HerbMatch>()
-        herbs.forEach { herb ->
+        candidateHerbs.forEach { herb ->
             searchableFields.forEach { (label, getter) ->
                 val weight = fieldWeight[label] ?: 1.0
                 splitPoints(getter(herb)).forEach { point ->
@@ -1440,6 +1593,13 @@ object HerbAssistant {
             return "لم أجد في بيانات الموسوعة عشبة ترتبط مباشرة بما طلبته، رغم أنني وسّعت البحث أكثر من مرة. جرّب صياغة الهدف بكلمة مختلفة، أو اذكر عرضاً أو فائدة أكثر تحديداً." to false
         }
 
+        // قدرة جديدة — مؤشر ثقة: تطابق ضعيف (أعلى بقليل فقط من العتبة) لا
+        // يستحق نفس ثقة تطابق قوي واضح. بدل عرض الجواب بنفس لهجة الحسم
+        // دوماً، يُقاس أقوى تطابق فعلياً مقابل عتبة أعلى بكثير من عتبة القبول
+        // الأدنى؛ إن لم يبلغها، تُستخدم صياغة افتتاحية أكثر تحفّظاً تنبّه
+        // المستخدم أن الترشيح تقريبي لا شبه مؤكَّد.
+        val lowConfidence = ranked.first().value.score < AiConfig.searchThreshold * 2.2
+
         // ── جملة تركيبية صريحة (لا مجرد نسخ/لصق نقاط متفرّقة) ────────────
         // مشكلة حقيقية أُبلغ عنها: كان الرد يعرض النقاط المطابقة فقط دون أي
         // جملة واضحة تجمعها، فيبدو وكأن سيمو "لصق" مقتطفات بلا فهم حقيقي.
@@ -1450,10 +1610,15 @@ object HerbAssistant {
             if (topicLabel != null) {
                 append("فهمت من سؤالك أنك تبحث عن عشبة تساعد في \"$topicLabel\". ")
             }
-            if (triedHarder) {
-                append("وسّعت البحث أكثر من مرة في بيانات الموسوعة، وهذه أقرب الأعشاب المتوفرة لهدفك:\n\n")
-            } else {
-                append("بحثت وحلّلت بيانات الموسوعة، وهذه أنسب الأعشاب المتوفرة لهدفك:\n\n")
+            when {
+                triedHarder && lowConfidence ->
+                    append("وسّعت البحث أكثر من مرة، ومش متأكد تماماً من دقة الترشيح، بس هاي أقرب الأعشاب المتوفرة لهدفك:\n\n")
+                triedHarder ->
+                    append("وسّعت البحث أكثر من مرة في بيانات الموسوعة، وهذه أقرب الأعشاب المتوفرة لهدفك:\n\n")
+                lowConfidence ->
+                    append("مش متأكد تماماً من دقة الترشيح، بس هاي أقرب الأعشاب المتوفرة لهدفك بحسب بيانات الموسوعة:\n\n")
+                else ->
+                    append("بحثت وحلّلت بيانات الموسوعة، وهذه أنسب الأعشاب المتوفرة لهدفك:\n\n")
             }
             ranked.forEachIndexed { i, entry ->
                 val herb = entry.key
@@ -1467,6 +1632,9 @@ object HerbAssistant {
                 else "الأعشاب ${ranked.joinToString("، ") { it.key.name }} كلها تساعد بحسب بيانات الموسوعة"
             )
             append(if (topicLabel != null) " في $topicLabel.\n\n" else " لهدفك.\n\n")
+            if (excludedByNegation.isNotEmpty()) {
+                append("(استبعدت ${herbNames(excludedByNegation)} بناءً على طلبك.)\n\n")
+            }
             append("هذه النتائج مبنية فقط على نصوص الموسوعة، وليست بديلاً عن استشارة طبيب أو صيدلاني، خصوصاً مع وجود حمل أو أدوية أو حالة صحية مزمنة.")
         }
         return text to true
@@ -1610,7 +1778,18 @@ object HerbAssistant {
 
         val organized = organizeHits(hits)
         val organizedBlends = organizeBlendHits(blendHits)
-        return composeAnswer(organized, organizedBlends, triedHarder) to true
+
+        // قدرة جديدة — مؤشر ثقة: أقوى نتيجة فعلية (بغضّ النظر عن كونها من
+        // أعشاب أو خلطات) تُقاس مقابل عتبة أعلى بكثير من عتبة القبول الأدنى؛
+        // إن لم تبلغها، تُستخدم صياغة افتتاحية أكثر تحفّظاً في [composeAnswer]
+        // بدل الإيحاء بنفس درجة الثقة لكل نتيجة بغضّ النظر عن قوة تطابقها.
+        val topScore = maxOf(
+            hits.maxOfOrNull { it.score } ?: 0.0,
+            blendHits.maxOfOrNull { it.score } ?: 0.0
+        )
+        val lowConfidence = topScore < AiConfig.searchThreshold * 2.2
+
+        return composeAnswer(organized, organizedBlends, triedHarder, lowConfidence) to true
     }
 
     /**
@@ -1712,12 +1891,18 @@ object HerbAssistant {
     private fun composeAnswer(
         organized: Map<Herb, List<SearchHit>>,
         organizedBlends: Map<Blend, List<BlendHit>> = emptyMap(),
-        triedHarder: Boolean = false
+        triedHarder: Boolean = false,
+        lowConfidence: Boolean = false
     ): String = buildString {
-        if (triedHarder) {
-            append("بحثت في كل زوايا الموسوعة ووسّعت البحث أكثر من مرة قبل أن أصل لهذا:\n\n")
-        } else {
-            append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
+        when {
+            triedHarder && lowConfidence ->
+                append("بحثت في كل زوايا الموسوعة ووسّعت البحث أكثر من مرة، ومش متأكد تماماً من دقة هذا الجواب، بس هاي أقرب النتائج لسؤالك:\n\n")
+            triedHarder ->
+                append("بحثت في كل زوايا الموسوعة ووسّعت البحث أكثر من مرة قبل أن أصل لهذا:\n\n")
+            lowConfidence ->
+                append("مش متأكد تماماً من دقة هذا الجواب، بس هاي أقرب نتيجة لقيتها ضمن بيانات الموسوعة:\n\n")
+            else ->
+                append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
         }
         organized.forEach { (herb, herbHits) ->
             append("🔸 ${herb.name}:\n")
