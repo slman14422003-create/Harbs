@@ -10,6 +10,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,23 +54,39 @@ class MainActivity : ComponentActivity() {
                 controller.isAppearanceLightNavigationBars = !useDark
             }
 
-            HerbalEncyclopediaTheme(
-                darkTheme = useDark,
-                dynamicColor = dynamicColorPref,
-                palette = themePalette,
-                fontScale = fontScale
-            ) {
-                // بدون هذا، اختيار "اقتصادي" من الإعدادات كان يُحفظ في
-                // DataStore فقط دون أي أثر فعلي: LocalPerformanceMode لم
-                // يكن يُزوَّد (provide) بالقيمة الحقيقية في أي مكان بالتطبيق،
-                // فكانت كل مكوّنات الزجاج السائل (LiquidGlassSurface وغيرها)
-                // تقرأ دائماً القيمة الافتراضية HIGH_QUALITY بغض النظر عن
-                // اختيار المستخدم — هذا هو إصلاح "الزر الاقتصادي".
-                CompositionLocalProvider(LocalPerformanceMode provides performanceMode) {
-                    HerbalNavGraph(
-                        appViewModel = appViewModel,
-                        preferencesRepository = container.preferencesRepository
-                    )
+            // إصلاح جوهري: التطبيق بالكامل نصوصه عربية فقط (لا توجد أي موارد
+            // values-en أو غيرها، انظر strings.xml)، لكن اتجاه التخطيط
+            // (LayoutDirection) في Compose كان يُترك بلا تحديد صريح، فيتبع
+            // حينها لغة نظام الجهاز حرفياً بدل محتوى التطبيق نفسه: أي مستخدم
+            // بجهاز على لغة إنجليزية (شائع حتى بين مستخدمين عرب) كان يحصل على
+            // تخطيط LTR بالكامل رغم أن كل نص معروض عربي — وهذا بالضبط ما كان
+            // يُنتج ترتيب فقرات/أيقونات معكوساً، وأخطر من ذلك: خوارزمية
+            // Bidi نفسها (اتجاه الفقرة الأساسي LTR لمحتوى RTL بالكامل) تُنتج
+            // إعادة ترتيب فعلية لمواضع الكلمات والأقواس داخل نفس السطر (مثال
+            // فعلي أُبلغ عنه: تسمية حقل بين قوسين مثل "[الفوائد]" في رد سيمو
+            // كانت تظهر في نهاية السطر بدل بدايته). فرض RTL هنا صراحةً على
+            // مستوى التطبيق كاملاً (بدل الاعتماد على تخمين النظام) يجعل كل
+            // شاشة وكل فقاعة دردشة تُعرض بالاتجاه الصحيح فعلياً بغضّ النظر
+            // عن لغة نظام الجهاز.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                HerbalEncyclopediaTheme(
+                    darkTheme = useDark,
+                    dynamicColor = dynamicColorPref,
+                    palette = themePalette,
+                    fontScale = fontScale
+                ) {
+                    // بدون هذا، اختيار "اقتصادي" من الإعدادات كان يُحفظ في
+                    // DataStore فقط دون أي أثر فعلي: LocalPerformanceMode لم
+                    // يكن يُزوَّد (provide) بالقيمة الحقيقية في أي مكان بالتطبيق،
+                    // فكانت كل مكوّنات الزجاج السائل (LiquidGlassSurface وغيرها)
+                    // تقرأ دائماً القيمة الافتراضية HIGH_QUALITY بغض النظر عن
+                    // اختيار المستخدم — هذا هو إصلاح "الزر الاقتصادي".
+                    CompositionLocalProvider(LocalPerformanceMode provides performanceMode) {
+                        HerbalNavGraph(
+                            appViewModel = appViewModel,
+                            preferencesRepository = container.preferencesRepository
+                        )
+                    }
                 }
             }
         }
