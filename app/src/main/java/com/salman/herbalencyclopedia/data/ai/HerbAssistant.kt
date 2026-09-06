@@ -878,11 +878,27 @@ object HerbAssistant {
         val qTokens = qNorm.split(Regex("\\s+")).filter { it.length > 1 }
         if (qTokens.isEmpty()) return emptyList()
 
+        // مشكلة حقيقية أُبلغ عنها ("سيمو يخربط"): مطابقة الاحتواء المتبادل
+        // (qt.contains(nt) || nt.contains(qt)) كانت مقبولة لأي طول كلمة، فكلمة
+        // قصيرة جداً ضمن اسم عشبة (مثل حرفين أو ثلاثة) تتكرر بالصدفة داخل كلمة
+        // عادية غير متعلّقة إطلاقاً بالسؤال (كلمة قصيرة يسهل ورودها كجزء من
+        // كلمات كثيرة) كانت تكفي وحدها لنسب السؤال بالكامل لعشبة لم يقصدها
+        // المستخدم أبداً — فتُبنى الإجابة على سياق العشبة الخطأ بصمت (خطأ لا
+        // يظهر كرسالة "لم أجد"، بل كإجابة تبدو صحيحة لكنها عن الموضوع الخطأ).
+        // الحل: يُشترط الآن طول لا يقل عن ٣ أحرف لقبول الاحتواء الجزئي بين
+        // كلمة من اسم العشبة وكلمة من السؤال؛ الكلمات الأقصر (حرفان) تحتاج
+        // تطابقاً تاماً فقط. هذا يبقي التقاط فروق "ال" التعريف وصيغ الجمع/
+        // المفرد كما هو (الفارق عادة حرف أو حرفان في كلمة لا تزال طويلة بما
+        // يكفي) بينما يمنع تطابقات عابرة لا معنى لها بين كلمتين قصيرتين جداً.
         return allHerbs.filter { herb ->
             if (herb.name.isBlank()) return@filter false
             val nameTokens = normalize(herb.name).split(Regex("\\s+")).filter { it.length > 1 }
             if (nameTokens.isEmpty()) return@filter false
-            nameTokens.all { nt -> qTokens.any { qt -> qt == nt || qt.contains(nt) || nt.contains(qt) } }
+            nameTokens.all { nt ->
+                qTokens.any { qt ->
+                    qt == nt || (nt.length >= 3 && qt.length >= 3 && (qt.contains(nt) || nt.contains(qt)))
+                }
+            }
         }
     }
 
@@ -1012,46 +1028,89 @@ object HerbAssistant {
         // البحث الحر بدل تكرار كل عشبة، تفادياً لإغراق الدردشة بإجابة ضخمة
         // لم يطلبها أحد — نفس مبدأ "لا مقارنة أو استعراض إلا عند الطلب".
         val specific = herbs.size <= 3
-        return when {
-            containsAny(qNorm, listOf("مرحبا", "اهلا", "أهلا", "السلام عليكم", "hello", "hi")) ->
-                AssistantReply(
-                    "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
-                    false
-                )
 
-            containsAny(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور")) ->
-                AssistantReply("عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.", false)
+        if (containsAny(qNorm, listOf("مرحبا", "اهلا", "أهلا", "السلام عليكم", "hello", "hi"))) {
+            return AssistantReply(
+                "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
+                false
+            )
+        }
+        if (containsAny(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور"))) {
+            return AssistantReply("عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.", false)
+        }
 
-            allowCompare && specific && herbs.size >= 2 && containsAny(qNorm, listOf("جمع", "دمج", "معا", "معاً", "سوية", "سويا", "نفس الوقت", "تفاعل", "خلط")) ->
-                AssistantReply(buildCombineAnswer(herbs), false)
-
-            specific && containsAny(qNorm, listOf("خطر", "اضرار", "أضرار", "تحذير", "حامل", "حمل", "رضاعة", "رضاعه", "طفل", "اطفال", "أطفال", "امان", "أمان", "اثار جانبية", "آثار جانبية")) ->
-                AssistantReply(buildSafetyAnswer(herbs, qNorm), false)
-
-            specific && containsAny(qNorm, listOf("استخدام", "استعمال", "طريقة", "طريقه", "كيف استخدم", "جرعة", "جرعه", "مقدار")) ->
-                AssistantReply(buildUsageAnswer(herbs), false)
-
-            allowCompare && specific && herbs.size >= 2 && containsAny(qNorm, listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")) ->
-                AssistantReply(buildOverview(herbs) + "\n\n" + buildSafetyGlance(herbs), false)
-
-            specific && containsAny(qNorm, listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد") + HealthTopicSynonyms.allWords) ->
-                AssistantReply(buildBenefitsAnswer(herbs, qNorm), false)
-
-            // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
-            // (لا إرفاق ولا ذكر اسم صريح) — عندها "الاقتراح" له معنى فعلياً،
-            // وهو اختيار الأنسب من كامل الموسوعة بدل عشبة واحدة معروفة أصلاً.
-            // إن كانت هناك عشبة محدَّدة، تُعامَل الكلمة كجزء عادي من سؤال عادي
-            // (فتُغطّى أصلاً عبر فروع الفائدة/الاستخدام أعلاه) بدل خطفها هنا.
-            !specific && isSuggestionIntent(qNorm) -> {
-                val (text, learnable) = buildSuggestionAnswer(question, herbs)
-                AssistantReply(text, learnable)
-            }
-
-            else -> {
-                val (text, learnable) = buildGeneralSearchAnswer(question, herbs, blends)
-                AssistantReply(text, learnable)
+        // ── تصنيف النية "بالنقاط" بدل أول شرط يتحقق بترتيب ثابت ──────────
+        // مشكلة حقيقية أُبلغ عنها ("سيمو لسا يخربط بالإجابة"): سؤال يحمل
+        // كلمات تخصّ أكثر من نية معاً (مثل "ما أضرار وطريقة استخدام
+        // الزنجبيل؟" — تحذير + استخدام معاً، أو "ايهما أفضل لعلاج الأرق؟" —
+        // مقارنة + فائدة معاً) كان يُصنَّف دوماً حسب أي فرع مكتوب أولاً في
+        // الكود، بغضّ النظر عن أن كلمات نية أخرى قد تكون أوضح فعلياً في نص
+        // السؤال. الآن تُحسب درجة كل نية (عدد كلماتها المفتاحية المطابقة
+        // فعلياً)، وتُرتَّب النيّات تنازلياً حسب هذه الدرجة عبر
+        // [rankedIntents] فتُجرَّب الأقوى فعلياً أولاً؛ فإن فشل "شرطها"
+        // الخاص (مثلاً "مقارنة" لكن لا توجد عشبتان فعلياً)، يُجرَّب ما يليها
+        // في الترتيب بدل السقوط مباشرة للبحث الحر العام. عند تعادل الدرجات
+        // يُحافَظ على ترتيب الأولوية الطبي الآمن نفسه (دمج > أمان > استخدام
+        // > مقارنة > فوائد) لأن التحذيرات يجب أن تسبق الفوائد دوماً.
+        for (intent in rankedIntents(qNorm)) {
+            when (intent) {
+                "combine" -> if (allowCompare && specific && herbs.size >= 2) {
+                    return AssistantReply(buildCombineAnswer(herbs), false)
+                }
+                "safety" -> if (specific) {
+                    return AssistantReply(buildSafetyAnswer(herbs, qNorm), false)
+                }
+                "usage" -> if (specific) {
+                    return AssistantReply(buildUsageAnswer(herbs), false)
+                }
+                "compare" -> if (allowCompare && specific && herbs.size >= 2) {
+                    return AssistantReply(buildOverview(herbs) + "\n\n" + buildSafetyGlance(herbs), false)
+                }
+                "benefits" -> if (specific) {
+                    return AssistantReply(buildBenefitsAnswer(herbs, qNorm), false)
+                }
             }
         }
+
+        // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
+        // (لا إرفاق ولا ذكر اسم صريح) — عندها "الاقتراح" له معنى فعلياً،
+        // وهو اختيار الأنسب من كامل الموسوعة بدل عشبة واحدة معروفة أصلاً.
+        // إن كانت هناك عشبة محدَّدة، تُعامَل الكلمة كجزء عادي من سؤال عادي
+        // (فتُغطّى أصلاً عبر فروع الفائدة/الاستخدام أعلاه) بدل خطفها هنا.
+        if (!specific && isSuggestionIntent(qNorm)) {
+            val (text, learnable) = buildSuggestionAnswer(question, herbs)
+            return AssistantReply(text, learnable)
+        }
+
+        val (text, learnable) = buildGeneralSearchAnswer(question, herbs, blends)
+        return AssistantReply(text, learnable)
+    }
+
+    private val combineIntentWords = listOf("جمع", "دمج", "معا", "معاً", "سوية", "سويا", "نفس الوقت", "تفاعل", "خلط")
+    private val safetyIntentWords = listOf("خطر", "اضرار", "أضرار", "تحذير", "حامل", "حمل", "رضاعة", "رضاعه", "طفل", "اطفال", "أطفال", "امان", "أمان", "اثار جانبية", "آثار جانبية")
+    private val usageIntentWords = listOf("استخدام", "استعمال", "طريقة", "طريقه", "كيف استخدم", "جرعة", "جرعه", "مقدار")
+    private val compareIntentWords = listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")
+    private val benefitsIntentWords = listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد")
+
+    /**
+     * يرتّب أسماء النيّات المحتملة (combine/safety/usage/compare/benefits)
+     * تنازلياً حسب عدد كلماتها المفتاحية المطابقة فعلياً في [qNorm]
+     * (المُطبَّع مسبقاً)، مع استبعاد أي نية لم تُطابَق إطلاقاً (درجتها صفر).
+     * الترتيب الابتدائي في الخريطة (قبل الفرز) هو ترتيب الأولوية الطبي
+     * الآمن نفسه المستخدم سابقاً، و`sortedByDescending` مستقرّ (Stable Sort)
+     * في Kotlin فيحافظ على هذا الترتيب تلقائياً عند تعادل الدرجات — تماماً
+     * كما كان السلوك السابق عند تطابق نية واحدة فقط.
+     */
+    private fun rankedIntents(qNorm: String): List<String> {
+        val priorityOrder = listOf("combine", "safety", "usage", "compare", "benefits")
+        val scores = mapOf(
+            "combine" to combineIntentWords.count { qNorm.contains(normalize(it)) },
+            "safety" to safetyIntentWords.count { qNorm.contains(normalize(it)) },
+            "usage" to usageIntentWords.count { qNorm.contains(normalize(it)) },
+            "compare" to compareIntentWords.count { qNorm.contains(normalize(it)) },
+            "benefits" to (benefitsIntentWords + HealthTopicSynonyms.allWords).count { qNorm.contains(normalize(it)) }
+        )
+        return priorityOrder.filter { (scores[it] ?: 0) > 0 }.sortedByDescending { scores[it] ?: 0 }
     }
 
     private fun buildCombineAnswer(herbs: List<Herb>): String = buildString {
