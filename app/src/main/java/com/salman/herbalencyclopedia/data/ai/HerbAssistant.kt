@@ -449,77 +449,83 @@ object HerbAssistant {
      * مقتصراً على التنحيف فقط.
      */
     private object HealthTopicSynonyms {
-        private val rawClusters: List<Set<String>> = listOf(
+        // كل مجموعة الآن معنونة (label ← كلماتها) بدل مجموعة كلمات مجهولة —
+        // العنوان يُستخدم لاحقاً في [buildSuggestionAnswer] ليصرّح سيمو
+        // صراحةً بالموضوع الذي "فهمه" من السؤال (مثل "إنقاص الوزن") بدل
+        // الاكتفاء بعرض نتائج مطابقة بلا أي إشارة لفهم الهدف الفعلي.
+        private val rawClusters: List<Pair<String, Set<String>>> = listOf(
             // التنحيف/إنقاص الوزن — المجموعة التي عالجت المشكلة المُبلَغ عنها
             // أولاً. "تخفيف" و"حرق" أُزيلتا عمداً (عامّتان جداً، انظر التوثيق
             // أعلاه)؛ "دهون/سمنة/الوزن..." كافية وحدها لتفعيل الموضوع.
-            setOf(
+            "إنقاص الوزن" to setOf(
                 "تنحيف", "تخسيس", "رجيم", "دايت", "حمية", "انقاص", "إنقاص",
                 "الوزن", "وزن", "دهون", "الدهون", "سمنة", "السمنة", "نحافة",
                 "خسارة", "كرش", "الكرش"
             ),
             // الألم/الوجع — المجموعة التي عالجت مشكلة "تخفيف الألم" المُبلَغ
             // عنها (كانت تُخطف بمجموعة الوزن أعلاه بسبب كلمة "تخفيف" العامة).
-            setOf(
+            "تخفيف الألم" to setOf(
                 "الم", "ألم", "الألم", "اوجاع", "أوجاع", "الأوجاع", "وجع", "الوجع",
                 "وجعة", "مغص", "تشنج", "تشنجات", "مسكن", "مسكنات", "تسكين",
                 "يسكن", "صداع", "الصداع"
             ),
             // النوم/الأرق.
-            setOf(
+            "تحسين النوم" to setOf(
                 "نوم", "النوم", "أرق", "ارق", "الأرق", "سهر", "السهر", "مهدئ",
                 "مهدئات", "منوم", "منومات"
             ),
             // الهضم والجهاز الهضمي.
-            setOf(
+            "الهضم" to setOf(
                 "هضم", "الهضم", "غازات", "الغازات", "انتفاخ", "الانتفاخ",
                 "قولون", "القولون", "امساك", "الامساك", "إمساك", "اسهال",
                 "الاسهال", "إسهال", "غثيان", "الغثيان", "قيء", "القيء", "استفراغ"
             ),
             // المناعة ونزلات البرد والجهاز التنفسي.
-            setOf(
+            "تقوية المناعة" to setOf(
                 "مناعة", "المناعة", "برد", "البرد", "زكام", "الزكام",
                 "انفلونزا", "الانفلونزا", "رشح", "الرشح", "سعال", "كحة", "الكحة",
                 "ربو", "الربو", "تنفس", "التنفس", "بلغم", "البلغم", "احتقان", "الاحتقان"
             ),
             // التوتر والقلق.
-            setOf(
+            "تهدئة التوتر والقلق" to setOf(
                 "توتر", "التوتر", "قلق", "القلق", "عصبية", "العصبية",
                 "اعصاب", "الأعصاب", "استرخاء"
             ),
             // ضغط الدم والقلب والسكري.
-            setOf(
+            "ضغط الدم والقلب والسكري" to setOf(
                 "ضغط", "الضغط", "قلب", "القلب", "كولسترول", "الكولسترول",
                 "سكري", "السكري", "سكر", "السكر", "شرايين", "الشرايين"
             ),
             // الكبد والكلى وتنقية الجسم.
-            setOf(
+            "الكبد والكلى" to setOf(
                 "كبد", "الكبد", "كلى", "الكلى", "كلية", "الكلية", "سموم",
                 "السموم", "تنقية", "تسمم"
             ),
             // البشرة والشعر.
-            setOf(
+            "البشرة والشعر" to setOf(
                 "بشرة", "البشرة", "جلد", "الجلد", "حبوب", "الحبوب", "اكزيما",
                 "الاكزيما", "حكة", "الحكة", "شعر", "الشعر", "تساقط",
                 "قشرة", "القشرة"
             ),
             // الدورة الشهرية والصحة الإنجابية.
-            setOf(
+            "الدورة الشهرية" to setOf(
                 "طمث", "الطمث", "حيض", "الحيض", "رحم", "الرحم",
                 "خصوبة", "الخصوبة", "هرمونات", "الهرمونات"
             )
         )
 
-        private val clusters: List<Set<String>> by lazy { rawClusters.map { c -> c.map { normalize(it) }.toSet() } }
+        private val clusters: List<Pair<String, Set<String>>> by lazy {
+            rawClusters.map { (label, words) -> label to words.map { normalize(it) }.toSet() }
+        }
 
         private val lookup: Map<String, Set<String>> by lazy {
             val map = mutableMapOf<String, MutableSet<String>>()
-            clusters.forEach { cluster -> cluster.forEach { word -> map.getOrPut(word) { mutableSetOf() }.addAll(cluster) } }
+            clusters.forEach { (_, cluster) -> cluster.forEach { word -> map.getOrPut(word) { mutableSetOf() }.addAll(cluster) } }
             map
         }
 
         /** كل كلمات كل المجموعات مسطّحة — تُستخدم لتفعيل نية سؤال محدَّد (مثل فروع فائدة/اقتراح). */
-        val allWords: List<String> by lazy { clusters.flatten() }
+        val allWords: List<String> by lazy { clusters.flatMap { it.second } }
 
         /** يوسّع كلمات السؤال بمرادفات مجموعتها الموضوعية إن وُجدت (إضافة فهم، لا حذف). */
         fun expand(words: Set<String>): Set<String> =
@@ -527,7 +533,17 @@ object HerbAssistant {
 
         /** يعيد مجموعة الموضوع كاملة إن ذكر نص السؤال (المُطبَّع) أي كلمة منها، وإلا null. */
         fun clusterMentionedIn(qNorm: String): Set<String>? =
-            clusters.firstOrNull { cluster -> cluster.any { qNorm.contains(it) } }
+            clusters.firstOrNull { (_, cluster) -> cluster.any { qNorm.contains(it) } }?.second
+
+        /**
+         * عنوان الموضوع الصحي (بالعربية الفصحى، جاهز للعرض مباشرة في رد
+         * سيمو) إن ذكر السؤال أي كلمة من مجموعته، وإلا null. يُستخدم في
+         * [buildSuggestionAnswer] ليصرّح سيمو بالهدف الذي فهمه من مرادفات
+         * السؤال (مثل "تنحيف" أو "دايت" أو "كرش" ← "إنقاص الوزن") بدل رد
+         * عام لا يوضّح أنه فهم المرادف فعلاً.
+         */
+        fun labelMentionedIn(qNorm: String): String? =
+            clusters.firstOrNull { (_, cluster) -> cluster.any { qNorm.contains(it) } }?.first
     }
 
     // ذاكرة تخزين مؤقت بسيطة: يُعاد بناء الفهرس فقط عند تغيّر مرجع قائمة
@@ -834,24 +850,72 @@ object HerbAssistant {
         return results
     }
 
-    /** ملخّص نصّي عام يوضّح أبرز المشترك والمختلف بين الأعشاب المختارة. */
+    /**
+     * مقارنة شاملة حقيقية بين الأعشاب المختارة — لا الفوائد فقط كما كانت
+     * سابقاً. مشكلة حقيقية أُبلغ عنها: "لما تسأله عن مقارنة لازم يبني مقارنة
+     * شاملة"، أي يفهم كل ما هو مسجَّل عن العشبتين (فوائد، استخدام، تحذيرات/
+     * أضرار) ويؤلّف منها إجابة واحدة مترابطة، لا يقارن حقلاً واحداً وحده. كل
+     * قسم أدناه يُبنى بنفس منطق [compareField] (تجميع النقاط المتشابهة
+     * معنوياً عبر عشبات مختلفة في نقطة مشتركة)، ثم تُختَم المقارنة بجملة
+     * تركيبية صريحة تفصل بين الجانب الآمن والجانب الأقل أماناً — وهذا هو
+     * الفارق بين "عرض نقاط منسوخة" و"مقارنة مفهومة فعلياً".
+     */
     fun buildOverview(herbs: List<Herb>): String {
         if (herbs.size < 2) return ""
+
+        fun cautionsOf(herb: Herb): String =
+            listOf(herb.warnings, herb.harms).filter { it.isNotBlank() && it.trim() != "—" }.joinToString("، ")
+
         val benefitPoints = compareField(herbs) { it.benefits }
-        val shared = benefitPoints.filter { it.herbIds.size == herbs.size }
+        val cautionPoints = compareField(herbs, ::cautionsOf)
+        val sharedBenefits = benefitPoints.filter { it.herbIds.size == herbs.size }
+        val sharedCautions = cautionPoints.filter { it.herbIds.size == herbs.size }
+
         return buildString {
-            append("قارنتُ بين ${herbNames(herbs)} بناءً على بيانات الموسوعة. ")
-            if (shared.isNotEmpty()) {
-                append("تشترك جميعها في: ${shared.take(3).joinToString("، ") { it.text }}. ")
+            append("قارنتُ بين ${herbNames(herbs)} بالاعتماد على كل ما هو مسجَّل عنها في الموسوعة (الفوائد، الاستخدام، والتحذيرات):\n\n")
+
+            append("🌿 الفوائد:\n")
+            if (sharedBenefits.isNotEmpty()) {
+                append("• مشترك بينها: ${sharedBenefits.take(3).joinToString("، ") { it.text }}\n")
             }
             herbs.forEach { herb ->
                 val unique = benefitPoints.filter { it.herbIds.size == 1 && it.herbIds.first() == herb.id }
-                if (unique.isNotEmpty()) {
-                    append("وتنفرد ${herb.name} بـ: ${unique.take(2).joinToString("، ") { it.text }}. ")
-                }
+                if (unique.isNotEmpty()) append("• تنفرد ${herb.name} بـ: ${unique.take(2).joinToString("، ") { it.text }}\n")
             }
-            if (shared.isEmpty() && herbs.all { herb -> benefitPoints.none { herb.id in it.herbIds } }) {
-                append("لا تتوفر بيانات فوائد كافية لهذه الأعشاب بعد لعرض ملخّص تفصيلي.")
+            if (sharedBenefits.isEmpty() && herbs.all { herb -> benefitPoints.none { herb.id in it.herbIds } }) {
+                append("• لا تتوفر بيانات فوائد كافية بعد للمقارنة بينها.\n")
+            }
+
+            append("\n💊 طريقة الاستخدام:\n")
+            herbs.forEach { herb -> append("• ${herb.name}: ${herb.usage.trim().ifBlank { "لا توجد طريقة استخدام مسجّلة." }}\n") }
+
+            append("\n⚠️ التحذيرات والأضرار:\n")
+            if (sharedCautions.isNotEmpty()) {
+                append("• مشترك بينها: ${sharedCautions.take(2).joinToString("، ") { it.text }}\n")
+            }
+            herbs.forEach { herb ->
+                val unique = cautionPoints.filter { it.herbIds.size == 1 && it.herbIds.first() == herb.id }
+                if (unique.isNotEmpty()) append("• تنفرد ${herb.name} بـ: ${unique.take(2).joinToString("، ") { it.text }}\n")
+            }
+            val counts = herbs.associateWith { splitPoints(it.warnings).size + splitPoints(it.harms).size }
+            val minCount = counts.values.minOrNull() ?: 0
+            val safest = counts.entries.firstOrNull { it.value == minCount }?.key
+            if (safest != null && counts.values.distinct().size > 1) {
+                append("• من ناحية عدد التحذيرات المسجّلة فقط، تبدو ${safest.name} الأقل تحذيرات — لكن هذا لا يعني أنها الأنسب لحالتك؛ استشر مختصاً دوماً.\n")
+            } else if (sharedCautions.isEmpty() && herbs.all { herb -> cautionPoints.none { herb.id in it.herbIds } }) {
+                append("• لا توجد تحذيرات أو أضرار مسجّلة لهذه الأعشاب في الموسوعة.\n")
+            }
+
+            append("\n📌 باختصار: ")
+            if (sharedBenefits.isNotEmpty()) {
+                append("${herbNames(herbs)} متقاربتان في فوائدهما الأساسية، ")
+            } else {
+                append("${herbNames(herbs)} تختلفان أكثر مما تتشابهان من ناحية الفوائد المسجَّلة، ")
+            }
+            if (safest != null && counts.values.distinct().size > 1) {
+                append("وتبدو ${safest.name} الخيار الأخف من ناحية التحذيرات.")
+            } else {
+                append("وتحذيراتهما متقاربة، فالاختيار بينهما يعتمد أكثر على الفائدة المحدَّدة التي تبحث عنها.")
             }
         }
     }
@@ -1064,7 +1128,7 @@ object HerbAssistant {
                     return AssistantReply(buildUsageAnswer(herbs), false)
                 }
                 "compare" -> if (allowCompare && specific && herbs.size >= 2) {
-                    return AssistantReply(buildOverview(herbs) + "\n\n" + buildSafetyGlance(herbs), false)
+                    return AssistantReply(buildOverview(herbs), false)
                 }
                 "benefits" -> if (specific) {
                     return AssistantReply(buildBenefitsAnswer(herbs, qNorm), false)
@@ -1172,8 +1236,10 @@ object HerbAssistant {
             }
             val topic = HealthTopicSynonyms.clusterMentionedIn(qNorm)
             val relevant = if (topic != null) points.filter { containsAny(normalize(it), topic.toList()) } else emptyList()
+            val topicLabel = if (relevant.isNotEmpty()) HealthTopicSynonyms.labelMentionedIn(qNorm) else null
             return if (relevant.isNotEmpty()) {
-                "🔸 ${herb.name}:\n" + relevant.joinToString("\n") { "• $it" }
+                val prefix = if (topicLabel != null) "🔸 ${herb.name} (بخصوص $topicLabel):\n" else "🔸 ${herb.name}:\n"
+                prefix + relevant.joinToString("\n") { "• $it" }
             } else {
                 "🔸 ${herb.name}: ${herb.benefits}"
             }
@@ -1196,15 +1262,9 @@ object HerbAssistant {
         }
     }
 
-    private fun buildSafetyGlance(herbs: List<Herb>): String {
-        val counts = herbs.associateWith { splitPoints(it.warnings).size + splitPoints(it.harms).size }
-        val minCount = counts.values.minOrNull() ?: 0
-        val safest = counts.entries.firstOrNull { it.value == minCount }?.key
-        return if (safest != null && counts.values.distinct().size > 1)
-            "من ناحية عدد التحذيرات المسجّلة فقط، تبدو ${safest.name} الأقل تحذيرات — لكن هذا لا يعني أنها الأنسب لحالتك؛ استشر مختصاً دوماً."
-        else
-            "عدد التحذيرات المسجّلة متقارب بين الأعشاب المختارة."
-    }
+    // ملاحظة: منطق "أقل الأعشاب تحذيراتٍ" (سابقاً في buildSafetyGlance
+    // منفصلة) صار جزءاً من [buildOverview] نفسها ضمن قسم "التحذيرات
+    // والأضرار" الموحَّد، بدل دالة منفصلة تُستدعى بعدها بلا سياق.
 
     // ── اقتراح عشبة مناسبة لهدف/عرض معيّن ("اقترح عشبة لتحسين النوم") ───
 
@@ -1259,10 +1319,17 @@ object HerbAssistant {
      */
     private fun buildSuggestionAnswer(question: String, herbs: List<Herb>): Pair<String, Boolean> {
         val index = corpusIndexFor(herbs)
+        val qNorm = normalize(question)
         val qWords = analyzeQuestion(question, index) - suggestionFillerWords
         if (qWords.isEmpty()) {
             return "خبرني أكثر عن الهدف أو العرض اللي حابب عشبة تساعدك فيه (مثل: النوم، الهضم، المناعة، التوتر...) وسأبحث لك ضمن الموسوعة 🌿" to false
         }
+
+        // الهدف/الموضوع الذي "فهمه" سيمو من مرادفات السؤال (إن وُجد)، مثل
+        // "دايت" أو "كرش" ← "إنقاص الوزن" — يُذكر صراحةً في الرد أدناه، حتى
+        // يتأكد المستخدم أن سيمو فهم مقصده الفعلي من المرادف ولم يكتفِ
+        // بمطابقة كلمات حرفية عمياء لا يعرف معناها.
+        val topicLabel = HealthTopicSynonyms.labelMentionedIn(qNorm)
 
         val fieldWeight = mapOf(
             "الفوائد" to 1.15, "الاستخدام" to 0.9, "ملاحظات" to 0.85,
@@ -1310,7 +1377,16 @@ object HerbAssistant {
             return "لم أجد في بيانات الموسوعة عشبة ترتبط مباشرة بما طلبته، رغم أنني وسّعت البحث أكثر من مرة. جرّب صياغة الهدف بكلمة مختلفة، أو اذكر عرضاً أو فائدة أكثر تحديداً." to false
         }
 
+        // ── جملة تركيبية صريحة (لا مجرد نسخ/لصق نقاط متفرّقة) ────────────
+        // مشكلة حقيقية أُبلغ عنها: كان الرد يعرض النقاط المطابقة فقط دون أي
+        // جملة واضحة تجمعها، فيبدو وكأن سيمو "لصق" مقتطفات بلا فهم حقيقي.
+        // الآن يُصرَّح أولاً بالهدف الذي فهمه (إن أمكن تسميته)، ثم تُختَم
+        // القائمة بجملة تركيبية صريحة تسمّي كل الأعشاب المرشَّحة معاً وتؤكد
+        // أنها كلها تخدم نفس الهدف — هذا هو الفارق بين "بحث ولصق" و"فهم ورد".
         val text = buildString {
+            if (topicLabel != null) {
+                append("فهمت من سؤالك أنك تبحث عن عشبة تساعد في \"$topicLabel\". ")
+            }
             if (triedHarder) {
                 append("وسّعت البحث أكثر من مرة في بيانات الموسوعة، وهذه أقرب الأعشاب المتوفرة لهدفك:\n\n")
             } else {
@@ -1322,7 +1398,13 @@ object HerbAssistant {
                 append("${i + 1}. 🔸 ${herb.name}\n")
                 append("   • [${match.field}] ${match.text}\n")
             }
-            append("\nهذه النتائج مبنية فقط على نصوص الموسوعة، وليست بديلاً عن استشارة طبيب أو صيدلاني، خصوصاً مع وجود حمل أو أدوية أو حالة صحية مزمنة.")
+            append("\n📌 باختصار: ")
+            append(
+                if (ranked.size == 1) "عشبة ${ranked.first().key.name} هي الأنسب من بيانات الموسوعة"
+                else "الأعشاب ${ranked.joinToString("، ") { it.key.name }} كلها تساعد بحسب بيانات الموسوعة"
+            )
+            append(if (topicLabel != null) " في $topicLabel.\n\n" else " لهدفك.\n\n")
+            append("هذه النتائج مبنية فقط على نصوص الموسوعة، وليست بديلاً عن استشارة طبيب أو صيدلاني، خصوصاً مع وجود حمل أو أدوية أو حالة صحية مزمنة.")
         }
         return text to true
     }
