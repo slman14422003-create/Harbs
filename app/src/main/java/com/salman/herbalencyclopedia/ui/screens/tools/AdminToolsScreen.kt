@@ -39,6 +39,7 @@ fun AdminToolsScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onAddCategory: (String, (Boolean, String?) -> Unit) -> Unit,
+    onUpdateCategory: (String, String, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     onDeleteCategory: (String, (Boolean, String?) -> Unit) -> Unit,
     onDeleteAllHerbs: ((Boolean, String?) -> Unit) -> Unit,
     onDeleteAllData: ((Boolean, String?) -> Unit) -> Unit,
@@ -92,6 +93,11 @@ fun AdminToolsScreen(
     }
     var categoryName by remember { mutableStateOf("") }
     var confirmAction by remember { mutableStateOf<String?>(null) }
+    // ── تعديل (إعادة تسمية) تصنيف: لم تكن هذه الميزة موجودة إطلاقاً في
+    // الواجهة رغم توفّرها في طبقة البيانات — كان المسؤول قادراً فقط على
+    // إضافة تصنيف جديد أو حذف تصنيف قائم، لا تصحيح اسم موجود. ──
+    var editingCategory by remember { mutableStateOf<Category?>(null) }
+    var editingCategoryName by remember { mutableStateOf("") }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = { GlassTopBar(title = { Text("أدوات الإدارة") }, navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }) },
@@ -120,7 +126,22 @@ fun AdminToolsScreen(
                     }
                 )
             }
-            items(categories, key = { it.id }) { c -> ListItem(headlineContent = { Text(c.name) }, supportingContent = { Text("${herbs.count { it.categoryId == c.id }} عشبة") }, trailingContent = { GlassIconButton(onClick = { confirmAction = "category:${c.id}" }) { Icon(Icons.Filled.Delete, "حذف", tint = MaterialTheme.colorScheme.error) } }) }
+            items(categories, key = { it.id }) { c ->
+                ListItem(
+                    headlineContent = { Text(c.name) },
+                    supportingContent = { Text("${herbs.count { it.categoryId == c.id }} عشبة") },
+                    trailingContent = {
+                        Row {
+                            GlassIconButton(onClick = { editingCategory = c; editingCategoryName = c.name }) {
+                                Icon(Icons.Filled.Edit, "تعديل")
+                            }
+                            GlassIconButton(onClick = { confirmAction = "category:${c.id}" }) {
+                                Icon(Icons.Filled.Delete, "حذف", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                )
+            }
             item { Text("إجراءات خطرة", style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.DeleteSweep, "مسح جميع الأعشاب", "حذف كل الأعشاب من Firestore", { confirmAction = "herbs" }, danger = true) }
             item { AdminButton(Icons.Filled.DeleteForever, "حذف كل البيانات", "حذف الأعشاب والتصنيفات", { confirmAction = "all" }, danger = true) }
@@ -178,6 +199,32 @@ fun AdminToolsScreen(
                 }) { Text("متابعة", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmAction = null }) { Text("إلغاء") } }
+        )
+    }
+    editingCategory?.let { category ->
+        AlertDialog(
+            onDismissRequest = { editingCategory = null },
+            title = { Text("تعديل التصنيف") },
+            text = {
+                OutlinedTextField(
+                    value = editingCategoryName,
+                    onValueChange = { editingCategoryName = it },
+                    label = { Text("اسم التصنيف") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = editingCategoryName.isNotBlank(),
+                    onClick = {
+                        val newName = editingCategoryName.trim()
+                        onUpdateCategory(category.id, newName) { ok, msg -> notify(ok, msg ?: if (ok) "تم تعديل التصنيف" else null) }
+                        editingCategory = null
+                    }
+                ) { Text("حفظ") }
+            },
+            dismissButton = { TextButton(onClick = { editingCategory = null }) { Text("إلغاء") } }
         )
     }
 }
