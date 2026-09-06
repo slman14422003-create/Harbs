@@ -1459,7 +1459,7 @@ object HerbAssistant {
                 val herb = entry.key
                 val match = entry.value
                 append("${i + 1}. 🔸 ${herb.name}\n")
-                append("   • [${match.field}] ${match.text}\n")
+                append("   • ${formatPoint(match.field, match.text)}\n")
             }
             append("\n📌 باختصار: ")
             append(
@@ -1577,7 +1577,7 @@ object HerbAssistant {
     private fun buildGeneralSearchAnswer(question: String, herbs: List<Herb>, blends: List<Blend> = emptyList()): Pair<String, Boolean> {
         val index = corpusIndexFor(herbs, blends)
         val qWords = analyzeQuestion(question, index)
-        if (qWords.isEmpty()) return fallbackHelp(herbs) to false
+        if (qWords.isEmpty()) return fallbackHelp(herbs, question) to false
 
         // المحاولة ١ — العتبة المعتادة.
         var hits = gatherCandidates(qWords, herbs, index, AiConfig.searchThreshold)
@@ -1606,7 +1606,7 @@ object HerbAssistant {
         }
 
         // بعد كل هذه المحاولات: لا شيء فعلاً — الآن فقط يُقرّ سيمو بذلك.
-        if (hits.isEmpty() && blendHits.isEmpty()) return fallbackHelp(herbs) to false
+        if (hits.isEmpty() && blendHits.isEmpty()) return fallbackHelp(herbs, question) to false
 
         val organized = organizeHits(hits)
         val organizedBlends = organizeBlendHits(blendHits)
@@ -1688,6 +1688,20 @@ object HerbAssistant {
             .associate { (herb, herbHits) -> herb to herbHits.sortedByDescending { it.score }.take(3) }
 
     /**
+     * إصلاح عرض حقيقي أُبلغ عنه: كانت كل نقطة تُعرض بصيغة "[التصنيف] النص"
+     * (تسمية الحقل بين قوسين *قبل* النص). القوسان "[" "]" حرفان "محايدان"
+     * في خوارزمية Bidi (تخضعان لـ"خوارزمية الأقواس المزدوجة" الخاصة بها)،
+     * وعند غياب فرض اتجاه RTL صريح على مستوى التطبيق (انظر الإصلاح في
+     * MainActivity) كانا يُعاد ترتيبهما بصرياً في نهاية السطر بدل بدايته —
+     * تحديداً المشكلة الظاهرة في الصورة المُبلَّغ عنها (تسمية الحقل تظهر بعد
+     * النص لا قبله). الصيغة الجديدة "التصنيف: النص" (نقطتان بدل قوسين) هي
+     * الأسلوب العربي القياسي في عرض تسمية حقل، ولا تخضع لخوارزمية الأقواس
+     * المزدوجة، فتبقى ثابتة الترتيب حتى في أسوأ ظروف Bidi — طبقة حماية
+     * إضافية فوق إصلاح الاتجاه نفسه لا بديلاً عنه.
+     */
+    private fun formatPoint(field: String, text: String): String = "$field: $text"
+
+    /**
      * المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. تُعرض
      * نتائج الأعشاب أولاً ثم الخلطات (إن وُجدت) في قسم منفصل بعلامة مميّزة
      * (🧪) حتى يُدرك المستخدم أن الرد قد يخلط بين نوعين مختلفين من عناصر
@@ -1707,19 +1721,57 @@ object HerbAssistant {
         }
         organized.forEach { (herb, herbHits) ->
             append("🔸 ${herb.name}:\n")
-            herbHits.forEach { append("• [${it.field}] ${it.text}\n") }
+            herbHits.forEach { append("• ${formatPoint(it.field, it.text)}\n") }
             append("\n")
         }
         organizedBlends.forEach { (blend, blendHits) ->
             append("🧪 خلطة ${blend.name}:\n")
-            blendHits.forEach { append("• [${it.field}] ${it.text}\n") }
+            blendHits.forEach { append("• ${formatPoint(it.field, it.text)}\n") }
             append("\n")
         }
     }.trimEnd()
 
-    private fun fallbackHelp(herbs: List<Herb>): String =
-        if (herbs.size <= 3)
-            "لم أجد إجابة مباشرة لسؤالك ضمن بيانات ${herbNames(herbs)}. جرّب أن تسأل عن: الفوائد، الاستخدام، التحذيرات، أو الفرق بينها إن ذكرت أكثر من عشبة."
+    /** ثلاثيات حروف متتالية لكلمة مُطبَّعة — أساس مقياس تشابه يتحمّل الأخطاء الإملائية الطفيفة أدناه. */
+    private fun trigramsOf(word: String): Set<String> {
+        if (word.length < 3) return setOf(word)
+        return (0..word.length - 3).map { word.substring(it, it + 3) }.toSet()
+    }
+
+    /**
+     * قدرة جديدة: "هل تقصد؟" — عندما يفشل البحث الحر تماماً في إيجاد أي
+     * نتيجة (لا كلمة من السؤال طابقت شيئاً في الموسوعة)، سبب شائع فعلياً هو
+     * خطأ إملائي بسيط في اسم العشبة نفسها (حرف ناقص/زائد/مبدَّل) لا غياب
+     * حقيقي للمعلومة. بدل الاكتفاء برسالة "لم أجد" عامة، تُقارَن كلمات
+     * السؤال بأسماء كل أعشاب الموسوعة عبر تشابه الثلاثيات الحرفية
+     * (Trigram Jaccard) — مقياس رخيص لا يحتاج أي قاموس، ويتحمّل فروقاً
+     * إملائية بسيطة بعكس المطابقة الحرفية التامة. يُقترَح اسم فقط إن تجاوز
+     * التشابه عتبة معقولة (0.4) تكفي لالتقاط خطأ حرف أو اثنين في كلمة
+     * متوسطة الطول دون اقتراح أسماء لا علاقة لها بالسؤال أصلاً.
+     */
+    private fun suggestSimilarHerbNames(question: String, herbs: List<Herb>): List<String> {
+        val qWords = normalize(question).split(Regex("\\s+")).filter { it.length > 2 }
+        if (qWords.isEmpty()) return emptyList()
+        val qTrigrams = qWords.map { trigramsOf(it) }
+        val scored = herbs.mapNotNull { herb ->
+            val nameWords = normalize(herb.name).split(Regex("[\\s,()]+")).filter { it.length > 2 }
+            if (nameWords.isEmpty()) return@mapNotNull null
+            val best = nameWords.maxOf { nw ->
+                val nwTrigrams = trigramsOf(nw)
+                qTrigrams.maxOf { qt -> jaccard(qt, nwTrigrams) }
+            }
+            if (best >= 0.4) herb.name to best else null
+        }
+        return scored.sortedByDescending { it.second }.take(2).map { it.first }
+    }
+
+    private fun fallbackHelp(herbs: List<Herb>, question: String = ""): String {
+        val suggestions = if (question.isNotBlank()) suggestSimilarHerbNames(question, herbs) else emptyList()
+        val suggestionLine = if (suggestions.isNotEmpty())
+            "\n\nهل تقصد ${suggestions.joinToString(" أو ")}؟ جرّب السؤال باسمها هكذا."
+        else ""
+        return if (herbs.size <= 3)
+            "لم أجد إجابة مباشرة لسؤالك ضمن بيانات ${herbNames(herbs)}. جرّب أن تسأل عن: الفوائد، الاستخدام، التحذيرات، أو الفرق بينها إن ذكرت أكثر من عشبة." + suggestionLine
         else
-            "لم أجد إجابة مباشرة لسؤالك في الموسوعة. جرّب ذكر اسم عشبة معيّنة، أو اسأل عن أعراض/فائدة محددة تبحث عن عشبة لها."
+            "لم أجد إجابة مباشرة لسؤالك في الموسوعة. جرّب ذكر اسم عشبة معيّنة، أو اسأل عن أعراض/فائدة محددة تبحث عن عشبة لها." + suggestionLine
+    }
 }
