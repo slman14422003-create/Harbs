@@ -290,6 +290,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                         onBack = { navController.popBackStack() },
                         onRefresh = appViewModel::refresh,
                         onAddCategory = { n, cb -> appViewModel.addCategory(n, cb) },
+                        onUpdateCategory = { id, n, cb -> appViewModel.updateCategory(id, n, cb) },
                         onDeleteCategory = { id, cb -> appViewModel.deleteCategory(id, cb) },
                         onDeleteAllHerbs = { cb -> appViewModel.deleteAllHerbs(cb) },
                         onDeleteAllData = { cb -> appViewModel.deleteAllData(cb) },
