@@ -188,9 +188,19 @@ object HerbAssistant {
     }
 
     /** يقسّم فقرة حرة إلى نقاط قصيرة قابلة للمقارنة والعرض كعناصر منفصلة. */
+    /**
+     * إصلاح خلل حقيقي أُبلغ عنه ("حتى الفواصل والنقط مش نظامي"): كانت أي
+     * نقطة "." أو فاصلة "," تُقسِّم النص دوماً، حتى عندما تكون جزءاً من رقم
+     * عشري أو جرعة فعلية — مثال حقيقي: "خذ 2.5 غرام يومياً" كانت تتحوّل إلى
+     * نقطتين منفصلتين مشوَّهتين ("خذ 2" و"5 غرام يومياً")، فتضيع الجرعة
+     * الحقيقية تماماً. الإصلاح: "." أو "," يُقسِّمان النص فقط عندما لا يكون
+     * أي منهما محاطاً برقم مباشرة من الجهتين (عبر lookaround)، فيبقى "2.5"
+     * أو "1,200" سليماً كوحدة واحدة، بينما تستمر نهاية الجملة العادية
+     * بالتقسيم الصحيح كما كانت.
+     */
     private fun splitPoints(text: String): List<String> {
         if (text.isBlank()) return emptyList()
-        return text.split(Regex("[،,.\\n؛;]|\\s-\\s"))
+        return text.split(Regex("[،\\n؛;]|(?<!\\d)[.,](?!\\d)|\\s-\\s"))
             .map { it.trim().trim('-', ' ') }
             .filter { it.length > 2 }
     }
@@ -204,6 +214,32 @@ object HerbAssistant {
 
     private fun containsAny(normalizedText: String, terms: List<String>): Boolean =
         terms.any { normalizedText.contains(normalize(it)) }
+
+    /**
+     * إصلاح خلل حقيقي: هل يطابق [qNorm] إحدى عبارات [phrases] كـ**كلمات
+     * مستقلة كاملة**، لا كسلسلة فرعية داخل كلمة أطول (بعكس [containsAny])؟
+     * ويُشترط أيضاً أن يكون السؤال كله قصيراً (≤ [maxWords]) حتى لا تُخطَف
+     * جملة طويلة فيها نية حقيقية (مقارنة/سؤال مفصَّل) لمجرد ورود كلمة قصيرة
+     * منها بالمصادفة (مثال حقيقي أُبلغ عنه: "hi" ضمن اسم علمي لاتيني لعشبة
+     * مثل Thymus أو chamomilla كانت تُخطَف كتحية عبر [containsAny] القديم).
+     */
+    private fun isShortExactPhraseMatch(qNorm: String, phrases: List<String>, maxWords: Int): Boolean {
+        val words = qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.isEmpty() || words.size > maxWords) return false
+        val wordSet = words.toSet()
+        return phrases.any { phrase ->
+            val phraseWords = normalize(phrase).split(Regex("\\s+")).filter { it.isNotBlank() }
+            phraseWords.isNotEmpty() && phraseWords.all { it in wordSet }
+        }
+    }
+
+    private val pureGreetingPhrases = listOf(
+        "مرحبا", "مرحباً", "مرحبتين", "اهلا", "أهلا", "هلا", "هلا بيك", "هلا فيك",
+        "السلام عليكم", "hello", "hi", "hey"
+    )
+
+    /** انظر توثيق [isShortExactPhraseMatch] أعلاه — هذه أداة الاستدعاء المخصَّصة للترحيب تحديداً. */
+    private fun isPureGreeting(qNorm: String): Boolean = isShortExactPhraseMatch(qNorm, pureGreetingPhrases, maxWords = 5)
 
     private fun herbNames(herbs: Collection<Herb>): String = herbs.joinToString(" و") { it.name }
 
@@ -325,6 +361,22 @@ object HerbAssistant {
         }
 
         fun weightOf(word: String): Double = idf[word] ?: 1.0
+
+        /**
+         * إصلاح خلل حقيقي أُبلغ عنه ("المرادفات وكأنها ما تُستخدم"): كلمة
+         * موسَّعة من [DictionaryLexicon] (قاموس عام ٣٣٠ ألف مدخل) لا تظهر
+         * إطلاقاً في نص هذه الموسوعة تحديداً لا يمكنها أبداً مطابقة أي نقطة
+         * فعلياً (كل [wordsOf] لنقاط الموسوعة مبنية من نفس مفردات هذه
+         * الموسوعة حصراً) — فكل ما تفعله كلمة كهذه هو تضخيم مقام
+         * [weightedSimilarity]/[queryCoverage] (عبر الوزن الافتراضي ١.٠
+         * أعلاه) بلا أي فرصة إطلاقاً للمساهمة بالبسط، أي "تخفيف" صافٍ
+         * للنتيجة بلا أي احتمال فائدة — وهذا بالضبط ما كان يجعل التوسيع
+         * بمرادفات القاموس الخارجي عديم الأثر عملياً بل ضاراً أحياناً، رغم
+         * كونه "مُفعَّلاً" فعلاً بالكود. [filterKnown] تُبقي فقط الكلمات
+         * الموجودة فعلاً بمفردات هذه الموسوعة (فرصة مطابقة حقيقية)، فيُزال
+         * كل هذا التخفيف بلا أي خسارة في الاحتمالات الممكنة أصلاً.
+         */
+        fun filterKnown(words: Set<String>): Set<String> = words.filter { idf.containsKey(it) }.toSet()
 
         /** يوسّع كلمات السؤال بالعلاقات المكتشَفة تلقائياً (إضافة فهم ضمني، لا حذف). */
         fun expand(words: Set<String>): Set<String> =
@@ -711,12 +763,19 @@ object HerbAssistant {
      * الدرجة النهائية المستخدمة فعلياً لمطابقة سؤال المستخدم بنقطة نص واحدة
      * في البحث الحر والاقتراح: أعلى قيمة بين المقاييس الثلاثة أعلاه، بحيث لا
      * يفوّت سيمو مطابقة حقيقية بسبب ضعف مقياس واحد بعينه في حالة معيّنة.
+     *
+     * [queryWords] يُصفَّى هنا عبر [CorpusIndex.filterKnown] قبل تمريره
+     * لِـ[weightedSimilarity] و[queryCoverage] تحديداً (انظر توثيق
+     * [CorpusIndex.filterKnown] لسبب هذا الإصلاح) — أما [rawContainmentRatio]
+     * فيستمر باستخدام المجموعة الكاملة غير المصفّاة، لأنه يعمل على احتواء
+     * نصّي خام لا على تقاطع مجموعات كلمات، فلا يعاني من نفس مشكلة التخفيف.
      */
     private fun matchScore(index: CorpusIndex, queryWords: Set<String>, point: String): Double {
         val pointWords = wordsOf(point)
+        val knownQueryWords = index.filterKnown(queryWords)
         return maxOf(
-            weightedSimilarity(index, queryWords, pointWords),
-            queryCoverage(index, queryWords, pointWords),
+            weightedSimilarity(index, knownQueryWords, pointWords),
+            queryCoverage(index, knownQueryWords, pointWords),
             rawContainmentRatio(queryWords, normalize(point))
         )
     }
@@ -1229,13 +1288,28 @@ object HerbAssistant {
         // لم يطلبها أحد — نفس مبدأ "لا مقارنة أو استعراض إلا عند الطلب".
         val specific = herbs.size <= 3
 
-        if (containsAny(qNorm, listOf("مرحبا", "اهلا", "أهلا", "السلام عليكم", "hello", "hi"))) {
+        // ═══ إصلاح خلل حقيقي أُبلغ عنه: أحياناً يظهر ردّ الترحيب بدل تنفيذ
+        // طلب مقارنة فعلي بين عشبتين ═══
+        // السبب الجذري: [containsAny] فحص "احتواء نص فرعي" حرفي بلا حدود
+        // كلمة، والقائمة تضم "hi" — وأي طلب مقارنة يذكر اسماً علمياً لاتينياً
+        // لعشبة (شائع جداً بهذه الموسوعة تحديداً، انظر لقطة الشاشة المرفقة
+        // بالبلاغ: "Matricaria"، "Origanum majorana") قد يحوي حرفياً "hi"
+        // ضمن كلمة أخرى كلياً (Thymus، chamomilla...) فيُخطَف السؤال كاملاً
+        // كـ"تحية" رغم عدم وجود أي نية ترحيب فعلية فيه — وهذا يفسّر بالضبط
+        // لماذا يظهر الخلل مع أزواج أعشاب معيّنة (البابونج/الزعتر تحديداً
+        // شائعان جداً وأسماؤهما العلمية تحوي "hi") لا مع كل الأزواج، أي
+        // "أحياناً" حرفياً كما وُصف بالبلاغ. الإصلاح: التحية تُعتبر تحية
+        // فقط إذا (أ) كانت كلمة التحية موجودة ككلمة مستقلة كاملة (لا كجزء من
+        // كلمة أطول)، و(ب) كان السؤال كله قصيراً (٥ كلمات كحد أقصى) — سؤال
+        // مقارنة طويل يذكر عشبتين لن يُصنَّف كتحية أبداً حتى لو تضمّن اسماً
+        // علمياً بالمصادفة.
+        if (isPureGreeting(qNorm)) {
             return AssistantReply(
                 "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
                 false
             )
         }
-        if (containsAny(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور"))) {
+        if (isShortExactPhraseMatch(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور"), maxWords = 6)) {
             return AssistantReply("عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.", false)
         }
 
