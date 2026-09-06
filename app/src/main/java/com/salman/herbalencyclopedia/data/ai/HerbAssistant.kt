@@ -105,6 +105,12 @@ data class TrainedExample(val pattern: String, val response: String)
  *    يحتاج كل جهاز لتعلّم نفس الشيء بنفسه من الصفر.
  * لا يوجد هنا نموذج شبكة عصبية يحتاج تدريباً فعلياً؛ هذا "تعلّم" رمزي بحت
  * (إحصائي + تغذية راجعة) مناسب لتشغيل محلي بالكامل دون إنترنت أو معالجة ثقيلة.
+ *
+ * إضافتان جديدتان: 1) [isFollowUpQuestion] تمكّن شاشة الدردشة من "ذاكرة
+ * محادثة" خفيفة — متابعة الحديث عن نفس العشبة عبر أسئلة متتالية دون تكرار
+ * اسمها في كل مرة (انظر توثيقها). 2) نية "خطة" جديدة ([buildPlanAnswer])
+ * تركّب رداً عملياً واحداً من عدة حقول معاً (استخدام + هدف + تحذير) بدل
+ * الاكتفاء بعرض حقل واحد، لمن يسأل "كيف أبدأ" أو "أعطني روتيناً".
  */
 object HerbAssistant {
 
@@ -1039,6 +1045,35 @@ object HerbAssistant {
         return true
     }
 
+    /**
+     * "ذاكرة المحادثة" الخفيفة: هل يبدو هذا السؤال استكمالاً لعشبة/أعشاب
+     * كانت محور الحديث في رسالة سابقة، رغم أن المستخدم لم يذكر اسمها هذه
+     * المرة؟ مثال واقعي: يسأل المستخدم "ما فوائد الزنجبيل؟"، سيمو يجيب،
+     * ثم يسأل المستخدم "طيب شو اضراره؟" دون تكرار اسم الزنجبيل — سؤال
+     * طبيعي جداً من إنسان حقيقي، لكن [relevantHerbs] وحدها (تبحث عن اسم
+     * عشبة حرفياً في نص السؤال) لا تجد شيئاً هنا فتُسقط السؤال لوضع البحث
+     * الحر في كامل الموسوعة، فيضيع "التركيز" على الزنجبيل تحديداً رغم أن
+     * السؤال واضح المعنى لأي قارئ.
+     *
+     * هذه الدالة لا تبني رداً بنفسها ولا تحدّد العشبة المقصودة (تلك مسؤولية
+     * الشاشة التي تحتفظ فعلياً بآخر أعشبة كانت "محور تركيز" الحديث) — فقط
+     * تقرر: هل يستحق هذا السؤال إعادة استخدام ذلك التركيز السابق بدل
+     * اعتباره سؤالاً عاماً جديداً؟ الشرط: وجود كلمة نية واضحة (نفس قوائم
+     * [rankedIntents]: أمان/استخدام/فائدة/مقارنة/دمج/خطة) *وليس* سؤال
+     * اقتراح عام (ذاك يبحث عمداً في كامل الموسوعة لا في عشبة محدَّدة سلفاً،
+     * فلا معنى لتضييقه على التركيز السابق)، مع بقاء السؤال قصيراً نسبياً
+     * (١٢ كلمة كحد أقصى) تحوّطاً من اعتبار سؤال طويل جديد كلياً امتداداً
+     * لحديث سابق لمجرد احتوائه كلمة نية عابرة ضمن موضوع مختلف تماماً.
+     */
+    fun isFollowUpQuestion(question: String): Boolean {
+        val qNorm = normalize(question)
+        if (qNorm.isBlank()) return false
+        if (isSuggestionIntent(qNorm)) return false
+        val wordCount = qNorm.split(Regex("\\s+")).count { it.isNotBlank() }
+        if (wordCount > 12) return false
+        return rankedIntents(qNorm).isNotEmpty()
+    }
+
     /** توافقاً مع الاستدعاءات القديمة (مثل اختبار أدوات المطور) التي تحتاج النص فقط. */
     fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): String =
         answerDetailed(question, herbs, allowCompare, blends).text
@@ -1121,6 +1156,9 @@ object HerbAssistant {
                 "combine" -> if (allowCompare && specific && herbs.size >= 2) {
                     return AssistantReply(buildCombineAnswer(herbs), false)
                 }
+                "plan" -> if (specific) {
+                    return AssistantReply(buildPlanAnswer(herbs), false)
+                }
                 "safety" -> if (specific) {
                     return AssistantReply(buildSafetyAnswer(herbs, qNorm), false)
                 }
@@ -1155,6 +1193,10 @@ object HerbAssistant {
     private val usageIntentWords = listOf("استخدام", "استعمال", "طريقة", "طريقه", "كيف استخدم", "جرعة", "جرعه", "مقدار")
     private val compareIntentWords = listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")
     private val benefitsIntentWords = listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد")
+    private val planIntentWords = listOf(
+        "خطة", "خطه", "روتين", "برنامج", "جدول", "كيف ابدا", "كيف أبدأ",
+        "خطة استخدام", "برنامج استخدام", "طريقة يومية", "طريقه يوميه"
+    )
 
     /**
      * يرتّب أسماء النيّات المحتملة (combine/safety/usage/compare/benefits)
@@ -1166,9 +1208,10 @@ object HerbAssistant {
      * كما كان السلوك السابق عند تطابق نية واحدة فقط.
      */
     private fun rankedIntents(qNorm: String): List<String> {
-        val priorityOrder = listOf("combine", "safety", "usage", "compare", "benefits")
+        val priorityOrder = listOf("combine", "plan", "safety", "usage", "compare", "benefits")
         val scores = mapOf(
             "combine" to combineIntentWords.count { qNorm.contains(normalize(it)) },
+            "plan" to planIntentWords.count { qNorm.contains(normalize(it)) },
             "safety" to safetyIntentWords.count { qNorm.contains(normalize(it)) },
             "usage" to usageIntentWords.count { qNorm.contains(normalize(it)) },
             "compare" to compareIntentWords.count { qNorm.contains(normalize(it)) },
@@ -1219,6 +1262,26 @@ object HerbAssistant {
             append("\n")
         }
     }
+
+    /**
+     * قدرة جديدة: "خطة استخدام" مركَّبة — بدل عرض حقل الاستخدام وحده (كما
+     * في [buildUsageAnswer])، تُركِّب هذه من عدة حقول معاً (استخدام + أبرز
+     * فائدة مستهدَفة + أهم تحذير) رداً واحداً عملياً على هيئة خطوات، يشبه
+     * ما يطلبه مستخدم فعلياً حين يسأل "كيف أبدأ" أو "أعطني روتيناً" بدل
+     * سؤال جزئي عن حقل واحد فقط. يُفعَّل عبر [planIntentWords] ضمن
+     * [rankedIntents]، بنفس مبدأ بقية النيّات (يتطلب عشبة/أعشاب محدَّدة).
+     */
+    private fun buildPlanAnswer(herbs: List<Herb>): String = buildString {
+        append("خطة استرشادية للاستخدام (ليست وصفة طبية):\n\n")
+        herbs.forEach { herb ->
+            append("🔸 ${herb.name}:\n")
+            append("• طريقة الاستخدام: ${herb.usage.ifBlank { "غير مسجّلة في الموسوعة" }}\n")
+            splitPoints(herb.benefits).firstOrNull()?.let { append("• الهدف الأساسي: $it\n") }
+            (splitPoints(herb.warnings) + splitPoints(herb.harms)).firstOrNull()?.let { append("• انتبه: $it\n") }
+            append("• نصيحة عامة: ابدأ بكمية أقل من المعتاد أول مرة وراقب استجابة جسمك قبل الاعتماد عليها ضمن روتين يومي ثابت.\n\n")
+        }
+        append("هذه خطة عامة مبنية على بيانات الموسوعة فقط، ولا تغني عن استشارة طبيب أو أخصائي أعشاب قبل الالتزام بها.")
+    }.trimEnd()
 
     /**
      * [qNorm] (افتراضياً فارغ للتوافق مع الاستدعاءات القديمة) يتيح تمييز
