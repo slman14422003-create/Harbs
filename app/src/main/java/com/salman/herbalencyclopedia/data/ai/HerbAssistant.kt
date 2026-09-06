@@ -205,7 +205,7 @@ object HerbAssistant {
     private fun containsAny(normalizedText: String, terms: List<String>): Boolean =
         terms.any { normalizedText.contains(normalize(it)) }
 
-    private fun herbNames(herbs: List<Herb>): String = herbs.joinToString(" و") { it.name }
+    private fun herbNames(herbs: Collection<Herb>): String = herbs.joinToString(" و") { it.name }
 
     // ── قدرة جديدة: فهم النفي ────────────────────────────────────────────
 
