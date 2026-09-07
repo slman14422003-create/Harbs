@@ -73,6 +73,34 @@ enum class ThemePalette(
     ),
 
     /**
+     * ثلاث لوحات إضافية أكثر ثراءً/فخامة، لتوسيع خيارات "الثيمات" بما
+     * يتجاوز اللوحات الست الأساسية أعلاه — كل واحدة بلون ثانوي/ثالث
+     * مُختار عمداً كمكمّل مقابل (لا مجرّد درجة أفتح/أغمق من نفس اللون)
+     * كي يبدو التدرّج التلقائي في Theme.kt غنياً بصرياً في الوضعين.
+     */
+    AMBER(
+        label = "كهرماني",
+        swatch = Color(0xFFC77800),
+        light40 = Color(0xFFC77800), light80 = Color(0xFFFFCB80),
+        secondary40 = Color(0xFF6F5B3E), secondary80 = Color(0xFFDFC6A1),
+        tertiary40 = Color(0xFF2E6E6A), tertiary80 = Color(0xFF9AD6D0)
+    ),
+    INDIGO(
+        label = "نيلي",
+        swatch = Color(0xFF3949AB),
+        light40 = Color(0xFF3949AB), light80 = Color(0xFFC1C6FF),
+        secondary40 = Color(0xFF5B5C7A), secondary80 = Color(0xFFC4C4E8),
+        tertiary40 = Color(0xFF7D3C98), tertiary80 = Color(0xFFEBB6FF)
+    ),
+    EMERALD(
+        label = "زمردي",
+        swatch = Color(0xFF00875A),
+        light40 = Color(0xFF00875A), light80 = Color(0xFF7FE0BA),
+        secondary40 = Color(0xFF3E6B58), secondary80 = Color(0xFFBFEBD8),
+        tertiary40 = Color(0xFF0F6E8C), tertiary80 = Color(0xFF9BD8EF)
+    ),
+
+    /**
      * خيار "بدون تلوين" لمن لا يفضّل الألوان: يُطفئ كل تدرّج/تشبّع لوني
      * في [Theme.kt] (انظر `neutral` هناك)، فتصبح كل الأسطح رمادية محايدة
      * محضة — أبيض في الوضع الفاتح وأسود تقريباً في الداكن — بدل أي درجة
