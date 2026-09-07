@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,14 +33,14 @@ fun CategoryHerbsScreen(
                 title = { Text(categoryName) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
         }
     ) { padding ->
         if (herbs.isEmpty()) {
-            EmptyView(message = "لا توجد أعشاب في هذا التصنيف بعد", modifier = Modifier.padding(padding))
+            EmptyView(message = tr("لا توجد أعشاب في هذا التصنيف بعد"), modifier = Modifier.padding(padding))
         } else {
             // كان عموداً واحداً ثابتاً؛ Adaptive يوسّع تلقائياً على تابلت
             // بدل بطاقة ممدودة بعرض الشاشة كاملاً (نفس إصلاح باقي شاشات
