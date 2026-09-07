@@ -29,6 +29,7 @@ import com.salman.herbalencyclopedia.data.image.ImageCompressor
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlinx.coroutines.launch
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,7 +65,7 @@ fun AdminEditHerbScreen(
                 if (compressed != null) {
                     imageUrl = compressed
                 } else {
-                    errorMessage = "تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى"
+                    errorMessage = tr("تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى")
                 }
             }
         }
@@ -79,7 +80,7 @@ fun AdminEditHerbScreen(
                 title = { Text(if (existingHerb == null) "إضافة عشبة" else "تعديل عشبة") },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -94,7 +95,7 @@ fun AdminEditHerbScreen(
         ) {
             OutlinedTextField(
                 value = name, onValueChange = { name = it },
-                label = { Text("اسم العشبة") }, modifier = Modifier.fillMaxWidth()
+                label = { Text(tr("اسم العشبة")) }, modifier = Modifier.fillMaxWidth()
             )
 
             ExposedDropdownMenuBox(
@@ -105,7 +106,7 @@ fun AdminEditHerbScreen(
                     value = selectedCategoryName,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("التصنيف") },
+                    label = { Text(tr("التصنيف")) },
                     trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -129,33 +130,33 @@ fun AdminEditHerbScreen(
 
             OutlinedTextField(
                 value = benefits, onValueChange = { benefits = it },
-                label = { Text("الفوائد") }, minLines = 2, modifier = Modifier.fillMaxWidth()
+                label = { Text(tr("الفوائد")) }, minLines = 2, modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
                 value = usage, onValueChange = { usage = it },
-                label = { Text("طريقة الاستخدام") }, minLines = 2, modifier = Modifier.fillMaxWidth()
+                label = { Text(tr("طريقة الاستخدام")) }, minLines = 2, modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
                 value = warnings, onValueChange = { warnings = it },
-                label = { Text("التحذيرات") }, minLines = 2, modifier = Modifier.fillMaxWidth()
+                label = { Text(tr("التحذيرات")) }, minLines = 2, modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
                 value = harms, onValueChange = { harms = it },
-                label = { Text("الأضرار المحتملة") }, minLines = 2, modifier = Modifier.fillMaxWidth()
+                label = { Text(tr("الأضرار المحتملة")) }, minLines = 2, modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
                 value = notes, onValueChange = { notes = it },
-                label = { Text("ملاحظات إضافية") }, minLines = 2, modifier = Modifier.fillMaxWidth()
+                label = { Text(tr("ملاحظات إضافية")) }, minLines = 2, modifier = Modifier.fillMaxWidth()
             )
-            Text("صورة العشبة", style = MaterialTheme.typography.titleMedium)
+            Text(tr("صورة العشبة"), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton(onClick = { imagePicker.launch("image/*") }, enabled = !isCompressingImage) { Text("اختيار صورة") }
-                if (imageUrl.isNotBlank() && !isCompressingImage) GlassOutlinedButton(onClick = { imageUrl = "" }) { Text("مسح") }
+                GlassButton(onClick = { imagePicker.launch("image/*") }, enabled = !isCompressingImage) { Text(tr("اختيار صورة")) }
+                if (imageUrl.isNotBlank() && !isCompressingImage) GlassOutlinedButton(onClick = { imageUrl = "" }) { Text(tr("مسح")) }
             }
             if (isCompressingImage) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text("جاري ضغط الصورة...", style = MaterialTheme.typography.bodySmall)
+                    Text(tr("جاري ضغط الصورة..."), style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (imageUrl.isNotBlank()) {
@@ -213,7 +214,7 @@ fun AdminEditHerbScreen(
                 if (isSaving) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("حفظ")
+                    Text(tr("حفظ"))
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))

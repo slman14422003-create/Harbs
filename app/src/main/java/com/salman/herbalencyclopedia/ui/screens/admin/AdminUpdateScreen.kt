@@ -22,6 +22,7 @@ import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import kotlinx.coroutines.launch
+import com.salman.herbalencyclopedia.ui.util.tr
 
 /**
  * Lets the admin control the in-app update feature without shipping a new
@@ -73,10 +74,10 @@ fun AdminUpdateScreen(
         containerColor = Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("إعدادات التحديثات") },
+                title = { Text(tr("إعدادات التحديثات")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -91,7 +92,7 @@ fun AdminUpdateScreen(
         ) {
             item {
                 Text(
-                    "يتحقق التطبيق تلقائياً من آخر إصدار (Release) على GitHub، ثم يفتح رابط تحميل ملف APK مباشرة عند توفر تحديث ليقوم المستخدم بتنزيله وتثبيته يدوياً.",
+                    tr("يتحقق التطبيق تلقائياً من آخر إصدار (Release) على GitHub، ثم يفتح رابط تحميل ملف APK مباشرة عند توفر تحديث ليقوم المستخدم بتنزيله وتثبيته يدوياً."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -107,9 +108,9 @@ fun AdminUpdateScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("تفعيل التحقق من التحديثات", fontWeight = FontWeight.SemiBold)
+                            Text(tr("تفعيل التحقق من التحديثات"), fontWeight = FontWeight.SemiBold)
                             Text(
-                                "عند الإيقاف لن يظهر أي زر تحديث للمستخدمين",
+                                tr("عند الإيقاف لن يظهر أي زر تحديث للمستخدمين"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -122,9 +123,9 @@ fun AdminUpdateScreen(
                 OutlinedTextField(
                     value = repo,
                     onValueChange = { repo = it },
-                    label = { Text("مستودع GitHub") },
+                    label = { Text(tr("مستودع GitHub")) },
                     placeholder = { Text("owner/repo") },
-                    supportingText = { Text("يُقرأ منه أحدث Release تلقائياً، مثال: slman14422003-create/Harbs") },
+                    supportingText = { Text(tr("يُقرأ منه أحدث Release تلقائياً، مثال: slman14422003-create/Harbs")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -133,8 +134,8 @@ fun AdminUpdateScreen(
                 OutlinedTextField(
                     value = versionName,
                     onValueChange = { versionName = it },
-                    label = { Text("رقم إصدار مخصّص (اختياري)") },
-                    supportingText = { Text("إن تُرك فارغاً يُؤخذ رقم الإصدار من tag الإصدار على GitHub") },
+                    label = { Text(tr("رقم إصدار مخصّص (اختياري)")) },
+                    supportingText = { Text(tr("إن تُرك فارغاً يُؤخذ رقم الإصدار من tag الإصدار على GitHub")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -143,8 +144,8 @@ fun AdminUpdateScreen(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("ملاحظات التحديث (اختياري)") },
-                    supportingText = { Text("إن تُركت فارغة يظهر للمستخدم نص ثابت: \"تم تحديث الأخطاء وإدخال تحسينات جديدة.\"") },
+                    label = { Text(tr("ملاحظات التحديث (اختياري)")) },
+                    supportingText = { Text(tr("إن تُركت فارغة يظهر للمستخدم نص ثابت: \"تم تحديث الأخطاء وإدخال تحسينات جديدة.\"")) },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -160,9 +161,9 @@ fun AdminUpdateScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("استخدام بروكسي عند حجب GitHub", fontWeight = FontWeight.SemiBold)
+                            Text(tr("استخدام بروكسي عند حجب GitHub"), fontWeight = FontWeight.SemiBold)
                             Text(
-                                "إذا فشل الوصول المباشر لـ GitHub (كما في بعض الدول)، يعيد التطبيق المحاولة عبر مرآة بروكسي تلقائياً، دون الحاجة لـ VPN",
+                                tr("إذا فشل الوصول المباشر لـ GitHub (كما في بعض الدول)، يعيد التطبيق المحاولة عبر مرآة بروكسي تلقائياً، دون الحاجة لـ VPN"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -176,9 +177,9 @@ fun AdminUpdateScreen(
                     OutlinedTextField(
                         value = customProxyBaseUrl,
                         onValueChange = { customProxyBaseUrl = it },
-                        label = { Text("رابط بروكسي مخصّص (اختياري)") },
+                        label = { Text(tr("رابط بروكسي مخصّص (اختياري)")) },
                         placeholder = { Text("https://my-proxy.example.com/") },
-                        supportingText = { Text("إن تُرك فارغاً تُستخدم مرايا عامة معروفة تلقائياً كخطة بديلة") },
+                        supportingText = { Text(tr("إن تُرك فارغاً تُستخدم مرايا عامة معروفة تلقائياً كخطة بديلة")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -188,8 +189,8 @@ fun AdminUpdateScreen(
                 OutlinedTextField(
                     value = minVersionCode,
                     onValueChange = { v -> minVersionCode = v.filter { it.isDigit() } },
-                    label = { Text("حد التحديث الإجباري (اختياري)") },
-                    supportingText = { Text("أي نسخة مثبّتة أقدم من رقم الإصدار الداخلي هذا يُعتبر تحديثها إجبارياً") },
+                    label = { Text(tr("حد التحديث الإجباري (اختياري)")) },
+                    supportingText = { Text(tr("أي نسخة مثبّتة أقدم من رقم الإصدار الداخلي هذا يُعتبر تحديثها إجبارياً")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -219,7 +220,7 @@ fun AdminUpdateScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("الإعدادات تعمل: تم الاتصال بنجاح ولا يوجد إصدار أحدث من هذا الجهاز حالياً.", style = MaterialTheme.typography.bodySmall)
+                        Text(tr("الإعدادات تعمل: تم الاتصال بنجاح ولا يوجد إصدار أحدث من هذا الجهاز حالياً."), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 is UpdateCheckState.Error -> item {

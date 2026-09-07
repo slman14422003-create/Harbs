@@ -26,6 +26,7 @@ import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.salman.herbalencyclopedia.ui.util.tr
 
 /**
  * صندوق ملاحظات المستخدمين — يظهر فقط للأدمن (مربوط في الإعدادات، ولا
@@ -54,13 +55,13 @@ fun AdminFeedbackScreen(
                     TopBarBrandTitle(
                         icon = Icons.Filled.Inbox,
                         iconTint = MaterialTheme.colorScheme.primary,
-                        title = "ملاحظات المستخدمين",
-                        subtitle = "${feedback.size} ملاحظة"
+                        title = tr("ملاحظات المستخدمين"),
+                        subtitle = tr("${feedback.size} ملاحظة")
                     )
                 },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -86,7 +87,7 @@ fun AdminFeedbackScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        "بخصوص: ${item.targetName}",
+                                        tr("بخصوص: ${item.targetName}"),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -98,7 +99,7 @@ fun AdminFeedbackScreen(
                                     )
                                 }
                                 GlassIconButton(onClick = { pendingDelete = item }, size = 36.dp) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Filled.Delete, contentDescription = tr("حذف"), tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
@@ -137,16 +138,16 @@ fun AdminFeedbackScreen(
     pendingDelete?.let { item ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("حذف هذه الملاحظة؟") },
-            text = { Text("لا يمكن التراجع عن هذا الإجراء.") },
+            title = { Text(tr("حذف هذه الملاحظة؟")) },
+            text = { Text(tr("لا يمكن التراجع عن هذا الإجراء.")) },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete(item)
                     pendingDelete = null
-                }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+                }) { Text(tr("حذف"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("إلغاء") }
+                TextButton(onClick = { pendingDelete = null }) { Text(tr("إلغاء")) }
             }
         )
     }

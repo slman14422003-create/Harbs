@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,20 +38,20 @@ fun AdminListScreen(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("لوحة تحكم الأدمن") },
+                title = { Text(tr("لوحة تحكم الأدمن")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
         },
         floatingActionButton = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ExtendedFloatingActionButton(onClick = onTools, icon = { Icon(Icons.Filled.Settings, null) }, text = { Text("أدوات") })
+                ExtendedFloatingActionButton(onClick = onTools, icon = { Icon(Icons.Filled.Settings, null) }, text = { Text(tr("أدوات")) })
                 ExtendedFloatingActionButton(onClick = onAddNew, icon = {
                 Icon(Icons.Filled.Add, contentDescription = null)
-            }, text = { Text("إضافة عشبة") })
+            }, text = { Text(tr("إضافة عشبة")) })
             }
         }
     ) { padding ->
@@ -85,12 +86,12 @@ fun AdminListScreen(
                             modifier = Modifier.weight(1f)
                         )
                         GlassIconButton(onClick = { onEdit(herb) }) {
-                            Icon(Icons.Filled.Edit, contentDescription = "تعديل")
+                            Icon(Icons.Filled.Edit, contentDescription = tr("تعديل"))
                         }
                         GlassIconButton(onClick = { pendingDelete = herb }) {
                             Icon(
                                 Icons.Filled.Delete,
-                                contentDescription = "حذف",
+                                contentDescription = tr("حذف"),
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
@@ -103,16 +104,16 @@ fun AdminListScreen(
     pendingDelete?.let { herb ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("حذف \"${herb.name}\"؟") },
-            text = { Text("لا يمكن التراجع عن هذا الإجراء.") },
+            title = { Text(tr("حذف \"${herb.name}\"؟")) },
+            text = { Text(tr("لا يمكن التراجع عن هذا الإجراء.")) },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete(herb)
                     pendingDelete = null
-                }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+                }) { Text(tr("حذف"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("إلغاء") }
+                TextButton(onClick = { pendingDelete = null }) { Text(tr("إلغاء")) }
             }
         )
     }
