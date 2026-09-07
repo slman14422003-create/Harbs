@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
@@ -491,6 +492,17 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     )
                 }
                 .collect { state -> _uiState.value = state }
+        }
+
+        // عند تغيير لغة التطبيق (وليس أول قراءة عند بدء التشغيل، لذا drop(1))،
+        // نظهر مؤشر تحميل صغير فوراً (نفس مؤشر "سحب للتحديث" — راجع
+        // isRefreshing في HomeScreen) بدل ترك الشاشة تبدو متجمّدة طوال مدة
+        // ترجمة كل الأعشاب. الحالة النهائية المُترجَمة تصل لاحقاً من كتلة
+        // combine أعلاه وتُطفئ isLoading تلقائياً.
+        viewModelScope.launch {
+            container.preferencesRepository.appLanguage.drop(1).collect {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+            }
         }
 
         // ── مزامنة "تعلّم سيمو الذاتي" بين الأجهزة ───────────────────────
