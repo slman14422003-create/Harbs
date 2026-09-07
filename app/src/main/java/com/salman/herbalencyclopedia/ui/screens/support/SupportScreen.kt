@@ -25,6 +25,7 @@ import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
+import com.salman.herbalencyclopedia.ui.util.tr
 
 /** الرقم كما وصلنا بصيغته المحلية — هو ما يُعرَض للمستخدم دوماً بغض النظر عن أي افتراض أدناه. */
 private const val SUPPORT_PHONE_LOCAL = "0932934273"
@@ -53,8 +54,8 @@ fun SupportScreen(onBack: () -> Unit) {
         containerColor = Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("الدعم الفني") },
-                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }
+                title = { Text(tr("الدعم الفني")) },
+                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) } }
             )
         }
     ) { padding ->
@@ -73,13 +74,13 @@ fun SupportScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "بحاجة لمساعدة؟",
+                    tr("بحاجة لمساعدة؟"),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "لأي استفسار، ملاحظة، أو مشكلة تقنية تواجهك في التطبيق، يمكنك التواصل المباشر عبر واتساب:",
+                    tr("لأي استفسار، ملاحظة، أو مشكلة تقنية تواجهك في التطبيق، يمكنك التواصل المباشر عبر واتساب:"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -116,7 +117,7 @@ fun SupportScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                             Spacer(Modifier.width(8.dp))
-                            Text("تواصل عبر واتساب", color = Color.White)
+                            Text(tr("تواصل عبر واتساب"), color = Color.White)
                         }
 
                         Spacer(Modifier.height(10.dp))
@@ -127,14 +128,14 @@ fun SupportScreen(onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("نسخ الرقم")
+                            Text(tr("نسخ الرقم"))
                         }
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "غالباً يصلك الرد خلال يوم عمل واحد.",
+                    tr("غالباً يصلك الرد خلال يوم عمل واحد."),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center
