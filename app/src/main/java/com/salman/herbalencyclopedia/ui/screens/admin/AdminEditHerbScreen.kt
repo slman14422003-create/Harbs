@@ -2,8 +2,11 @@ package com.salman.herbalencyclopedia.ui.screens.admin
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -13,9 +16,12 @@ import com.salman.herbalencyclopedia.ui.components.GlassButton
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.components.ImagePreviewDialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import androidx.compose.ui.unit.dp
@@ -152,7 +158,32 @@ fun AdminEditHerbScreen(
                     Text("جاري ضغط الصورة...", style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (imageUrl.isNotBlank()) AsyncImage(model = imageUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().height(180.dp))
+            if (imageUrl.isNotBlank()) {
+                // معاينة دائرية (بدل المستطيل السابق fillMaxWidth/height(180dp))
+                // لتطابق شكل الصورة الفعلي كما يظهر لاحقاً في كل مكان بالتطبيق
+                // (HerbThumbnail دائري الشكل دوماً)، فما يراه المطوّر هنا عند
+                // الرفع هو نفسه ما سيظهر للمستخدم لاحقاً. الضغط عليها يفتح
+                // معاينة بحجم الشاشة الكاملة للتأكد من جودة الصورة قبل الحفظ.
+                var showPreview by remember { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .size(140.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        .clickable { showPreview = true }
+                ) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                if (showPreview) {
+                    ImagePreviewDialog(imageUrl = imageUrl, onDismiss = { showPreview = false })
+                }
+            }
 
             errorMessage?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
