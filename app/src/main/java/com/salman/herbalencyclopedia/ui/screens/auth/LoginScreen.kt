@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,10 +39,10 @@ fun LoginScreen(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("دخول المسؤول") },
+                title = { Text(tr("دخول المسؤول")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -84,9 +85,9 @@ fun LoginScreen(
                     )
                 }
 
-                Text("منطقة محمية", style = MaterialTheme.typography.headlineSmall)
+                Text(tr("منطقة محمية"), style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "هذه الواجهة مخصصة للحساب المسؤول المسجّل مسبقاً فقط.",
+                    tr("هذه الواجهة مخصصة للحساب المسؤول المسجّل مسبقاً فقط."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -94,7 +95,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("البريد الإلكتروني") },
+                    label = { Text(tr("البريد الإلكتروني")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp)
@@ -103,7 +104,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("كلمة المرور") },
+                    label = { Text(tr("كلمة المرور")) },
                     singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
@@ -138,7 +139,7 @@ fun LoginScreen(
                     if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("تسجيل الدخول")
+                        Text(tr("تسجيل الدخول"))
                     }
                 }
             }
