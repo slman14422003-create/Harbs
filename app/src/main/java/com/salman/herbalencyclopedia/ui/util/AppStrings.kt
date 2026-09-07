@@ -70,6 +70,7 @@ private val staticDictionary: Map<String, String> = mapOf(
     "الحساب" to "Account",
     "اللغة" to "Language",
     "لغة التطبيق" to "App Language",
+    "يترجم محتوى التطبيق تلقائياً عبر ترجمة جوجل" to "Automatically translates app content via Google Translate",
     "العربية" to "Arabic",
     "الإنجليزية" to "English"
 )
