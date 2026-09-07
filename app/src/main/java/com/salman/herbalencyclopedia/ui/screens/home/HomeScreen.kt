@@ -128,19 +128,19 @@ fun HomeScreen(
                 QuickAction(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Filled.Search,
-                    label = "بحث",
+                    label = tr("بحث"),
                     onClick = onSearchClick
                 )
                 QuickAction(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Filled.AutoAwesome,
-                    label = "سيمو",
+                    label = tr("سيمو"),
                     onClick = onSemoClick
                 )
                 QuickAction(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Filled.Blender,
-                    label = "الخلطات",
+                    label = tr("الخلطات"),
                     onClick = onBlendsClick
                 )
             }
