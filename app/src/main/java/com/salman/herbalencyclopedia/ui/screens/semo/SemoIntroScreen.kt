@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.components.GlassButton
+import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class SemoIntroSection(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -72,14 +73,14 @@ fun SemoIntroScreen(onAccept: () -> Unit) {
                     AssistantAvatar(size = 84.dp)
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "أهلاً بك مع سيمو 👋",
+                        tr("أهلاً بك مع سيمو 👋"),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "قبل أن تبدأ أول محادثة معه، الرجاء قراءة النقاط التالية",
+                        tr("قبل أن تبدأ أول محادثة معه، الرجاء قراءة النقاط التالية"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -116,11 +117,11 @@ fun SemoIntroScreen(onAccept: () -> Unit) {
                                 Icon(section.icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
                             }
                             Spacer(Modifier.width(10.dp))
-                            Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
+                            Text(tr(section.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            section.body,
+                            tr(section.body),
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (section.emphasized) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -156,7 +157,7 @@ fun SemoIntroScreen(onAccept: () -> Unit) {
                 if (isSaving) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("فهمت، لنبدأ مع سيمو 🌿")
+                    Text(tr("فهمت، لنبدأ مع سيمو 🌿"))
                 }
             }
         }

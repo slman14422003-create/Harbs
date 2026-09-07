@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.salman.herbalencyclopedia.ui.util.tr
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.Blend
@@ -279,10 +280,10 @@ fun SemoAssistantScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AssistantAvatar(size = 26.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("سيمو المساعد")
+                    Text(tr("سيمو المساعد"))
                 }
             }, navigationIcon = {
-                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
+                GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) }
             }, actions = {
                 if (messages.isNotEmpty()) {
                     GlassIconButton(onClick = {
@@ -293,12 +294,12 @@ fun SemoAssistantScreen(
                             putExtra(Intent.EXTRA_TEXT, shareText)
                         }
                         context.startActivity(Intent.createChooser(sendIntent, "مشاركة المحادثة"))
-                    }) { Icon(Icons.Filled.IosShare, "مشاركة المحادثة") }
+                    }) { Icon(Icons.Filled.IosShare, tr("مشاركة المحادثة")) }
                 }
                 TextButton(onClick = { showAttachPicker = true }) {
                     Icon(Icons.Filled.Eco, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(if (attached.isEmpty()) "إرفاق" else "${attached.size}")
+                    Text(if (attached.isEmpty()) tr("إرفاق") else "${attached.size}")
                 }
             })
         }
@@ -342,7 +343,7 @@ fun SemoAssistantScreen(
                 ) {
                     AssistChip(
                         onClick = { focusHerbs = emptyList() },
-                        label = { Text("🧠 يتابع الحديث عن: ${focusHerbs.joinToString(" و") { it.name }}") },
+                        label = { Text(tr("🧠 يتابع الحديث عن: ${focusHerbs.joinToString(" و") { it.name }}")) },
                         trailingIcon = { Icon(Icons.Filled.Close, null, modifier = Modifier.size(14.dp)) }
                     )
                 }
@@ -396,7 +397,7 @@ fun SemoAssistantScreen(
                             },
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         ) {
-                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "النزول لآخر رسالة")
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = tr("النزول لآخر رسالة"))
                         }
                     }
                 }
@@ -415,7 +416,7 @@ fun SemoAssistantScreen(
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (attached.isEmpty()) "اسأل سيمو عن أي عشبة..." else "اسأل عن ${attached.joinToString(" أو ") { it.name }}...") },
+                    placeholder = { Text(if (attached.isEmpty()) tr("اسأل سيمو عن أي عشبة...") else tr("اسأل عن ${attached.joinToString(" أو ") { it.name }}...")) },
                     shape = RoundedCornerShape(24.dp),
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -425,7 +426,7 @@ fun SemoAssistantScreen(
                     onClick = { sendMessage(inputText) },
                     enabled = inputText.isNotBlank() && !isThinking
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, "إرسال")
+                    Icon(Icons.AutoMirrored.Filled.Send, tr("إرسال"))
                 }
             }
         }
@@ -460,10 +461,10 @@ private fun WelcomeState(attached: List<Herb>, allHerbs: List<Herb>, onSuggestio
     ) {
         AssistantAvatar(size = 64.dp)
         Spacer(Modifier.height(16.dp))
-        Text("أهلاً، أنا سيمو 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(tr("أهلاً، أنا سيمو 👋"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text(
-            "اسألني عن أي عشبة في الموسوعة، أو اطلب مقارنة بين أكثر من عشبة مباشرة داخل سؤالك — بلا اتصال إنترنت وبلا أي حظر على الإجابة.",
+            tr("اسألني عن أي عشبة في الموسوعة، أو اطلب مقارنة بين أكثر من عشبة مباشرة داخل سؤالك — بلا اتصال إنترنت وبلا أي حظر على الإجابة."),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -491,7 +492,7 @@ private fun SuggestionCard(text: String, onClick: () -> Unit) {
         ) {
             Icon(Icons.Filled.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
-            Text(text, style = MaterialTheme.typography.bodyMedium)
+            Text(tr(text), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -507,9 +508,9 @@ private fun AttachHerbsDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Column(Modifier.padding(20.dp)) {
-                Text("إرفاق أعشاب (اختياري)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(tr("إرفاق أعشاب (اختياري)"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "يفيد إرفاق عشبة أو أكثر (حتى $MAX_ATTACHED) في تضييق إجابات سيمو، ويمكّنك من طلب مقارنة صريحة بينها. ليس شرطاً لبدء الدردشة.",
+                    tr("يفيد إرفاق عشبة أو أكثر (حتى $MAX_ATTACHED) في تضييق إجابات سيمو، ويمكّنك من طلب مقارنة صريحة بينها. ليس شرطاً لبدء الدردشة."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -533,11 +534,11 @@ private fun AttachHerbsDialog(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { selected = emptySet() }) { Text("مسح الكل") }
+                    TextButton(onClick = { selected = emptySet() }) { Text(tr("مسح الكل")) }
                     Spacer(Modifier.width(4.dp))
-                    TextButton(onClick = onDismiss) { Text("إلغاء") }
+                    TextButton(onClick = onDismiss) { Text(tr("إلغاء")) }
                     Spacer(Modifier.width(4.dp))
-                    Button(onClick = { onConfirm(selected) }) { Text("تم") }
+                    Button(onClick = { onConfirm(selected) }) { Text(tr("تم")) }
                 }
             }
         }
@@ -568,7 +569,12 @@ private fun ChatBubble(message: ChatMessage, onRate: (Boolean) -> Unit = {}) {
                 modifier = Modifier.widthIn(max = 300.dp)
             ) {
                 Text(
-                    message.text,
+                    // الأهم هنا: message.text هو رد سيمو الفعلي (نص ديناميكي
+                    // يُبنى محلياً من بيانات العشبة، وليس من القاموس الثابت)،
+                    // فيمر عبر ترجمة جوجل الحيّة تلقائياً (وليس القاموس) عند
+                    // اختيار الإنجليزية — هذا هو ما يجعل ردود سيمو نفسها
+                    // مترجمة أيضاً وليس فقط أزرار الشاشة.
+                    tr(message.text),
                     modifier = Modifier
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                         .alpha(if (message.isPlaceholder) 0.75f else 1f),
@@ -593,24 +599,24 @@ private fun ChatBubble(message: ChatMessage, onRate: (Boolean) -> Unit = {}) {
                 when (message.feedback) {
                     null -> {
                         Text(
-                            "هل كانت هذه الإجابة مفيدة؟",
+                            tr("هل كانت هذه الإجابة مفيدة؟"),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         GlassIconButton(onClick = { onRate(true) }, size = 26.dp) {
-                            Icon(Icons.Filled.ThumbUp, "مفيدة", modifier = Modifier.size(14.dp))
+                            Icon(Icons.Filled.ThumbUp, tr("مفيدة"), modifier = Modifier.size(14.dp))
                         }
                         GlassIconButton(onClick = { onRate(false) }, size = 26.dp) {
-                            Icon(Icons.Filled.ThumbDown, "غير مفيدة", modifier = Modifier.size(14.dp))
+                            Icon(Icons.Filled.ThumbDown, tr("غير مفيدة"), modifier = Modifier.size(14.dp))
                         }
                     }
                     true -> Text(
-                        "🌱 شكراً، سيتذكّر سيمو هذه الإجابة لسؤال مشابه لاحقاً.",
+                        tr("🌱 شكراً، سيتذكّر سيمو هذه الإجابة لسؤال مشابه لاحقاً."),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                     false -> Text(
-                        "تم، لن يعتمد سيمو على هذه الإجابة تحديداً مرة أخرى.",
+                        tr("تم، لن يعتمد سيمو على هذه الإجابة تحديداً مرة أخرى."),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -637,7 +643,7 @@ private fun TypingBubble() {
             color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Text(
-                "سيمو يكتب…",
+                tr("سيمو يكتب…"),
                 modifier = Modifier
                     .padding(horizontal = 14.dp, vertical = 10.dp)
                     .alpha(alphaValue),
