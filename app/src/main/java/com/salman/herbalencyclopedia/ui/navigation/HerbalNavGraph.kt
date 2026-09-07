@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.dp
 import androidx.navigation.*
 import androidx.navigation.compose.*
 import com.salman.herbalencyclopedia.data.ai.AiConfig
