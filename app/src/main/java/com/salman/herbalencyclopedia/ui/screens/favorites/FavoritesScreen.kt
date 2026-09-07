@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,9 +30,9 @@ fun FavoritesScreen(
     // empty/unfinished next to Home's richer top bar and the floating
     // bottom nav's polish.
     val subtitle = if (favoriteHerbs.isEmpty()) {
-        "لم تُضِف أي عشبة بعد"
+        tr("لم تُضِف أي عشبة بعد")
     } else {
-        "${favoriteHerbs.size} عشبة محفوظة"
+        tr("${favoriteHerbs.size} عشبة محفوظة")
     }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -45,7 +46,7 @@ fun FavoritesScreen(
                     TopBarBrandTitle(
                         icon = Icons.Filled.Favorite,
                         iconTint = MaterialTheme.colorScheme.error,
-                        title = "المفضلة",
+                        title = tr("المفضلة"),
                         subtitle = subtitle
                     )
                 }
@@ -53,7 +54,7 @@ fun FavoritesScreen(
         }
     ) { padding ->
         if (favoriteHerbs.isEmpty()) {
-            EmptyView(message = "لم تُضِف أي عشبة إلى المفضلة بعد", modifier = Modifier.padding(padding))
+            EmptyView(message = tr("لم تُضِف أي عشبة إلى المفضلة بعد"), modifier = Modifier.padding(padding))
         } else {
             // نفس إصلاح AllHerbsScreen: عمود واحد ثابت كان يمدّد البطاقة
             // بعرض الشاشة كاملاً على تابلت. Adaptive يحسب عدد الأعمدة من
