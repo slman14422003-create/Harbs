@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material.icons.filled.WarningAmber
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.components.GlassButton
 import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.LiquidGlassSurface
+import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class WelcomeSection(
@@ -61,13 +63,16 @@ private val sections = listOf(
 
 /**
  * شاشة الترحيب الأولى - تظهر مرة واحدة فقط بعد تثبيت التطبيق (قبل الوصول
- * للشاشة الرئيسية)، وتجمع: التحذير الطبي، ملخص سياسة الخصوصية، والشروط
- * والأحكام، مع زر موافقة واحد. القرار يُخزَّن محلياً عبر
- * [PreferencesRepository.setTermsAccepted] فلا تظهر هذه الشاشة مرة أخرى
- * إلا إذا حذف المستخدم بيانات التطبيق أو أعاد تثبيته.
+ * للشاشة الرئيسية)، وتجمع: اختيار لغة الواجهة، التحذير الطبي، ملخص سياسة
+ * الخصوصية، والشروط والأحكام، مع زر موافقة واحد. كلا القرارين (اللغة
+ * المختارة والموافقة على الشروط) يُخزَّنان محلياً عبر
+ * [PreferencesRepository.setAppLanguage] و[PreferencesRepository.setTermsAccepted]
+ * فلا تظهر هذه الشاشة مرة أخرى إلا إذا حذف المستخدم بيانات التطبيق أو أعاد تثبيته.
  */
 @Composable
 fun WelcomeScreen(
+    currentLanguage: AppLanguage,
+    onLanguageChange: (AppLanguage) -> Unit,
     onViewFullPrivacyPolicy: () -> Unit,
     onAgree: () -> Unit
 ) {
@@ -110,6 +115,45 @@ fun WelcomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                }
+            }
+
+            // ── اختيار لغة الواجهة: أول خطوة فعلية في معالج الإعداد، قبل أي
+            // نص آخر، حتى تُعرض بقية الشاشة (والتطبيق كله بعدها) مباشرة
+            // باللغة المختارة دون الحاجة للمرور لاحقاً بشاشة الإعدادات. ──
+            item {
+                Card(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.Language, contentDescription = null, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(tr("لغة التطبيق"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            AppLanguage.entries.forEach { language ->
+                                val selected = language == currentLanguage
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { onLanguageChange(language) },
+                                    label = { Text(language.nativeName) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
