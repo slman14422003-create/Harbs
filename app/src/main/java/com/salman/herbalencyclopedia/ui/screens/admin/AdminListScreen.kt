@@ -76,6 +76,13 @@ fun AdminListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(12.dp),
+                        // كان زرّا التعديل والحذف يُوضعان مباشرة بجوار بعضهما
+                        // بلا أي مسافة فاصلة (Arrangement الافتراضي بلا
+                        // spacedBy)، فتتلامس حدودهما الدائرية فعلياً ويسهل
+                        // الضغط على الزر الخطأ (خصوصاً زر الحذف المجاور
+                        // مباشرة لزر التعديل). هذه المسافة تفصلهما بوضوح عن
+                        // بعضهما وعن النص المجاور.
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
