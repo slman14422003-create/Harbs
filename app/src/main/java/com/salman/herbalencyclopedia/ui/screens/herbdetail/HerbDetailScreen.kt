@@ -23,6 +23,7 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.HerbThumbnail
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
+import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class InfoSection(
     val title: String,
@@ -40,12 +41,16 @@ fun HerbDetailScreen(
     onToggleFavorite: () -> Unit,
     onReportIssue: () -> Unit
 ) {
+    // عناوين الأقسام هنا تمر عبر tr(): إن كانت لغة التطبيق إنجليزية تُترجَم
+    // فوراً من القاموس المحلي (بلا شبكة)، أما محتوى العشبة نفسه (herb.benefits
+    // وغيره) فيصل مُترجَماً مسبقاً من AppViewModel (انظر translateHerbs) عبر
+    // ترجمة جوجل المجانية عند اختيار الإنجليزية، فلا حاجة لتمريره على tr() هنا.
     val sections = listOf(
-        InfoSection("الفوائد", herb.benefits, Icons.Filled.Favorite, Color(0xFF2E7D32)),
-        InfoSection("طريقة الاستخدام", herb.usage, Icons.Filled.LocalPharmacy, Color(0xFF1565C0)),
-        InfoSection("التحذيرات", herb.warnings, Icons.Filled.WarningAmber, Color(0xFFEF6C00)),
-        InfoSection("الأضرار المحتملة", herb.harms, Icons.Filled.ReportProblem, Color(0xFFC62828)),
-        InfoSection("ملاحظات إضافية", herb.notes, Icons.Filled.StickyNote2, Color(0xFF6A1B9A))
+        InfoSection(tr("الفوائد"), herb.benefits, Icons.Filled.Favorite, Color(0xFF2E7D32)),
+        InfoSection(tr("طريقة الاستخدام"), herb.usage, Icons.Filled.LocalPharmacy, Color(0xFF1565C0)),
+        InfoSection(tr("التحذيرات"), herb.warnings, Icons.Filled.WarningAmber, Color(0xFFEF6C00)),
+        InfoSection(tr("الأضرار المحتملة"), herb.harms, Icons.Filled.ReportProblem, Color(0xFFC62828)),
+        InfoSection(tr("ملاحظات إضافية"), herb.notes, Icons.Filled.StickyNote2, Color(0xFF6A1B9A))
     ).filter { it.content.isNotBlank() && it.content != "—" }
 
     Scaffold(
@@ -55,12 +60,12 @@ fun HerbDetailScreen(
                 title = { Text(herb.name) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 },
                 actions = {
                     GlassIconButton(onClick = onReportIssue) {
-                        Icon(Icons.Filled.Feedback, contentDescription = "الإبلاغ عن خطأ بالمعلومات")
+                        Icon(Icons.Filled.Feedback, contentDescription = tr("الإبلاغ عن خطأ بالمعلومات"))
                     }
                     GlassIconButton(onClick = onToggleFavorite) {
                         Icon(
@@ -82,7 +87,10 @@ fun HerbDetailScreen(
         ) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HerbThumbnail(imageUrl = herb.imageUrl, size = 72.dp)
+                    // previewOnClick=true: الضغط على صورة العشبة هنا (وليس على
+                    // الصف بأكمله، فهو ليس قابلاً للنقر أصلاً في هذه الشاشة)
+                    // يفتح معاينة بحجم الشاشة الكاملة — انظر HerbThumbnail وImagePreviewDialog.
+                    HerbThumbnail(imageUrl = herb.imageUrl, size = 72.dp, previewOnClick = true)
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
                         text = herb.name,
