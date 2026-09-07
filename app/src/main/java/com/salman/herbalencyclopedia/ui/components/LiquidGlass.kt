@@ -74,9 +74,22 @@ fun LiquidGlassSurface(
     // وبالتالي ارتفاعها الفعلي). compact=true يصغّر الفقاعتين ونصف قطر
     // تمويههما بما يناسب صفاً قصيراً فلا تطغيان على العنصر كاملاً.
     compact: Boolean = false,
+    // فقاعتا التمويه (RenderEffect.createBlurEffect) تحتاجان طبقة رسم
+    // منفصلة (graphicsLayer) تُعاد معالجتها على المعالج الرسومي في كل
+    // إطار طالما العنصر ظاهر على الشاشة — تكلفة صغيرة لعنصر واحد فريد
+    // (GlassButton، الشريط العلوي، الشريط السفلي العائم...)، لكنها تتضاعف
+    // حرفياً عند تكرارها بالعشرات على بطاقات القوائم (HerbCard/BlendCard)
+    // أثناء التمرير: كل بطاقة ظاهرة تشغّل طبقة تمويه GPU خاصة بها في آن
+    // واحد، وهذا تحديداً سبب تقطّع الحركة/التمرير في وضع "أداء عالٍ" رغم
+    // أن كل تمويه على حدة يبدو رخيصاً. نفس مبدأ [sheen] أعلاه (يُستبعد
+    // افتراضياً من التكرار ويُفعَّل صراحة فقط للعناصر الفريدة): بطاقات
+    // القوائم تمرّر false هنا فتحصل على نفس تدرّج/حدّ الزجاج لكن بلا طبقة
+    // تمويه GPU إضافية لكل نسخة، بينما العناصر الفريدة تُبقيها true.
+    blurBubbles: Boolean = true,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
+    val showBlurBubbles = highQuality && blurBubbles
     val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
     // حافة الزجاج تعتمد على الوضع: في الوضع الداكن، حدّ أبيض خافت يعطي
     // إحساس "توهّج" واضحاً على خلفية داكنة. نفس الحدّ الأبيض على خلفية
@@ -107,7 +120,7 @@ fun LiquidGlassSurface(
     val secondaryBubbleOffset = if (compact) 8.dp to 7.dp else 18.dp to 16.dp
 
     Box(modifier = modifier.clip(shape)) {
-        if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (showBlurBubbles && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // كان RenderEffect.createBlurEffect يُستدعى مباشرة داخل كتلة
             // graphicsLayer{}، وهذه الكتلة تُنفَّذ في كل مرحلة رسم (draw)
             // وليس فقط عند إعادة التركيب (recomposition) — أي في كل إطار
@@ -147,17 +160,30 @@ fun LiquidGlassSurface(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        // نفس ملاحظة الحدّ أعلاه: تدرّج الخلفية الأساسي بقيم
-                        // الشفافية القديمة (0.92/0.74) كان قريباً جداً من لون
-                        // خلفية الصفحة في الوضع الفاتح (كلاهما فاتح جداً بلا
-                        // تشبّع)، فتبدو البطاقة بلا امتلاء واضح مقارنةً بوضوحها
-                        // في الوضع الداكن. رفع الشفافية قليلاً في الوضع الفاتح
-                        // فقط يعطي امتلاءً كافياً يميّز البطاقة عن الخلفية.
-                        if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
-                        else listOf(tint.copy(alpha = 0.97f), tint.copy(alpha = 0.88f))
-                    )
+                .then(
+                    if (highQuality) {
+                        // تدرّج حقيقي (Brush.verticalGradient) يخصّص شادر
+                        // (Shader) خاص به عند كل رسم — تكلفة معقولة لعنصر
+                        // فريد، لكنها تتكرّر بالعشرات على شبكات/قوائم
+                        // البطاقات. في الوضع الاقتصادي نستبدلها بلون واحد
+                        // مصمت بمتوسط نفس الشفافيتين تقريباً: نفس الامتلاء
+                        // البصري تقريباً بلا أي تخصيص Shader إضافي، لتخفيف
+                        // العبء أكثر على الأجهزة الضعيفة تحديداً.
+                        Modifier.background(
+                            Brush.verticalGradient(
+                                // نفس ملاحظة الحدّ أعلاه: تدرّج الخلفية الأساسي بقيم
+                                // الشفافية القديمة (0.92/0.74) كان قريباً جداً من لون
+                                // خلفية الصفحة في الوضع الفاتح (كلاهما فاتح جداً بلا
+                                // تشبّع)، فتبدو البطاقة بلا امتلاء واضح مقارنةً بوضوحها
+                                // في الوضع الداكن. رفع الشفافية قليلاً في الوضع الفاتح
+                                // فقط يعطي امتلاءً كافياً يميّز البطاقة عن الخلفية.
+                                if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
+                                else listOf(tint.copy(alpha = 0.97f), tint.copy(alpha = 0.88f))
+                            )
+                        )
+                    } else {
+                        Modifier.background(tint.copy(alpha = if (darkTheme) 0.83f else 0.925f))
+                    }
                 )
         )
 
@@ -168,16 +194,29 @@ fun LiquidGlassSurface(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            edgeColor.copy(alpha = (borderAlpha + 0.14f) * edgeAlphaScale),
-                            edgeColor.copy(alpha = (borderAlpha * 0.35f) * edgeAlphaScale)
+                .let {
+                    if (highQuality) {
+                        it.border(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(
+                                    edgeColor.copy(alpha = (borderAlpha + 0.14f) * edgeAlphaScale),
+                                    edgeColor.copy(alpha = (borderAlpha * 0.35f) * edgeAlphaScale)
+                                )
+                            ),
+                            shape = shape
                         )
-                    ),
-                    shape = shape
-                )
+                    } else {
+                        // نفس فكرة الخلفية أعلاه: حدّ بلون واحد مصمت بدل
+                        // تدرّج، بمتوسط تقريبي لنفس الشفافيتين — يبدو شبه
+                        // مطابق بصرياً بلا تخصيص Shader إضافي.
+                        it.border(
+                            width = 1.dp,
+                            color = edgeColor.copy(alpha = (borderAlpha + 0.07f) * edgeAlphaScale),
+                            shape = shape
+                        )
+                    }
+                }
         )
 
         content()

@@ -52,7 +52,10 @@ fun BlendCard(
             tint = MaterialTheme.colorScheme.surfaceContainer,
             // نفس إصلاح HerbCard: بطاقة صف قصيرة، انظر توثيق [compact] في
             // LiquidGlassSurface.
-            compact = true
+            compact = true,
+            // نفس إصلاح HerbCard أيضاً لتقطّع التمرير في وضع "أداء عالٍ" —
+            // انظر توثيق [blurBubbles] في LiquidGlassSurface.
+            blurBubbles = false
         ) {
             Row(
                 modifier = Modifier

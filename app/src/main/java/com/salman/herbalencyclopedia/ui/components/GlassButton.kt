@@ -152,6 +152,12 @@ fun GlassIconButton(
     size: Dp = 42.dp,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    // انظر توثيق [LiquidGlassSurface.blurBubbles]: هذا الزر يتكرّر بالعشرات
+    // (زر المفضلة بكل صف عشبة، زرّا التعديل/الحذف بكل صف بلوحة الإدارة...)،
+    // فالقيمة الافتراضية هنا false بعكس بقية أزرار LiquidGlassSurface الفريدة
+    // (GlassButton الأساسي، الشريط العلوي...) — نفس الشكل الزجاجي تماماً
+    // لكن بلا طبقة تمويه GPU مكرَّرة لكل نسخة أثناء التمرير.
+    blurBubbles: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -170,7 +176,8 @@ fun GlassIconButton(
             shape = CircleShape,
             modifier = Modifier.fillMaxSize(),
             tint = containerColor,
-            borderAlpha = 0.14f
+            borderAlpha = 0.14f,
+            blurBubbles = blurBubbles
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),

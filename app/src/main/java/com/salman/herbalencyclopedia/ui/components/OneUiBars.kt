@@ -1,5 +1,8 @@
 package com.salman.herbalencyclopedia.ui.components
 
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -11,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,9 +24,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode
 
 /**
  * عنوان شريط علوي "غني": شارة دائرية ملوّنة بأيقونة + عنوان + عنوان فرعي
@@ -135,11 +142,7 @@ fun OneUiFloatingNavBar(
 ) {
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
     val shape = RoundedCornerShape(30.dp)
-    // نفس مبدأ [GlassTopBar]: ظل بلون السطح نفسه بدل الأسود المحايد
-    // الافتراضي، كي لا يبدو الشريط العائم وكأنه يطفو فوق بقعة رمادية
-    // منفصلة عنه — ملحوظ بوضوح أكبر هنا لأن هذا الشريط عائم بالكامل
-    // (ظل على أربع جهات) وليس ملتصقاً بحافة الشاشة كالشريط العلوي.
-    val shadowTint = container.copy(alpha = 0.5f)
+    val highQuality = LocalPerformanceMode.current.isHighQuality
     // على تنقّل الإيماءات الحاجز السفلي (navigationBars) رفيع جداً (عادة
     // أقل من 32dp)، بينما على أزرار التنقل التقليدية الثلاثة يكون أثخن
     // بوضوح. windowInsetsPadding(navigationBars) وحده يتكفّل بعدم تداخل
@@ -158,9 +161,41 @@ fun OneUiFloatingNavBar(
             .padding(bottom = extraBottomPadding),
         contentAlignment = Alignment.Center
     ) {
+        // الظل السابق كان Modifier.shadow() بارتفاع 16dp ملوّناً بنفس لون
+        // سطح الشريط بشفافية 0.5 — عملياً هذا يرسم هالة بنفس شكل الشريط
+        // تماماً ملتصقة به مباشرة من كل جهة، فتُقرأ كـ"رسمة" مكرَّرة تحت
+        // الشريط بدل ظل طبيعي موحٍ بالتحليق فوق المحتوى. الطبقة أدناه
+        // ظل حقيقي منفصل: مموَّه فعلياً (RenderEffect) ومزاح للأسفل قليلاً
+        // فقط (بدل تطابق كامل مع شكل الشريط من كل الجهات)، وبلون أسود
+        // محايد منخفض الشفافية كأي ظل واقعي بدل تلوينه بلون السطح نفسه —
+        // فيبدو الشريط عائماً فعلاً بدل مرسوم عليه ظل ثابت تحته. نفس مبدأ
+        // [LiquidGlassSurface.blurBubbles]: عنصر فريد واحد بالشاشة فتمويهه
+        // الحقيقي هنا لا يكلّف شيئاً يُذكر خلافاً لتكراره بالعشرات.
+        if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val shadowBlur = remember {
+                RenderEffect.createBlurEffect(20f, 20f, Shader.TileMode.CLAMP).asComposeRenderEffect()
+            }
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .offset(y = 10.dp)
+                    .graphicsLayer { renderEffect = shadowBlur }
+                    .background(Color.Black.copy(alpha = 0.30f), shape)
+            )
+        } else {
+            // بلا تمويه حقيقي (وضع اقتصادي أو ما قبل أندرويد 12): إزاحة
+            // بسيطة للأسفل بشفافية منخفضة جداً تكفي لإيحاء ظل خفيف بلا أي
+            // تكلفة طبقة رسم إضافية.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .offset(y = 3.dp)
+                    .background(Color.Black.copy(alpha = 0.12f), shape)
+            )
+        }
+
         LiquidGlassSurface(
             shape = shape,
-            modifier = Modifier.shadow(16.dp, shape, clip = false, ambientColor = shadowTint, spotColor = shadowTint),
             tint = container,
             borderAlpha = 0.16f
         ) {
