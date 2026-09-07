@@ -68,6 +68,10 @@ import kotlin.math.roundToInt
 private val fontScaleLabels = listOf("عادي", "كبير", "أكبر")
 private val fontScaleSizes = listOf(15.sp, 18.sp, 21.sp)
 
+/** طابع داخلي (غير مترجَم عمداً — تقني/محايد) لآخر جولة تحسينات هندسة واجهة
+ *  ملحوظة: يظهر خافتاً جداً تحت رقم إصدار التطبيق في شاشة الإعدادات. */
+private const val UI_ENGINEERING_BUILD_TAG = "UI engineering pass • 2026-09"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -349,7 +353,7 @@ private fun ThemeModeSelector(darkMode: Boolean?, onDarkModeChange: (Boolean?) -
             Column {
                 Text(tr("وضع العرض"), fontWeight = FontWeight.SemiBold)
                 Text(
-                    when (darkMode) { null -> "يتبع النظام"; true -> "داكن"; false -> "فاتح" },
+                    when (darkMode) { null -> tr("يتبع النظام"); true -> tr("داكن"); false -> tr("فاتح") },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -531,7 +535,7 @@ private fun FontScaleRow(fontScale: Int, onFontScaleChange: (Int) -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(tr("حجم النص"), fontWeight = FontWeight.SemiBold)
-                Text(fontScaleLabels[fontScale], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr(fontScaleLabels[fontScale]), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
                 tr("أبج"),
@@ -563,7 +567,7 @@ private fun PaletteRow(
             Column(Modifier.weight(1f)) {
                 Text(tr("لوحة الألوان"), fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (enabled) "اختر لون الهوية اليدوي" else "متاحة عند إيقاف الألوان الديناميكية",
+                    if (enabled) tr("اختر لون الهوية اليدوي") else tr("متاحة عند إيقاف الألوان الديناميكية"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -616,13 +620,13 @@ private fun PaletteSwatch(
         when {
             selected -> Icon(
                 Icons.Filled.Check,
-                contentDescription = palette.label,
+                contentDescription = tr(palette.label),
                 tint = if (isNone) Color(0xFF616161) else Color.White,
                 modifier = Modifier.size(18.dp)
             )
             isNone -> Icon(
                 Icons.Filled.NotInterested,
-                contentDescription = palette.label,
+                contentDescription = tr(palette.label),
                 tint = Color(0xFF757575),
                 modifier = Modifier.size(18.dp)
             )
@@ -696,7 +700,7 @@ private fun PerformanceModeCard(
     ) {
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(24.dp))
         Spacer(Modifier.height(6.dp))
-        Text(mode.label, fontWeight = FontWeight.SemiBold, color = content, style = MaterialTheme.typography.bodyMedium)
+        Text(tr(mode.label), fontWeight = FontWeight.SemiBold, color = content, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -749,6 +753,15 @@ private fun UpdateRow(
                     tr("الإصدار الحالي: $currentVersionName"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                // طابع داخلي يوثّق آخر جولة تحسينات هندسة واجهة (ترجمة أدوات
+                // الإدارة/الخصوصية، معالج إعداد اللغة الأول، وتحسينات أداء
+                // الزجاج السائل) — يظهر بخط صغير خافت تحت رقم الإصدار كي لا
+                // يُشوّش على المستخدم العادي لكنه موثَّق ومرئي عند الحاجة.
+                Text(
+                    UI_ENGINEERING_BUILD_TAG,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
                 )
             }
         }
