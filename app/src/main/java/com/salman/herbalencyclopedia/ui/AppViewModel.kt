@@ -20,9 +20,12 @@ import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
+import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -72,6 +75,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     val favoriteIds: StateFlow<Set<String>> = container.preferencesRepository.favoriteIds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    /** لغة واجهة التطبيق الحالية (راجع [AppLanguage] وSettingsScreen). */
+    val appLanguage: StateFlow<AppLanguage> = container.preferencesRepository.appLanguage
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppLanguage.ARABIC)
+
+    fun setAppLanguage(language: AppLanguage) {
+        viewModelScope.launch { container.preferencesRepository.setAppLanguage(language) }
+    }
 
     var isLoggedIn by mutableStateOf(container.authRepository.isAdmin)
         private set
@@ -454,9 +465,22 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             combine(
                 container.herbRepository.observeCategories(),
                 container.herbRepository.observeHerbs(),
-                container.herbRepository.observeBlends()
-            ) { categories, herbs, blends ->
-                UiState(herbs = herbs, categories = categories, blends = blends, isLoading = false, error = null)
+                container.herbRepository.observeBlends(),
+                container.preferencesRepository.appLanguage
+            ) { categories, herbs, blends, language ->
+                // عند اختيار الإنجليزية، تُترجَم بيانات الأعشاب/التصنيفات/
+                // الخلطات هنا في نقطة مركزية واحدة (بدل كل شاشة على حدة)،
+                // فتصل مُترجَمة تلقائياً لكل شاشة تعرضها (الرئيسية، كل
+                // الأعشاب، البحث، المفضلة، التصنيفات، التفاصيل، الخلطات...)
+                // دون أي تعديل إضافي في تلك الشاشات. راجع translateHerbs/
+                // translateCategories/translateBlends أدناه.
+                UiState(
+                    herbs = translateHerbs(herbs, language),
+                    categories = translateCategories(categories, language),
+                    blends = translateBlends(blends, language),
+                    isLoading = false,
+                    error = null
+                )
             }
                 .catch { e ->
                     // Keep whatever data is already on screen (e.g. from the offline
@@ -493,6 +517,59 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                         container.preferencesRepository.setAiAutoLearnedExamples(merged)
                     }
                 }
+        }
+    }
+
+    /**
+     * يترجم قوائم الأعشاب/التصنيفات/الخلطات بالتوازي (كل حقل نصي طلب شبكة
+     * منفصل عبر [com.salman.herbalencyclopedia.data.translate.TranslationRepository]
+     * المُخزِّن مؤقتاً) عند اختيار الإنجليزية فقط؛ في الوضع العربي تُعاد
+     * القوائم كما هي دون أي طلب شبكة إضافي.
+     */
+    private suspend fun translateHerbs(herbs: List<Herb>, language: AppLanguage): List<Herb> {
+        if (language == AppLanguage.ARABIC || herbs.isEmpty()) return herbs
+        val translator = container.translationRepository
+        return coroutineScope {
+            herbs.map { herb ->
+                async {
+                    herb.copy(
+                        name = translator.translate(herb.name, "en"),
+                        benefits = translator.translate(herb.benefits, "en"),
+                        usage = translator.translate(herb.usage, "en"),
+                        warnings = translator.translate(herb.warnings, "en"),
+                        harms = translator.translate(herb.harms, "en"),
+                        notes = translator.translate(herb.notes, "en")
+                    )
+                }
+            }.awaitAll()
+        }
+    }
+
+    private suspend fun translateCategories(categories: List<Category>, language: AppLanguage): List<Category> {
+        if (language == AppLanguage.ARABIC || categories.isEmpty()) return categories
+        val translator = container.translationRepository
+        return coroutineScope {
+            categories.map { category ->
+                async { category.copy(name = translator.translate(category.name, "en")) }
+            }.awaitAll()
+        }
+    }
+
+    private suspend fun translateBlends(blends: List<Blend>, language: AppLanguage): List<Blend> {
+        if (language == AppLanguage.ARABIC || blends.isEmpty()) return blends
+        val translator = container.translationRepository
+        return coroutineScope {
+            blends.map { blend ->
+                async {
+                    blend.copy(
+                        name = translator.translate(blend.name, "en"),
+                        benefits = translator.translate(blend.benefits, "en"),
+                        usage = translator.translate(blend.usage, "en"),
+                        warnings = translator.translate(blend.warnings, "en"),
+                        notes = translator.translate(blend.notes, "en")
+                    )
+                }
+            }.awaitAll()
         }
     }
 
