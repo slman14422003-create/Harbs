@@ -56,6 +56,12 @@ fun AdminEditBlendScreen(
     var herbPickerExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    // يُحسَب هنا (سياق @Composable سليم) بدل استدعاء tr() مباشرة داخل
+    // رد نداء rememberLauncherForActivityResult/coroutineScope.launch أدناه —
+    // ذاك السياق ليس @Composable إطلاقاً، فاستدعاء tr() هناك مباشرة يمنع
+    // بناء المشروع بالكامل (compile error: "@Composable invocations can
+    // only happen from the context of a @Composable function").
+    val imageCompressionErrorMessage = tr("تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى")
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             errorMessage = null
@@ -66,7 +72,7 @@ fun AdminEditBlendScreen(
                 if (compressed != null) {
                     imageUrl = compressed
                 } else {
-                    errorMessage = tr("تعذّر معالجة هذه الصورة (قد تكون كبيرة جداً)، جرّب صورة أخرى")
+                    errorMessage = imageCompressionErrorMessage
                 }
             }
         }
