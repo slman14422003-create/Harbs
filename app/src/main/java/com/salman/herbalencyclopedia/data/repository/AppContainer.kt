@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia.data.repository
 
 import android.content.Context
+import com.salman.herbalencyclopedia.data.translate.TranslationRepository
 
 /**
  * Minimal manual DI container. Kept intentionally simple (no Hilt/Koin)
@@ -17,4 +18,10 @@ class AppContainer(context: Context) {
     // مزامنة "تعلّم سيمو الذاتي" بين الأجهزة عبر Firestore — انظر
     // SemoLearningRepository وAppViewModel.init للسلك الفعلي.
     val semoLearningRepository: SemoLearningRepository by lazy { SemoLearningRepository() }
+    // ترجمة بيانات الأعشاب/التصنيفات/الخلطات إلى الإنجليزية عبر واجهة جوجل
+    // المجانية، مع تخزين مؤقت دائم — راجع AppViewModel.translateHerbs وما شابه.
+    val translationRepository: TranslationRepository by lazy {
+        TranslationRepository(context.applicationContext)
+    }
 }
+

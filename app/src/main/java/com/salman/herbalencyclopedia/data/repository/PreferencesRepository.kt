@@ -13,8 +13,11 @@ import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.theme.recommendedPerformanceMode
+import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 
 private val Context.dataStore by preferencesDataStore(name = "herbal_prefs")
 
@@ -37,6 +40,9 @@ class PreferencesRepository(private val context: Context) {
         val THEME_PALETTE = stringPreferencesKey("theme_palette")
         val PERFORMANCE_MODE = stringPreferencesKey("performance_mode")
         val TERMS_ACCEPTED = booleanPreferencesKey("terms_accepted")
+        // لغة واجهة التطبيق (ar/en) — راجع AppLanguage وSettingsScreen وميزة
+        // الترجمة التلقائية في AppViewModel.translateHerbs/translateCategories/translateBlends.
+        val APP_LANGUAGE = stringPreferencesKey("app_language")
         // هل شاهد المستخدم شاشة ترحيب/شروط استخدام سيمو تحديداً (منفصلة عن
         // شاشة ترحيب التطبيق العامة أعلاه)؟ تُعرض مرة واحدة فقط عند أول
         // فتح لسيمو بعد التثبيت — انظر SemoIntroScreen وHerbalNavGraph.
@@ -102,6 +108,29 @@ class PreferencesRepository(private val context: Context) {
 
     val performanceMode: Flow<PerformanceMode> = context.dataStore.data.map {
         PerformanceMode.fromId(it[Keys.PERFORMANCE_MODE], fallback = recommendedMode)
+    }
+
+    /** لغة واجهة التطبيق الحالية — راجع [AppLanguage] و[setAppLanguage]. */
+    val appLanguage: Flow<AppLanguage> = context.dataStore.data.map {
+        AppLanguage.fromCode(it[Keys.APP_LANGUAGE])
+    }
+
+    suspend fun setAppLanguage(language: AppLanguage) {
+        context.dataStore.edit { prefs -> prefs[Keys.APP_LANGUAGE] = language.code }
+    }
+
+    companion object {
+        /**
+         * قراءة متزامنة صريحة (وليست عبر Flow) للغة المحفوظة — تُستدعى فقط من
+         * [android.app.Activity.attachBaseContext] (انظر MainActivity)، وهي
+         * نقطة تُستدعى قبل أي تركيبة Compose أو viewModelScope، فيجب أن
+         * يُغلَّف الـ Context باللغة الصحيحة قبل إنشاء أي مورد أو شاشة. تكلفة
+         * هذه القراءة بسيطة (قيمة واحدة من ملف DataStore محلي صغير) وتحدث مرة
+         * واحدة فقط عند كل إنشاء للنشاط.
+         */
+        fun getSavedLanguageCodeBlocking(context: Context): String = runBlocking {
+            context.dataStore.data.first()[Keys.APP_LANGUAGE] ?: AppLanguage.ARABIC.code
+        }
     }
 
     suspend fun toggleFavorite(herbId: String) {
