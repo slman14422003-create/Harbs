@@ -91,12 +91,12 @@ fun HomeScreen(
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                "موسوعة الأعشاب الطبية",
+                                com.salman.herbalencyclopedia.ui.util.tr("موسوعة الأعشاب الطبية"),
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                greetingForNow(),
+                                com.salman.herbalencyclopedia.ui.util.tr(greetingForNow()),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
@@ -107,7 +107,7 @@ fun HomeScreen(
                 actions = {
                     if (isAdmin) {
                         GlassIconButton(onClick = onAdminClick, modifier = Modifier.padding(end = 4.dp)) {
-                            Icon(Icons.Filled.AdminPanelSettings, contentDescription = "لوحة التحكم")
+                            Icon(Icons.Filled.AdminPanelSettings, contentDescription = com.salman.herbalencyclopedia.ui.util.tr("لوحة التحكم"))
                         }
                     }
                 }
