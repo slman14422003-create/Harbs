@@ -36,11 +36,17 @@ object ImageCompressor {
     // Firestore يرفض أي مستند يتجاوز 1 ميجابايت إجمالاً (كل الحقول
     // مجتمعة)، وترميز base64 يكبّر حجم الصورة الأصلي بحوالي 33%. نحجز
     // هامشاً كافياً لبقية حقول العشبة.
-    private const val MAX_DATA_URL_BYTES = 550_000
-    private const val INITIAL_MAX_DIMENSION = 900
-    private const val MIN_MAX_DIMENSION = 400
-    private const val INITIAL_QUALITY = 82
-    private const val MIN_QUALITY = 35
+    //
+    // تحسين الجودة: رُفعت هذه الحدود عن القيم السابقة (550,000 / 900 /
+    // 82 / 35) لأن الهامش الفعلي المتاح داخل حد Firestore (1 ميجابايت)
+    // كان يُستغل جزئياً فقط. القيم الجديدة تعطي أولوية أعلى للجودة قبل
+    // اللجوء لخفضها تدريجياً، مع البقاء ضمن هامش آمن (~750 كيلوبايت من
+    // أصل 1 ميجابايت) لبقية حقول العشبة النصية.
+    private const val MAX_DATA_URL_BYTES = 750_000
+    private const val INITIAL_MAX_DIMENSION = 1080
+    private const val MIN_MAX_DIMENSION = 500
+    private const val INITIAL_QUALITY = 92
+    private const val MIN_QUALITY = 50
 
     suspend fun compressToDataUrl(context: Context, uri: Uri): String? = withContext(Dispatchers.Default) {
         runCatching {
@@ -71,7 +77,9 @@ object ImageCompressor {
 
                 if (dataUrl.length <= MAX_DATA_URL_BYTES || (quality <= MIN_QUALITY && maxDimension <= MIN_MAX_DIMENSION)) break
 
-                quality = if (quality > MIN_QUALITY) quality - 15 else quality
+                // خطوات أصغر (10 بدل 15 سابقاً) تعني تدرّجاً أدق نحو أصغر حجم
+                // يحقق الحد المطلوب، بدل القفز لجودة أدنى من اللازم.
+                quality = if (quality > MIN_QUALITY) quality - 10 else quality
                 if (quality <= MIN_QUALITY) {
                     maxDimension = (maxDimension * 0.75f).toInt().coerceAtLeast(MIN_MAX_DIMENSION)
                 }
