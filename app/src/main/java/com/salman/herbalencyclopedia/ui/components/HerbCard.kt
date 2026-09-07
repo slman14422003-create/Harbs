@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -12,7 +13,9 @@ import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,9 +106,22 @@ fun HerbCard(
     }
 }
 
+/**
+ * @param previewOnClick إذا كانت true وتوجد صورة فعلية، يفتح الضغط على
+ * الصورة معاينة بحجم كامل الشاشة (انظر [ImagePreviewDialog]) بدل تجاهل
+ * الضغطة أو تفعيل نقرة الصف كاملاً (مفيد تحديداً في شاشة تفاصيل العشبة،
+ * حيث الصورة ليست جزءاً من صف قابل للنقر أصلاً). في بطاقة القائمة
+ * (HerbCard) تبقى false افتراضياً لأن نقرة الصف بالكامل تفتح التفاصيل.
+ */
 @Composable
-fun HerbThumbnail(imageUrl: String?, size: androidx.compose.ui.unit.Dp = 56.dp) {
+fun HerbThumbnail(
+    imageUrl: String?,
+    size: androidx.compose.ui.unit.Dp = 56.dp,
+    previewOnClick: Boolean = false
+) {
     val shape = CircleShape
+    var showPreview by remember { mutableStateOf(false) }
+
     if (imageUrl.isNullOrBlank()) {
         Box(
             modifier = Modifier
@@ -127,6 +143,13 @@ fun HerbThumbnail(imageUrl: String?, size: androidx.compose.ui.unit.Dp = 56.dp) 
             modifier = Modifier
                 .size(size)
                 .clip(shape)
+                .then(
+                    if (previewOnClick) Modifier.clickable { showPreview = true } else Modifier
+                )
         )
+    }
+
+    if (showPreview && !imageUrl.isNullOrBlank()) {
+        ImagePreviewDialog(imageUrl = imageUrl, onDismiss = { showPreview = false })
     }
 }
