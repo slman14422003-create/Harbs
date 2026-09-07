@@ -15,6 +15,7 @@ import com.salman.herbalencyclopedia.ui.components.GlassButton
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import kotlinx.coroutines.launch
+import com.salman.herbalencyclopedia.ui.util.tr
 
 /**
  * شاشة "الإبلاغ عن خطأ" — متاحة للجميع بلا أي تسجيل دخول (انظر
@@ -39,10 +40,10 @@ fun SendFeedbackScreen(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("الإبلاغ عن خطأ") },
+                title = { Text(tr("الإبلاغ عن خطأ")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -64,14 +65,14 @@ fun SendFeedbackScreen(
                     Icon(Icons.Filled.Feedback, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(10.dp))
                     Column {
-                        Text("بخصوص", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("بخصوص"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(targetName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
             Text(
-                "إن وجدت معلومة خاطئة أو ناقصة، اكتب ملاحظتك هنا وستصل مباشرة للمسؤول عن الموسوعة.",
+                tr("إن وجدت معلومة خاطئة أو ناقصة، اكتب ملاحظتك هنا وستصل مباشرة للمسؤول عن الموسوعة."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -82,7 +83,7 @@ fun SendFeedbackScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Text(
-                        "تم إرسال ملاحظتك، شكراً لمساعدتك في تحسين الموسوعة.",
+                        tr("تم إرسال ملاحظتك، شكراً لمساعدتك في تحسين الموسوعة."),
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -91,14 +92,14 @@ fun SendFeedbackScreen(
                 OutlinedTextField(
                     value = senderName,
                     onValueChange = { senderName = it },
-                    label = { Text("اسمك (اختياري)") },
+                    label = { Text(tr("اسمك (اختياري)")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = message,
                     onValueChange = { message = it },
-                    label = { Text("وصف الخطأ أو الملاحظة") },
+                    label = { Text(tr("وصف الخطأ أو الملاحظة")) },
                     minLines = 4,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -120,7 +121,7 @@ fun SendFeedbackScreen(
                     if (isSending) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("إرسال")
+                        Text(tr("إرسال"))
                     }
                 }
             }
