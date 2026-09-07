@@ -86,11 +86,19 @@ fun LiquidGlassSurface(
     // القوائم تمرّر false هنا فتحصل على نفس تدرّج/حدّ الزجاج لكن بلا طبقة
     // تمويه GPU إضافية لكل نسخة، بينما العناصر الفريدة تُبقيها true.
     blurBubbles: Boolean = true,
+    // عند تزويد حالة خلفية حقيقية (انظر GlassBackdrop.kt)، يرسم هذا السطح
+    // خلفه تمويهاً فعلياً لما يقع فعلياً وراءه على الشاشة (خلفية التطبيق
+    // المتحرّكة/الألوان) بدل تدرّج تقريبي ثابت — الفرق بين زجاج "يعكس"
+    // الواجهة وزجاج يحاكيها بلون تقريبي فقط. يُستخدم فقط في العناصر
+    // العائمة الفريدة (الشريط السفلي/العلوي)، وليس في بطاقات الشبكة
+    // المتكرّرة، لنفس اعتبارات التكلفة الموضّحة أعلاه لـ[blurBubbles].
+    backdrop: GlassBackdropState? = null,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
     val showBlurBubbles = highQuality && blurBubbles
     val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    val useRealBlur = backdrop != null && highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     // حافة الزجاج تعتمد على الوضع: في الوضع الداكن، حدّ أبيض خافت يعطي
     // إحساس "توهّج" واضحاً على خلفية داكنة. نفس الحدّ الأبيض على خلفية
     // فاتحة يكاد يكون غير مرئي تماماً (أبيض على أبيض تقريباً) — وهذا بالضبط
@@ -119,7 +127,11 @@ fun LiquidGlassSurface(
     val primaryBubbleOffset = if (compact) (-7).dp to (-8).dp else (-16).dp to (-18).dp
     val secondaryBubbleOffset = if (compact) 8.dp to 7.dp else 18.dp to 16.dp
 
-    Box(modifier = modifier.clip(shape)) {
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .let { if (useRealBlur) it.glassBackdropBlur(backdrop!!, tint = tint, tintAlpha = 0f) else it }
+    ) {
         if (showBlurBubbles && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // كان RenderEffect.createBlurEffect يُستدعى مباشرة داخل كتلة
             // graphicsLayer{}، وهذه الكتلة تُنفَّذ في كل مرحلة رسم (draw)
@@ -177,7 +189,14 @@ fun LiquidGlassSurface(
                                 // تشبّع)، فتبدو البطاقة بلا امتلاء واضح مقارنةً بوضوحها
                                 // في الوضع الداكن. رفع الشفافية قليلاً في الوضع الفاتح
                                 // فقط يعطي امتلاءً كافياً يميّز البطاقة عن الخلفية.
-                                if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
+                                //
+                                // عند وجود تمويه خلفية حقيقي (useRealBlur) نُخفّض هذا
+                                // التدرّج بوضوح: الغاية منه هنا لم تعد "محاكاة" الزجاج
+                                // بلون شبه صلب، بل مجرّد صبغة خفيفة فوق الخلفية
+                                // المموَّهة فعلياً خلفه — وإلا يُغطّي التمويه الحقيقي
+                                // بالكامل ولا يظهر أي أثر له.
+                                if (useRealBlur) listOf(tint.copy(alpha = 0.46f), tint.copy(alpha = 0.30f))
+                                else if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
                                 else listOf(tint.copy(alpha = 0.97f), tint.copy(alpha = 0.88f))
                             )
                         )

@@ -99,7 +99,10 @@ fun GlassTopBar(
         // الشريط العلوي ثابت وظاهر طول الوقت بكل الشاشات؛ لمعان لانهائي
         // يلمع ويعيد نفسه من الصفر باستمرار عليه يبدو مزعجاً بدل "حي" —
         // بعكس زر عائم صغير يظهر لثوانٍ. لذلك يُطفأ هنا.
-        sheen = false
+        sheen = false,
+        // خلفية زجاجية حقيقية (انظر GlassBackdrop.kt): يظهر تمويه فعلي لما
+        // يمر خلف الشريط أثناء التمرير، بدل صبغة لونية ثابتة فقط.
+        backdrop = LocalGlassBackdrop.current
     ) {
         if (large) {
             LargeTopAppBar(
@@ -197,7 +200,12 @@ fun OneUiFloatingNavBar(
         LiquidGlassSurface(
             shape = shape,
             tint = container,
-            borderAlpha = 0.16f
+            borderAlpha = 0.16f,
+            // نفس خلفية الزجاج الحقيقي أعلاه: هذا الشريط يطفو مباشرة فوق
+            // محتوى الشاشة (المفضلة/الأعشاب/الإعدادات...)، فالتمويه الحقيقي
+            // هنا هو ما يجعله يبدو امتداداً لواجهة التطبيق تحته بدل كبسولة
+            // رمادية مقحمة فوق خلفية لا علاقة لها بها.
+            backdrop = LocalGlassBackdrop.current
         ) {
             Row(
                 modifier = Modifier.padding(6.dp),
