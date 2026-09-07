@@ -21,6 +21,7 @@ import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
+import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class PolicySection(val title: String, val body: String)
 
@@ -54,8 +55,8 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("سياسة الخصوصية") },
-                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }
+                title = { Text(tr("سياسة الخصوصية")) },
+                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) } }
             )
         }
     ) { padding ->
@@ -84,7 +85,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                             }
                             Spacer(Modifier.width(12.dp))
                             Text(
-                                "إخلاء مسؤولية طبي",
+                                tr("إخلاء مسؤولية طبي"),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -94,7 +95,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                         Text(
                             "هذه المعلومات من تدقيق المعالج الفيزيائي سلمان، وقد لا تكون دقيقة بنسبة 100%. " +
                                 "يُفضّل استشارة طبيب مختص إن كنت تعاني من مرض ما، ولا يُغني محتوى هذا التطبيق " +
-                                "عن التشخيص أو العلاج الطبي المتخصص بأي حال.",
+                                tr("عن التشخيص أو العلاج الطبي المتخصص بأي حال."),
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                     }
@@ -108,16 +109,16 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(tr(section.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
-                        Text(section.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr(section.body), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
 
             item {
                 Text(
-                    "© 2026 سلمان — موسوعة الأعشاب الطبية. جميع الحقوق محفوظة.",
+                    tr("© 2026 سلمان — موسوعة الأعشاب الطبية. جميع الحقوق محفوظة."),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
