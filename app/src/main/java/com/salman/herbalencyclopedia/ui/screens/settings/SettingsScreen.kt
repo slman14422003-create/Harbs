@@ -41,6 +41,9 @@ import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
+import com.salman.herbalencyclopedia.ui.util.AppLanguage
+import com.salman.herbalencyclopedia.ui.util.tr
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -69,6 +72,7 @@ fun SettingsScreen(
     fontScale: Int,
     themePalette: com.salman.herbalencyclopedia.ui.theme.ThemePalette,
     performanceMode: PerformanceMode,
+    appLanguage: AppLanguage,
     updateState: UpdateCheckState,
     downloadState: UpdateDownloadState,
     onBack: () -> Unit,
@@ -77,6 +81,7 @@ fun SettingsScreen(
     onFontScaleChange: (Int) -> Unit,
     onThemePaletteChange: (com.salman.herbalencyclopedia.ui.theme.ThemePalette) -> Unit,
     onPerformanceModeChange: (PerformanceMode) -> Unit,
+    onAppLanguageChange: (AppLanguage) -> Unit,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
@@ -95,6 +100,14 @@ fun SettingsScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "—"
     }
+    // تغيير اللغة يحتاج إعادة إنشاء النشاط (Activity.recreate) بعد حفظ
+    // التفضيل، لأن attachBaseContext (حيث تُغلَّف موارد اللغة فعلياً - راجع
+    // MainActivity وLocaleManager) لا يُعاد استدعاؤه إلا عند إنشاء جديد
+    // للنشاط، وليس عند مجرد إعادة التركيب (recomposition) العادية.
+    val handleLanguageChange: (AppLanguage) -> Unit = { language ->
+        onAppLanguageChange(language)
+        (context as? android.app.Activity)?.recreate()
+    }
     LaunchedEffect(Unit) {
         if (updateState == UpdateCheckState.Idle) onCheckForUpdate(context)
     }
@@ -105,10 +118,10 @@ fun SettingsScreen(
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             GlassTopBar(
-                title = { Text("الإعدادات") },
+                title = { Text(tr("الإعدادات")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -147,7 +160,13 @@ fun SettingsScreen(
             }
 
             item {
-                SettingsSection(title = "الأداء") {
+                SettingsSection(title = tr("اللغة")) {
+                    LanguageSelector(selected = appLanguage, onSelect = handleLanguageChange)
+                }
+            }
+
+            item {
+                SettingsSection(title = tr("الأداء")) {
                     PerformanceModeSelector(
                         selected = performanceMode,
                         onSelect = onPerformanceModeChange
@@ -156,7 +175,7 @@ fun SettingsScreen(
             }
 
             item {
-                SettingsSection(title = "التحديثات") {
+                SettingsSection(title = tr("التحديثات")) {
                     UpdateRow(
                         currentVersionName = currentVersionName,
                         updateState = updateState,
@@ -170,7 +189,7 @@ fun SettingsScreen(
             }
 
             item {
-                SettingsSection(title = "الحساب") {
+                SettingsSection(title = tr("الحساب")) {
                     ActionRow(
                         icon = Icons.AutoMirrored.Filled.HelpOutline,
                         iconTint = Color(0xFF2E7D32),
@@ -340,6 +359,46 @@ private fun ThemeModeSelector(darkMode: Boolean?, onDarkModeChange: (Boolean?) -
                 label = "داكن",
                 modifier = Modifier.weight(1f)
             ) { onDarkModeChange(true) }
+        }
+    }
+}
+
+@Composable
+private fun LanguageSelector(selected: AppLanguage, onSelect: (AppLanguage) -> Unit) {
+    Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(icon = Icons.Filled.Language, tint = Color(0xFF00897B))
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(tr("لغة التطبيق"), fontWeight = FontWeight.SemiBold)
+                Text(
+                    selected.nativeName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        // ملاحظة: عند اختيار الإنجليزية تُترجَم بيانات الأعشاب نفسها
+        // (الاسم/الفوائد/الاستخدام...) تلقائياً عبر ترجمة جوجل المجانية —
+        // راجع AppViewModel.translateHerbs. أول عرض لكل عشبة قد يستغرق لحظة
+        // قصيرة ريثما تصل الترجمة، ثم يصبح فورياً من التخزين المؤقت المحلي.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ThemeOptionChip(
+                selected = selected == AppLanguage.ARABIC,
+                icon = Icons.Filled.Language,
+                label = AppLanguage.ARABIC.nativeName,
+                modifier = Modifier.weight(1f)
+            ) { onSelect(AppLanguage.ARABIC) }
+            ThemeOptionChip(
+                selected = selected == AppLanguage.ENGLISH,
+                icon = Icons.Filled.Language,
+                label = AppLanguage.ENGLISH.nativeName,
+                modifier = Modifier.weight(1f)
+            ) { onSelect(AppLanguage.ENGLISH) }
         }
     }
 }
