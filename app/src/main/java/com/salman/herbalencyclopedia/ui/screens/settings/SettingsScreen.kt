@@ -2,6 +2,8 @@ package com.salman.herbalencyclopedia.ui.screens.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -577,6 +579,11 @@ private fun PaletteRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // لوحات الألوان أصبحت تسعاً بعد إضافة كهرماني/نيلي/زمردي (انظر
+                // Color.kt)؛ بعرض ثابت بلا تمرير كانت ستنضغط الدوائر أو تفيض
+                // عن عرض الشاشة على الجوالات الضيقة. التمرير الأفقي هنا يحافظ
+                // على حجم كل دائرة كاملاً بدل ضغطها.
+                .horizontalScroll(rememberScrollState())
                 .alpha(if (enabled) 1f else 0.4f),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
