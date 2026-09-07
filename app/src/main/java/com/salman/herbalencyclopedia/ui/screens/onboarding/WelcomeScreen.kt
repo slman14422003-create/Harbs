@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.components.GlassButton
 import com.salman.herbalencyclopedia.ui.components.GlassOutlinedButton
 import com.salman.herbalencyclopedia.ui.components.LiquidGlassSurface
+import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class WelcomeSection(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -97,14 +98,14 @@ fun WelcomeScreen(
                     }
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "أهلاً بك في موسوعة الأعشاب",
+                        tr("أهلاً بك في موسوعة الأعشاب"),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "قبل المتابعة، الرجاء قراءة النقاط التالية والموافقة عليها",
+                        tr("قبل المتابعة، الرجاء قراءة النقاط التالية والموافقة عليها"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -141,11 +142,11 @@ fun WelcomeScreen(
                                 Icon(section.icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
                             }
                             Spacer(Modifier.width(10.dp))
-                            Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
+                            Text(tr(section.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            section.body,
+                            tr(section.body),
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (section.emphasized) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -157,7 +158,7 @@ fun WelcomeScreen(
                 GlassOutlinedButton(
                     onClick = onViewFullPrivacyPolicy,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("قراءة سياسة الخصوصية كاملة") }
+                ) { Text(tr("قراءة سياسة الخصوصية كاملة")) }
             }
         }
 
@@ -187,7 +188,7 @@ fun WelcomeScreen(
                 if (isSaving) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("أوافق وأتابع")
+                    Text(tr("أوافق وأتابع"))
                 }
             }
         }
