@@ -1,5 +1,6 @@
 package com.salman.herbalencyclopedia.ui.screens.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,10 +44,15 @@ import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import com.salman.herbalencyclopedia.ui.util.tr
-import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -81,7 +87,7 @@ fun SettingsScreen(
     onFontScaleChange: (Int) -> Unit,
     onThemePaletteChange: (com.salman.herbalencyclopedia.ui.theme.ThemePalette) -> Unit,
     onPerformanceModeChange: (PerformanceMode) -> Unit,
-    onAppLanguageChange: (AppLanguage) -> Unit,
+    onAppLanguageChange: suspend (AppLanguage) -> Unit,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onHelpClick: () -> Unit,
@@ -100,13 +106,26 @@ fun SettingsScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "—"
     }
-    // تغيير اللغة يحتاج إعادة إنشاء النشاط (Activity.recreate) بعد حفظ
-    // التفضيل، لأن attachBaseContext (حيث تُغلَّف موارد اللغة فعلياً - راجع
-    // MainActivity وLocaleManager) لا يُعاد استدعاؤه إلا عند إنشاء جديد
-    // للنشاط، وليس عند مجرد إعادة التركيب (recomposition) العادية.
+    // إصلاح مهم: كانت onAppLanguageChange تُستدعى هنا كدالة "أطلق ولا تنتظر"
+    // (تبدأ كتابة DataStore في الخلفية ثم تعود فوراً)، بينما كان recreate()
+    // يُستدعى مباشرة بعدها بلا انتظار — أي أن إعادة إنشاء النشاط (وبالتالي
+    // قراءة اللغة المحفوظة في attachBaseContext) كانت غالباً تسبق اكتمال
+    // الكتابة الفعلية على القرص. هذا بالضبط ما كان يسبب الحاجة للضغط عدة
+    // مرات (أحياناً تكتمل الكتابة قبل إعادة الإنشاء بالصدفة، وأحياناً لا)،
+    // وأحياناً "تعليق" ملحوظ للواجهة أثناء إعادة الإنشاء والترجمة معاً.
+    // الحل: onAppLanguageChange أصبحت الآن دالة suspend حقيقية (راجع
+    // HerbalNavGraph)، فننتظرها بالكامل هنا (عبر rememberCoroutineScope)
+    // قبل استدعاء recreate()، فيُضمَن أن اللغة محفوظة فعلياً قبل أي إعادة إنشاء.
+    val scope = rememberCoroutineScope()
+    var isChangingLanguage by remember { mutableStateOf(false) }
     val handleLanguageChange: (AppLanguage) -> Unit = { language ->
-        onAppLanguageChange(language)
-        (context as? android.app.Activity)?.recreate()
+        if (!isChangingLanguage) {
+            isChangingLanguage = true
+            scope.launch {
+                onAppLanguageChange(language)
+                (context as? android.app.Activity)?.recreate()
+            }
+        }
     }
     LaunchedEffect(Unit) {
         if (updateState == UpdateCheckState.Idle) onCheckForUpdate(context)
@@ -161,7 +180,7 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(title = tr("اللغة")) {
-                    LanguageSelector(selected = appLanguage, onSelect = handleLanguageChange)
+                    LanguageSelector(selected = appLanguage, isChanging = isChangingLanguage, onSelect = handleLanguageChange)
                 }
             }
 
@@ -364,41 +383,99 @@ private fun ThemeModeSelector(darkMode: Boolean?, onDarkModeChange: (Boolean?) -
 }
 
 @Composable
-private fun LanguageSelector(selected: AppLanguage, onSelect: (AppLanguage) -> Unit) {
+private fun LanguageSelector(selected: AppLanguage, isChanging: Boolean, onSelect: (AppLanguage) -> Unit) {
     Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(icon = Icons.Filled.Language, tint = Color(0xFF00897B))
+            IconBadge(icon = Icons.Filled.Translate, tint = Color(0xFF00897B))
             Spacer(Modifier.width(14.dp))
             Column {
                 Text(tr("لغة التطبيق"), fontWeight = FontWeight.SemiBold)
                 Text(
-                    selected.nativeName,
+                    // توضيح صريح لسبب طلب المستخدم — "الزر مو واضح إنه يترجم
+                    // عبر جوجل": هذا النص يذكر ذلك حرفياً بدل الاكتفاء باسم
+                    // اللغة الحالية فقط.
+                    tr("يترجم محتوى التطبيق تلقائياً عبر ترجمة جوجل"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
         Spacer(Modifier.height(12.dp))
-        // ملاحظة: عند اختيار الإنجليزية تُترجَم بيانات الأعشاب نفسها
-        // (الاسم/الفوائد/الاستخدام...) تلقائياً عبر ترجمة جوجل المجانية —
-        // راجع AppViewModel.translateHerbs. أول عرض لكل عشبة قد يستغرق لحظة
-        // قصيرة ريثما تصل الترجمة، ثم يصبح فورياً من التخزين المؤقت المحلي.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ThemeOptionChip(
+            LanguageOptionCard(
                 selected = selected == AppLanguage.ARABIC,
-                icon = Icons.Filled.Language,
+                loading = isChanging && selected != AppLanguage.ARABIC,
                 label = AppLanguage.ARABIC.nativeName,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                enabled = !isChanging
             ) { onSelect(AppLanguage.ARABIC) }
-            ThemeOptionChip(
+            LanguageOptionCard(
                 selected = selected == AppLanguage.ENGLISH,
-                icon = Icons.Filled.Language,
+                loading = isChanging && selected != AppLanguage.ENGLISH,
                 label = AppLanguage.ENGLISH.nativeName,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                enabled = !isChanging
             ) { onSelect(AppLanguage.ENGLISH) }
+        }
+    }
+}
+
+/**
+ * بطاقة اختيار لغة واضحة (بدل شريحة FilterChip صغيرة كانت تستخدم نفس
+ * الأيقونة لكلا الخيارين، ما جعلها — بحسب ملاحظة مستخدم فعلية — "غير
+ * واضحة إطلاقاً"): حدّ ولون خلفية مميّزان جداً للخيار المُفعَّل، وعلامة ✓
+ * صريحة بدل الاعتماد على تباين لوني خفيف فقط، مع مؤشر تحميل صغير أثناء
+ * التبديل الفعلي (إعادة إنشاء الشاشة + الترجمة) بدل بقاء الزر بلا أي رد
+ * فعل مرئي على الضغطة.
+ */
+@Composable
+private fun LanguageOptionCard(
+    selected: Boolean,
+    loading: Boolean,
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        color = containerColor,
+        border = BorderStroke(if (selected) 2.dp else 1.dp, borderColor),
+        modifier = modifier.height(56.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+            } else if (selected) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                label,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
