@@ -15,6 +15,7 @@ import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
+import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class TermItem(val title: String, val body: String)
 
@@ -52,8 +53,8 @@ fun TermsScreen(onBack: () -> Unit) {
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("الشروط والأحكام") },
-                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }
+                title = { Text(tr("الشروط والأحكام")) },
+                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) } }
             )
         }
     ) { padding ->
@@ -70,16 +71,16 @@ fun TermsScreen(onBack: () -> Unit) {
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(term.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(tr(term.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
-                        Text(term.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr(term.body), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
 
             item {
                 Text(
-                    "© 2026 سلمان — موسوعة الأعشاب الطبية. جميع الحقوق محفوظة.",
+                    tr("© 2026 سلمان — موسوعة الأعشاب الطبية. جميع الحقوق محفوظة."),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
