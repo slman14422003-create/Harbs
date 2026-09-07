@@ -201,6 +201,8 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 }
                 composable(Screen.Welcome.route) {
                     WelcomeScreen(
+                        currentLanguage = appLanguage,
+                        onLanguageChange = { language -> scope.launch { preferencesRepository.setAppLanguage(language) } },
                         onViewFullPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) },
                         onAgree = {
                             scope.launch {
