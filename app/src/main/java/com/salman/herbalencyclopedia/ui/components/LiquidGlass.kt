@@ -107,14 +107,24 @@ fun LiquidGlassSurface(
 
     Box(modifier = modifier.clip(shape)) {
         if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // كان RenderEffect.createBlurEffect يُستدعى مباشرة داخل كتلة
+            // graphicsLayer{}، وهذه الكتلة تُنفَّذ في كل مرحلة رسم (draw)
+            // وليس فقط عند إعادة التركيب (recomposition) — أي في كل إطار
+            // أثناء أي تمرير أو حركة للشاشة، على كل نسخة من هذا المكوّن
+            // (وقد تظهر عشرات منها معاً في شبكة). هذا يعني تخصيص كائن
+            // RenderEffect جديد عشرات المرات في الثانية رغم أن نصف قطر
+            // التمويه (bubbleBlurRadius) لا يتغيّر عملياً أبداً بعد إنشاء
+            // المكوّن — تكلفة معالج ومحصص ذاكرة غير ضرورية إطلاقاً. الآن
+            // يُنشأ الكائن مرة واحدة فقط عبر remember ويُعاد استخدامه.
+            val blurEffect = remember(bubbleBlurRadius) {
+                RenderEffect
+                    .createBlurEffect(bubbleBlurRadius, bubbleBlurRadius, Shader.TileMode.CLAMP)
+                    .asComposeRenderEffect()
+            }
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .graphicsLayer {
-                        renderEffect = RenderEffect
-                            .createBlurEffect(bubbleBlurRadius, bubbleBlurRadius, Shader.TileMode.CLAMP)
-                            .asComposeRenderEffect()
-                    }
+                    .graphicsLayer { renderEffect = blurEffect }
             ) {
                 Box(
                     Modifier

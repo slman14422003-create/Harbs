@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -131,14 +132,19 @@ private fun BlurredBlob(
     modifier: Modifier = Modifier
 ) {
     if (highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // كانت RenderEffect.createBlurEffect تُستدعى داخل graphicsLayer{} هنا،
+        // وهذا المكوّن يُعاد رسمه باستمرار (لا مرة واحدة فقط) بسبب حركة
+        // glowAlpha اللانهائية التي تُغيّر شفافية اللون كل إطار طوال عمر
+        // التطبيق بالكامل — أي تخصيص RenderEffect جديد نحو 60 مرة/ثانية لكل
+        // من الفقاعتين معاً، باستمرار وبلا داعٍ (نصف قطر التمويه 90f ثابت
+        // دوماً). الآن يُنشأ مرة واحدة فقط عبر remember.
+        val blurEffect = remember {
+            RenderEffect.createBlurEffect(90f, 90f, Shader.TileMode.CLAMP).asComposeRenderEffect()
+        }
         Box(
             modifier = modifier
                 .size(size)
-                .graphicsLayer {
-                    renderEffect = RenderEffect
-                        .createBlurEffect(90f, 90f, Shader.TileMode.CLAMP)
-                        .asComposeRenderEffect()
-                }
+                .graphicsLayer { renderEffect = blurEffect }
                 .background(color.copy(alpha = alpha), CircleShape)
         )
     } else {
