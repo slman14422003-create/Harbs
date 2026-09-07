@@ -59,6 +59,9 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val performanceMode by preferencesRepository.performanceMode.collectAsState(
         initial = com.salman.herbalencyclopedia.ui.theme.PerformanceMode.HIGH_QUALITY
     )
+    val appLanguage by preferencesRepository.appLanguage.collectAsState(
+        initial = com.salman.herbalencyclopedia.ui.util.AppLanguage.ARABIC
+    )
     val updateState by appViewModel.updateState.collectAsState()
     val downloadState by appViewModel.downloadState.collectAsState()
     val updateConfig by appViewModel.updateConfigState.collectAsState()
@@ -101,12 +104,16 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     val current = backStack?.destination?.route
     val topRoutes = setOf(Screen.Home.route, Screen.AllHerbs.route, Screen.Favorites.route, Screen.Settings.route)
     val scope = rememberCoroutineScope()
-    val bottomNavItems = remember {
+    val bottomNavHomeLabel = com.salman.herbalencyclopedia.ui.util.tr("الرئيسية")
+    val bottomNavHerbsLabel = com.salman.herbalencyclopedia.ui.util.tr("الأعشاب")
+    val bottomNavFavoritesLabel = com.salman.herbalencyclopedia.ui.util.tr("المفضلة")
+    val bottomNavSettingsLabel = com.salman.herbalencyclopedia.ui.util.tr("الإعدادات")
+    val bottomNavItems = remember(bottomNavHomeLabel, bottomNavHerbsLabel, bottomNavFavoritesLabel, bottomNavSettingsLabel) {
         listOf(
-            OneUiNavItem("الرئيسية", Icons.Filled.Home, Screen.Home.route),
-            OneUiNavItem("الأعشاب", Icons.Filled.MenuBook, Screen.AllHerbs.route),
-            OneUiNavItem("المفضلة", Icons.Filled.Favorite, Screen.Favorites.route),
-            OneUiNavItem("الإعدادات", Icons.Filled.Settings, Screen.Settings.route)
+            OneUiNavItem(bottomNavHomeLabel, Icons.Filled.Home, Screen.Home.route),
+            OneUiNavItem(bottomNavHerbsLabel, Icons.Filled.MenuBook, Screen.AllHerbs.route),
+            OneUiNavItem(bottomNavFavoritesLabel, Icons.Filled.Favorite, Screen.Favorites.route),
+            OneUiNavItem(bottomNavSettingsLabel, Icons.Filled.Settings, Screen.Settings.route)
         )
     }
     // محرك اكتشاف الشاشة يقرر نمط التنقّل: شريط عائم سفلي بالإبهام على
@@ -208,7 +215,7 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 composable(Screen.Home.route) { HomeScreen(uiState.categories, uiState.herbs, uiState.isLoading, uiState.error, appViewModel.isAdmin, appViewModel::refresh, { c -> navController.navigate(Screen.CategoryHerbs.createRoute(c.id,c.name)) }, { navController.navigate(Screen.Search.route) }, { navController.navigate(Screen.Favorites.route) }, { navController.navigate(Screen.Settings.route) }, { navController.navigate(Screen.Admin.route) }, { navController.navigate(Screen.SemoAssistant.route) }, { navController.navigate(Screen.Blends.route) }) }
                 composable(Screen.AllHerbs.route) { AllHerbsScreen(uiState.herbs, favoriteIds, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite, uiState.isLoading, appViewModel::refresh) }
                 composable(Screen.Favorites.route) { FavoritesScreen(uiState.herbs.filter { it.id in favoriteIds }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
-                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.Support.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }, { appViewModel.cancelDownload() }) }
+                composable(Screen.Settings.route) { SettingsScreen(appViewModel.isLoggedIn, appViewModel.isAdmin, darkMode, dynamicColor, fontScale, themePalette, performanceMode, appLanguage, updateState, downloadState, { navController.popBackStack() }, { scope.launch { preferencesRepository.setDarkMode(it) } }, { scope.launch { preferencesRepository.setDynamicColor(it) } }, { scope.launch { preferencesRepository.setFontScale(it) } }, { scope.launch { preferencesRepository.setThemePalette(it) } }, { scope.launch { preferencesRepository.setPerformanceMode(it) } }, { scope.launch { preferencesRepository.setAppLanguage(it) } }, { navController.navigate(Screen.Login.route) }, { appViewModel.logout() }, { navController.navigate(Screen.Help.route) }, { navController.navigate(Screen.Support.route) }, { navController.navigate(Screen.PrivacyPolicy.route) }, { navController.navigate(Screen.Terms.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminTools.route) }, { if (appViewModel.isAdmin) navController.navigate(Screen.AdminFeedback.route) }, { ctx -> appViewModel.checkForUpdate(ctx) }, { ctx, info -> appViewModel.downloadUpdate(ctx, info) }, { ctx -> appViewModel.installUpdate(ctx) }, { appViewModel.cancelDownload() }) }
                 composable(Screen.Search.route) { SearchScreen(uiState.herbs, favoriteIds, { navController.popBackStack() }, { h -> navController.navigate(Screen.HerbDetail.createRoute(h.id)) }, appViewModel::toggleFavorite) }
                 composable(Screen.SemoAssistant.route) {
                     // أول فتح لسيمو فقط: تُعرض شاشة الترحيب/الشروط الخاصة به
