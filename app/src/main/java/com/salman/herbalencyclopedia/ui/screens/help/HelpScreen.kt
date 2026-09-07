@@ -23,22 +23,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HelpScreen(onBack: () -> Unit) {
     val faqs = listOf(
-        "كيف أبحث عن عشبة؟" to "استخدم البحث من الصفحة الرئيسية، ويمكن البحث بالاسم أو داخل الفوائد.",
-        "كيف أضيف عشبة للمفضلة؟" to "افتح تفاصيل العشبة واضغط زر القلب. المفضلة محفوظة على جهازك.",
-        "هل تعمل الموسوعة بدون إنترنت؟" to "البيانات التي تم تحميلها سابقاً يمكن أن تبقى متاحة عبر كاش Firestore المحلي، بينما التحديث يحتاج اتصالاً.",
-        "هل المعلومات الطبية بديل عن الطبيب؟" to "لا. الموسوعة مرجع معلوماتي وليست بديلاً عن استشارة الطبيب أو الصيدلي."
+        tr("كيف أبحث عن عشبة؟") to tr("استخدم البحث من الصفحة الرئيسية، ويمكن البحث بالاسم أو داخل الفوائد."),
+        tr("كيف أضيف عشبة للمفضلة؟") to tr("افتح تفاصيل العشبة واضغط زر القلب. المفضلة محفوظة على جهازك."),
+        tr("هل تعمل الموسوعة بدون إنترنت؟") to tr("البيانات التي تم تحميلها سابقاً يمكن أن تبقى متاحة عبر كاش Firestore المحلي، بينما التحديث يحتاج اتصالاً."),
+        tr("هل المعلومات الطبية بديل عن الطبيب؟") to tr("لا. الموسوعة مرجع معلوماتي وليست بديلاً عن استشارة الطبيب أو الصيدلي.")
     )
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text("المساعدة") },
-                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") } }
+                title = { Text(tr("المساعدة")) },
+                navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) } }
             )
         }
     ) { padding ->
@@ -65,14 +66,14 @@ fun HelpScreen(onBack: () -> Unit) {
                         }
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "مرحباً بك في موسوعة الأعشاب الطبية",
+                            tr("مرحباً بك في موسوعة الأعشاب الطبية"),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "واجهة حديثة، بحث سريع، مفضلة، مقارنة، وإدارة كاملة للمحتوى.",
+                            tr("واجهة حديثة، بحث سريع، مفضلة، مقارنة، وإدارة كاملة للمحتوى."),
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                         )
                     }
@@ -80,7 +81,7 @@ fun HelpScreen(onBack: () -> Unit) {
             }
             item {
                 Text(
-                    "الأسئلة الشائعة",
+                    tr("الأسئلة الشائعة"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp)
