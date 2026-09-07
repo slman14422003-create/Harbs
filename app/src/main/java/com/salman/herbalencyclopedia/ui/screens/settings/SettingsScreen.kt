@@ -156,14 +156,14 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
-                SettingsSection(title = "المظهر") {
+                SettingsSection(title = tr("المظهر")) {
                     ThemeModeSelector(darkMode = darkMode, onDarkModeChange = onDarkModeChange)
                     SettingsDivider()
                     SwitchRow(
                         icon = Icons.Filled.Palette,
                         iconTint = Color(0xFF7C4DFF),
-                        title = "ألوان ديناميكية",
-                        subtitle = "استخدام ألوان الخلفية (Material You)",
+                        title = tr("ألوان ديناميكية"),
+                        subtitle = tr("استخدام ألوان الخلفية (Material You)"),
                         checked = dynamicColor,
                         onCheckedChange = onDynamicColorChange
                     )
@@ -212,32 +212,32 @@ fun SettingsScreen(
                     ActionRow(
                         icon = Icons.AutoMirrored.Filled.HelpOutline,
                         iconTint = Color(0xFF2E7D32),
-                        title = "المساعدة",
-                        subtitle = "الأسئلة الشائعة وطريقة الاستخدام",
+                        title = tr("المساعدة"),
+                        subtitle = tr("الأسئلة الشائعة وطريقة الاستخدام"),
                         onClick = onHelpClick
                     )
                     SettingsDivider()
                     ActionRow(
                         icon = Icons.Filled.SupportAgent,
                         iconTint = Color(0xFF25D366),
-                        title = "الدعم الفني",
-                        subtitle = "تواصل مباشر معنا عبر واتساب",
+                        title = tr("الدعم الفني"),
+                        subtitle = tr("تواصل مباشر معنا عبر واتساب"),
                         onClick = onSupportClick
                     )
                     SettingsDivider()
                     ActionRow(
                         icon = Icons.Filled.PrivacyTip,
                         iconTint = Color(0xFF6A1B9A),
-                        title = "سياسة الخصوصية",
-                        subtitle = "كيف نتعامل مع بياناتك، وإخلاء المسؤولية الطبية",
+                        title = tr("سياسة الخصوصية"),
+                        subtitle = tr("كيف نتعامل مع بياناتك، وإخلاء المسؤولية الطبية"),
                         onClick = onPrivacyPolicyClick
                     )
                     SettingsDivider()
                     ActionRow(
                         icon = Icons.Filled.Gavel,
                         iconTint = Color(0xFF8D6E63),
-                        title = "الشروط والأحكام",
-                        subtitle = "شروط استخدام التطبيق ومحتوى الموسوعة",
+                        title = tr("الشروط والأحكام"),
+                        subtitle = tr("شروط استخدام التطبيق ومحتوى الموسوعة"),
                         onClick = onTermsClick
                     )
                     if (isAdmin) {
@@ -245,16 +245,16 @@ fun SettingsScreen(
                         ActionRow(
                             icon = Icons.Filled.AdminPanelSettings,
                             iconTint = Color(0xFF1565C0),
-                            title = "أدوات الإدارة",
-                            subtitle = "إدارة الأعشاب والتصنيفات والبيانات",
+                            title = tr("أدوات الإدارة"),
+                            subtitle = tr("إدارة الأعشاب والتصنيفات والبيانات"),
                             onClick = onAdminToolsClick
                         )
                         SettingsDivider()
                         ActionRow(
                             icon = Icons.Filled.Inbox,
                             iconTint = Color(0xFF00838F),
-                            title = "ملاحظات المستخدمين",
-                            subtitle = "الأخطاء والملاحظات المرسلة من المستخدمين",
+                            title = tr("ملاحظات المستخدمين"),
+                            subtitle = tr("الأخطاء والملاحظات المرسلة من المستخدمين"),
                             onClick = onAdminFeedbackClick
                         )
                     }
@@ -263,16 +263,16 @@ fun SettingsScreen(
                         ActionRow(
                             icon = Icons.AutoMirrored.Filled.Logout,
                             iconTint = Color(0xFFC62828),
-                            title = "تسجيل الخروج",
-                            subtitle = "إنهاء الجلسة الحالية",
+                            title = tr("تسجيل الخروج"),
+                            subtitle = tr("إنهاء الجلسة الحالية"),
                             onClick = onLogoutClick
                         )
                     } else {
                         ActionRow(
                             icon = Icons.Filled.Login,
                             iconTint = Color(0xFF00695C),
-                            title = "تسجيل الدخول",
-                            subtitle = "لإدارة المحتوى وحفظ التفضيلات",
+                            title = tr("تسجيل الدخول"),
+                            subtitle = tr("لإدارة المحتوى وحفظ التفضيلات"),
                             onClick = onLoginClick
                         )
                     }
@@ -281,14 +281,14 @@ fun SettingsScreen(
 
             item {
                 Text(
-                    "موسوعة الأعشاب الطبية",
+                    tr("موسوعة الأعشاب الطبية"),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Text(
-                    "© جميع الحقوق محفوظة — تطوير المعالج الفيزيائي سلمان",
+                    tr("© جميع الحقوق محفوظة — تطوير المعالج الفيزيائي سلمان"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 8.dp),
@@ -347,7 +347,7 @@ private fun ThemeModeSelector(darkMode: Boolean?, onDarkModeChange: (Boolean?) -
             IconBadge(icon = Icons.Filled.Brightness6, tint = Color(0xFFFF8F00))
             Spacer(Modifier.width(14.dp))
             Column {
-                Text("وضع العرض", fontWeight = FontWeight.SemiBold)
+                Text(tr("وضع العرض"), fontWeight = FontWeight.SemiBold)
                 Text(
                     when (darkMode) { null -> "يتبع النظام"; true -> "داكن"; false -> "فاتح" },
                     style = MaterialTheme.typography.bodySmall,
@@ -363,19 +363,19 @@ private fun ThemeModeSelector(darkMode: Boolean?, onDarkModeChange: (Boolean?) -
             ThemeOptionChip(
                 selected = darkMode == null,
                 icon = Icons.Filled.Contrast,
-                label = "النظام",
+                label = tr("النظام"),
                 modifier = Modifier.weight(1f)
             ) { onDarkModeChange(null) }
             ThemeOptionChip(
                 selected = darkMode == false,
                 icon = Icons.Filled.LightMode,
-                label = "فاتح",
+                label = tr("فاتح"),
                 modifier = Modifier.weight(1f)
             ) { onDarkModeChange(false) }
             ThemeOptionChip(
                 selected = darkMode == true,
                 icon = Icons.Filled.DarkMode,
-                label = "داكن",
+                label = tr("داكن"),
                 modifier = Modifier.weight(1f)
             ) { onDarkModeChange(true) }
         }
@@ -530,11 +530,11 @@ private fun FontScaleRow(fontScale: Int, onFontScaleChange: (Int) -> Unit) {
             IconBadge(icon = Icons.Filled.FormatSize, tint = Color(0xFF00838F))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("حجم النص", fontWeight = FontWeight.SemiBold)
+                Text(tr("حجم النص"), fontWeight = FontWeight.SemiBold)
                 Text(fontScaleLabels[fontScale], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                "أبج",
+                tr("أبج"),
                 fontSize = fontScaleSizes[fontScale],
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -561,7 +561,7 @@ private fun PaletteRow(
             IconBadge(icon = Icons.Filled.Palette, tint = Color(0xFFAD1457))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("لوحة الألوان", fontWeight = FontWeight.SemiBold)
+                Text(tr("لوحة الألوان"), fontWeight = FontWeight.SemiBold)
                 Text(
                     if (enabled) "اختر لون الهوية اليدوي" else "متاحة عند إيقاف الألوان الديناميكية",
                     style = MaterialTheme.typography.bodySmall,
@@ -640,7 +640,7 @@ private fun PerformanceModeSelector(
             IconBadge(icon = Icons.Filled.Speed, tint = Color(0xFF00897B))
             Spacer(Modifier.width(14.dp))
             Column {
-                Text("وضع الأداء", fontWeight = FontWeight.SemiBold)
+                Text(tr("وضع الأداء"), fontWeight = FontWeight.SemiBold)
                 Text(
                     selected.description,
                     style = MaterialTheme.typography.bodySmall,
@@ -744,9 +744,9 @@ private fun UpdateRow(
             IconBadge(icon = Icons.Filled.SystemUpdate, tint = Color(0xFF1565C0))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("تحديث التطبيق", fontWeight = FontWeight.SemiBold)
+                Text(tr("تحديث التطبيق"), fontWeight = FontWeight.SemiBold)
                 Text(
-                    "الإصدار الحالي: $currentVersionName",
+                    tr("الإصدار الحالي: $currentVersionName"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -756,23 +756,23 @@ private fun UpdateRow(
         when (updateState) {
             is UpdateCheckState.Idle -> {
                 OutlinedButton(onClick = onCheckForUpdate, modifier = Modifier.fillMaxWidth()) {
-                    Text("التحقق من التحديثات")
+                    Text(tr("التحقق من التحديثات"))
                 }
             }
             is UpdateCheckState.Checking -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
-                    Text("جارٍ التحقق من وجود تحديث...", style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("جارٍ التحقق من وجود تحديث..."), style = MaterialTheme.typography.bodyMedium)
                 }
             }
             is UpdateCheckState.UpToDate -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("التطبيق محدّث لأحدث إصدار", style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("التطبيق محدّث لأحدث إصدار"), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onCheckForUpdate) { Text("إعادة التحقق") }
+                    TextButton(onClick = onCheckForUpdate) { Text(tr("إعادة التحقق")) }
                 }
             }
             is UpdateCheckState.Error -> {
@@ -780,7 +780,7 @@ private fun UpdateRow(
                     Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(updateState.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onCheckForUpdate) { Text("إعادة المحاولة") }
+                    TextButton(onClick = onCheckForUpdate) { Text(tr("إعادة المحاولة")) }
                 }
             }
             is UpdateCheckState.Available -> {
@@ -794,13 +794,13 @@ private fun UpdateRow(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "يتوفر تحديث جديد: v${info.versionName}",
+                            tr("يتوفر تحديث جديد: v${info.versionName}"),
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
                         )
                         if (info.mandatory) {
                             Text(
-                                "إجباري",
+                                tr("إجباري"),
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold
@@ -821,7 +821,7 @@ private fun UpdateRow(
                     when (downloadState) {
                         is UpdateDownloadState.Idle -> {
                             Button(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
-                                Text("تحميل التحديث")
+                                Text(tr("تحميل التحديث"))
                             }
                         }
                         is UpdateDownloadState.Downloading -> {
@@ -833,11 +833,11 @@ private fun UpdateRow(
                                 Spacer(Modifier.height(6.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        "جارٍ التنزيل... ${downloadState.progress}%",
+                                        tr("جارٍ التنزيل... ${downloadState.progress}%"),
                                         style = MaterialTheme.typography.bodySmall,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    TextButton(onClick = onCancelDownload) { Text("إلغاء") }
+                                    TextButton(onClick = onCancelDownload) { Text(tr("إلغاء")) }
                                 }
                             }
                         }
@@ -849,7 +849,7 @@ private fun UpdateRow(
                             ) {
                                 Icon(Icons.Filled.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("فتح ملف التحديث")
+                                Text(tr("فتح ملف التحديث"))
                             }
                         }
                         is UpdateDownloadState.Failed -> {
@@ -861,7 +861,7 @@ private fun UpdateRow(
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedButton(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("إعادة المحاولة")
+                                    Text(tr("إعادة المحاولة"))
                                 }
                             }
                         }
