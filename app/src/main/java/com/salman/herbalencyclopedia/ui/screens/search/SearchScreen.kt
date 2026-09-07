@@ -20,6 +20,7 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.search.HerbSearch
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +59,7 @@ fun SearchScreen(
                     TextField(
                         value = query,
                         onValueChange = { query = it },
-                        placeholder = { Text("ابحث عن عشبة أو فائدة...") },
+                        placeholder = { Text(tr("ابحث عن عشبة أو فائدة...")) },
                         singleLine = true,
                         leadingIcon = {
                             Icon(
@@ -70,7 +71,7 @@ fun SearchScreen(
                         trailingIcon = {
                             if (query.isNotEmpty()) {
                                 GlassIconButton(onClick = { query = "" }, size = 34.dp) {
-                                    Icon(Icons.Filled.Clear, contentDescription = "مسح")
+                                    Icon(Icons.Filled.Clear, contentDescription = tr("مسح"))
                                 }
                             }
                         },
@@ -89,7 +90,7 @@ fun SearchScreen(
                 },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -97,11 +98,11 @@ fun SearchScreen(
     ) { padding ->
         when {
             query.isBlank() -> EmptyView(
-                message = "اكتب اسم عشبة أو فائدة للبحث",
+                message = tr("اكتب اسم عشبة أو فائدة للبحث"),
                 modifier = Modifier.padding(padding)
             )
             results.isEmpty() -> EmptyView(
-                message = "لا توجد نتائج لـ \"$query\"",
+                message = tr("لا توجد نتائج لـ \"$query\""),
                 modifier = Modifier.padding(padding)
             )
             // نفس إصلاح شاشات قوائم الأعشاب الأخرى: شبكة متكيّفة بدل عمود
