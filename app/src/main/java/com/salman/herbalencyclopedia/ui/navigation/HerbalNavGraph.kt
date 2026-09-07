@@ -8,16 +8,21 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.navigation.*
 import androidx.navigation.compose.*
 import com.salman.herbalencyclopedia.data.ai.AiConfig
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
+import com.salman.herbalencyclopedia.ui.components.GlassBackdropState
+import com.salman.herbalencyclopedia.ui.components.LocalGlassBackdrop
 import com.salman.herbalencyclopedia.ui.components.OneUiFloatingNavBar
 import com.salman.herbalencyclopedia.ui.components.OneUiNavItem
 import com.salman.herbalencyclopedia.ui.components.OneUiNavigationRail
+import com.salman.herbalencyclopedia.ui.components.glassBackdropSource
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
 import com.salman.herbalencyclopedia.ui.screens.admin.*
 import com.salman.herbalencyclopedia.ui.screens.allherbs.AllHerbsScreen
@@ -128,26 +133,28 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
         }
     }
     val showNav = current in topRoutes
+    // حالة "الزجاج الحقيقي" (انظر GlassBackdrop.kt): مشتركة بين خلفية
+    // الشاشة (AmbientBackground أدناه، المصدر) والشريطين العائمين العلوي/
+    // السفلي (المستهلكان، عبر LocalGlassBackdrop.current داخل OneUiBars.kt)
+    // كي يريا فعلياً نفس المحتوى الحيّ خلفهما بدل تدرّج تقريبي ثابت.
+    val glassBackdrop = remember { GlassBackdropState() }
+    // ارتفاع الشريط العائم السفلي الفعلي (مقاساً بعد الرسم، وليس ثابتاً
+    // مفترَضاً) — يُستخدم كهامش سفلي لحاوية NavHost فقط، بينما تبقى خلفية
+    // AmbientBackground ممتدة كامل الشاشة خلف الشريط نفسه. هذا بالضبط ما
+    // يسمح للشريط بأن يطفو فوق امتداد حقيقي لخلفية التطبيق بدل التوقّف
+    // عندها (وهو ما كان يحدث سابقاً عندما كان الشريط في فتحة bottomBar
+    // الخاصة بـScaffold، والتي تحجز مساحتها الخاصة فتفصل الخلفية عنه تماماً).
+    var navBarHeightPx by remember { mutableStateOf(0) }
 
     Scaffold(
         // كل شاشة تدير حواف نظامها بنفسها: GlassTopBar/TopAppBar يتكفّل بشريط
-        // الحالة العلوي، وOneUiFloatingNavBar يتكفّل بشريط التنقل السفلي عبر
-        // windowInsetsPadding الخاص به. لو ترك Scaffold الخارجي هنا القيمة
-        // الافتراضية (safeDrawing) لحجز مساحة إضافية لنفس الحواف، تظهر فجوة
-        // مزدوجة أعلى/أسفل كل شاشة — وعلى شاشة البداية تحديداً كانت تقطع
-        // التدرّج اللوني قبل أن يصل لحواف الشاشة فعلياً.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            // الشريط العائم السفلي فقط بوضع الجوال الضيق؛ على تابلت/نافذة
-            // عريضة ينتقل التنقل لشريط جانبي (أدناه) فلا حاجة لحجز سفلي هنا.
-            if (showNav && !windowInfo.useNavigationRail) {
-                OneUiFloatingNavBar(
-                    items = bottomNavItems,
-                    currentRoute = current,
-                    onItemClick = onNavItemClick
-                )
-            }
-        }
+        // الحالة العلوي. الشريط السفلي لم يعد يُمرَّر عبر فتحة bottomBar هنا
+        // (انظر التعليق أعلاه)؛ يُرسم بدلاً من ذلك كطبقة عائمة فوق نفس صندوق
+        // المحتوى أدناه. لو ترك Scaffold الخارجي هنا القيمة الافتراضية
+        // (safeDrawing) لحجز مساحة إضافية لنفس الحواف، تظهر فجوة مزدوجة
+        // أعلى/أسفل كل شاشة — وعلى شاشة البداية تحديداً كانت تقطع التدرّج
+        // اللوني قبل أن يصل لحواف الشاشة فعلياً.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { inner ->
         Row(Modifier.padding(inner).fillMaxSize()) {
             // على تابلت/نافذة عريضة: شريط جانبي ثابت بجوار المحتوى بدل
@@ -161,10 +168,19 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 )
             }
         Box(Modifier.weight(1f).fillMaxSize()) {
-            com.salman.herbalencyclopedia.ui.components.AmbientBackground()
+          // مزوَّدة هنا (فوق AmbientBackground والشريط العائم معاً) كي يقرأ
+          // كلا الشريطين (العلوي داخل شاشات NavHost، والسفلي أدناه) نفس
+          // حالة الخلفية الحيّة الواحدة.
+          CompositionLocalProvider(LocalGlassBackdrop provides glassBackdrop) {
+            val floatingBarActive = showNav && !windowInfo.useNavigationRail
+            val navBarHeightDp = with(androidx.compose.ui.platform.LocalDensity.current) { navBarHeightPx.toDp() }
+            com.salman.herbalencyclopedia.ui.components.AmbientBackground(
+                modifier = Modifier.glassBackdropSource(glassBackdrop)
+            )
             NavHost(
-                navController,
-                Screen.Splash.route,
+                modifier = Modifier.padding(bottom = if (floatingBarActive) navBarHeightDp else 0.dp),
+                navController = navController,
+                startDestination = Screen.Splash.route,
                 enterTransition = {
                     androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
                         androidx.compose.animation.slideInHorizontally(
@@ -410,6 +426,22 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                     }
                 }
             }
+            // الشريط العائم السفلي: يُرسم هنا فوق نفس صندوق AmbientBackground/
+            // NavHost أعلاه (لا في فتحة bottomBar الخاصة بـScaffold) كي يطفو
+            // فوق امتداد حقيقي لخلفية التطبيق قابل للتمويه الفعلي خلفه (انظر
+            // GlassBackdrop.kt)، وليقيس ارتفاعه الفعلي عبر onSizeChanged بدل
+            // ثابت مفترَض.
+            if (floatingBarActive) {
+                OneUiFloatingNavBar(
+                    items = bottomNavItems,
+                    currentRoute = current,
+                    onItemClick = onNavItemClick,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .onSizeChanged { navBarHeightPx = it.height }
+                )
+            }
+          }
         }
         }
     }
