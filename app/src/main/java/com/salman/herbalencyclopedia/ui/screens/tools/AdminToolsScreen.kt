@@ -76,10 +76,32 @@ fun AdminToolsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // ── نصوص مُترجَمة مُحسَّبة سلفاً داخل نطاق composable: تُستخدم لاحقاً من
+    // دوال/lambdas عادية غير composable (notify، restoreLauncher، أزرار
+    // المشاركة) حيث لا يمكن استدعاء tr() مباشرة لأنه composable. هذا هو
+    // السبب الجذري لبقاء "أدوات الإدارة" بالعربية دوماً بغض النظر عن لغة
+    // التطبيق المختارة — كانت كل هذه النصوص تُمرَّر حرفياً بلا تمريرها على tr(). ──
+    val msgOpSuccess = tr("تمت العملية بنجاح")
+    val msgOpError = tr("حدث خطأ، حاول مرة أخرى")
+    val msgBackupRestored = tr("تمت استعادة النسخة الاحتياطية")
+    val msgFileReadFailed = tr("تعذّرت قراءة الملف المحدد")
+    val msgCategoryAdded = tr("تمت إضافة التصنيف")
+    val msgLinkCopied = tr("تم نسخ الرابط")
+    val msgFavoritesCleared = tr("تم تنظيف المفضلة")
+    val msgAiReset = tr("تمت إعادة ضبط إعدادات المساعد الذكي")
+    val msgAllHerbsDeleted = tr("تم حذف جميع الأعشاب")
+    val msgAllDataDeleted = tr("تم حذف جميع البيانات")
+    val msgCategoryDeleted = tr("تم حذف التصنيف")
+    val msgCategoryUpdated = tr("تم تعديل التصنيف")
+    val msgDataRefreshing = tr("جاري تحديث البيانات")
+    val strBackupTitle = tr("نسخة موسوعة الأعشاب")
+    val strAppShareText = tr("موسوعة الأعشاب الطبية")
+    val strShareChooserTitle = tr("مشاركة")
+
     fun notify(ok: Boolean, message: String?) {
         scope.launch {
             snackbarHostState.showSnackbar(
-                message ?: if (ok) "تمت العملية بنجاح" else "حدث خطأ، حاول مرة أخرى"
+                message ?: if (ok) msgOpSuccess else msgOpError
             )
         }
     }
@@ -87,9 +109,9 @@ fun AdminToolsScreen(
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val json = uri?.let { runCatching { context.contentResolver.openInputStream(it)?.bufferedReader()?.use { r -> r.readText() } }.getOrNull() }
         if (json != null) {
-            onRestoreBackup(json) { ok, msg -> notify(ok, msg ?: if (ok) "تمت استعادة النسخة الاحتياطية" else null) }
+            onRestoreBackup(json) { ok, msg -> notify(ok, msg ?: if (ok) msgBackupRestored else null) }
         } else {
-            notify(false, "تعذّرت قراءة الملف المحدد")
+            notify(false, msgFileReadFailed)
         }
     }
     var categoryName by remember { mutableStateOf("") }
@@ -106,13 +128,13 @@ fun AdminToolsScreen(
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text(tr("الصيانة والمزامنة"), style = MaterialTheme.typography.titleLarge) }
-            item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", { onRefresh(); notify(true, "جاري تحديث البيانات") }) }
+            item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", { onRefresh(); notify(true, msgDataRefreshing) }) }
             item { AdminButton(Icons.Filled.NetworkCheck, "اختبار الاتصال", "التحقق من الوصول إلى البيانات", { onTestConnection { ok, msg -> notify(ok, msg) } }) }
-            item { AdminButton(Icons.Filled.Backup, "نسخة احتياطية", "مشاركة JSON تشمل الأعشاب والتصنيفات", { shareText(context, "نسخة موسوعة الأعشاب", backupJson(categories, herbs)) }) }
+            item { AdminButton(Icons.Filled.Backup, "نسخة احتياطية", "مشاركة JSON تشمل الأعشاب والتصنيفات", { shareText(context, strBackupTitle, backupJson(categories, herbs)) }) }
             item { AdminButton(Icons.Filled.Restore, "استعادة نسخة", "استيراد JSON إلى Firestore", { restoreLauncher.launch(arrayOf("application/json", "text/plain")) }) }
             item { AdminButton(Icons.Filled.TableChart, "تصدير CSV", "تصدير جميع الأعشاب كملف نصي CSV", { shareText(context, "herbs.csv", csvText(herbs)) }) }
-            item { AdminButton(Icons.Filled.Share, "مشاركة التطبيق", "فتح مشاركة النظام", { shareApp(context) }) }
-            item { AdminButton(Icons.Filled.Link, "نسخ رابط التطبيق", "نسخ رابط المشروع إلى الحافظة", { context.getSystemService(Context.CLIPBOARD_SERVICE).let { (it as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("app", "https://github.com/")); }; notify(true, "تم نسخ الرابط") }) }
+            item { AdminButton(Icons.Filled.Share, "مشاركة التطبيق", "فتح مشاركة النظام", { shareApp(context, strAppShareText, strShareChooserTitle) }) }
+            item { AdminButton(Icons.Filled.Link, "نسخ رابط التطبيق", "نسخ رابط المشروع إلى الحافظة", { context.getSystemService(Context.CLIPBOARD_SERVICE).let { (it as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("app", "https://github.com/")); }; notify(true, msgLinkCopied) }) }
             item { AdminButton(Icons.Filled.SystemUpdate, "إعدادات التحديثات", "تعديل مستودع ورابط وملاحظات التحديث", onUpdateSettingsClick) }
             item { Text(tr("التصنيفات"), style = MaterialTheme.typography.titleLarge) }
             item {
@@ -121,7 +143,7 @@ fun AdminToolsScreen(
                     trailingIcon = {
                         TextButton(enabled = categoryName.isNotBlank(), onClick = {
                             val name = categoryName.trim()
-                            onAddCategory(name) { ok, msg -> notify(ok, msg ?: if (ok) "تمت إضافة التصنيف" else null) }
+                            onAddCategory(name) { ok, msg -> notify(ok, msg ?: if (ok) msgCategoryAdded else null) }
                             categoryName = ""
                         }) { Text(tr("إضافة")) }
                     }
@@ -146,7 +168,7 @@ fun AdminToolsScreen(
             item { Text(tr("إجراءات خطرة"), style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.DeleteSweep, "مسح جميع الأعشاب", "حذف كل الأعشاب من Firestore", { confirmAction = "herbs" }, danger = true) }
             item { AdminButton(Icons.Filled.DeleteForever, "حذف كل البيانات", "حذف الأعشاب والتصنيفات", { confirmAction = "all" }, danger = true) }
-            item { AdminButton(Icons.Filled.CleaningServices, "تنظيف المفضلة", "حذف المفضلة المحلية", { onClearFavorites(); notify(true, "تم تنظيف المفضلة") }) }
+            item { AdminButton(Icons.Filled.CleaningServices, "تنظيف المفضلة", "حذف المفضلة المحلية", { onClearFavorites(); notify(true, msgFavoritesCleared) }) }
             item {
                 AiAssistantDevTools(
                     herbs = herbs,
@@ -156,7 +178,7 @@ fun AdminToolsScreen(
                     onSimilarityChange = onSetAiSimilarityThreshold,
                     onSearchThresholdChange = onSetAiSearchThreshold,
                     onExtraStopWordsChange = onSetAiExtraStopWords,
-                    onReset = { onResetAiSettings(); notify(true, "تمت إعادة ضبط إعدادات المساعد الذكي") }
+                    onReset = { onResetAiSettings(); notify(true, msgAiReset) }
                 )
             }
             item {
@@ -192,9 +214,9 @@ fun AdminToolsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     when {
-                        action == "herbs" -> onDeleteAllHerbs { ok, msg -> notify(ok, msg ?: if (ok) "تم حذف جميع الأعشاب" else null) }
-                        action == "all" -> onDeleteAllData { ok, msg -> notify(ok, msg ?: if (ok) "تم حذف جميع البيانات" else null) }
-                        action.startsWith("category:") -> onDeleteCategory(action.substringAfter(':')) { ok, msg -> notify(ok, msg ?: if (ok) "تم حذف التصنيف" else null) }
+                        action == "herbs" -> onDeleteAllHerbs { ok, msg -> notify(ok, msg ?: if (ok) msgAllHerbsDeleted else null) }
+                        action == "all" -> onDeleteAllData { ok, msg -> notify(ok, msg ?: if (ok) msgAllDataDeleted else null) }
+                        action.startsWith("category:") -> onDeleteCategory(action.substringAfter(':')) { ok, msg -> notify(ok, msg ?: if (ok) msgCategoryDeleted else null) }
                     }
                     confirmAction = null
                 }) { Text(tr("متابعة"), color = MaterialTheme.colorScheme.error) }
@@ -220,7 +242,7 @@ fun AdminToolsScreen(
                     enabled = editingCategoryName.isNotBlank(),
                     onClick = {
                         val newName = editingCategoryName.trim()
-                        onUpdateCategory(category.id, newName) { ok, msg -> notify(ok, msg ?: if (ok) "تم تعديل التصنيف" else null) }
+                        onUpdateCategory(category.id, newName) { ok, msg -> notify(ok, msg ?: if (ok) msgCategoryUpdated else null) }
                         editingCategory = null
                     }
                 ) { Text(tr("حفظ")) }
@@ -246,8 +268,8 @@ fun AdminToolsScreen(
                     contentAlignment = Alignment.Center
                 ) { Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp)) }
             },
-            headlineContent = { Text(title) },
-            supportingContent = { Text(subtitle) }
+            headlineContent = { Text(tr(title)) },
+            supportingContent = { Text(tr(subtitle)) }
         )
     }
 }
@@ -334,7 +356,7 @@ private fun AiAssistantDevTools(
                         lexiconReady ->
                             tr("قاموس المرادفات المحلي جاهز (${DictionaryLexicon.loadedWordCount} كلمة، Rabih Dictionary + Arabic WordNet)")
                         lexiconAttempted ->
-                            "فشل تحميل قاموس المرادفات المحلي: ${DictionaryLexicon.lastError ?: "خطأ غير معروف"}"
+                            tr("فشل تحميل قاموس المرادفات المحلي: ") + (DictionaryLexicon.lastError?.let { tr(it) } ?: tr("خطأ غير معروف"))
                         else ->
                             tr("جارٍ تحميل قاموس المرادفات المحلي…")
                     },
@@ -659,4 +681,4 @@ private fun csvText(herbs: List<Herb>): String {
     return buildString { appendLine("name,category_id,benefits,warnings,harms,usage,notes,image_url"); herbs.forEach { appendLine(listOf(it.name,it.categoryId ?: "",it.benefits,it.warnings,it.harms,it.usage,it.notes,it.imageUrl ?: "").joinToString(",", transform=::e)) } }
 }
 private fun shareText(context: Context, title: String, text: String) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }, title)) }
-private fun shareApp(context: Context) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "موسوعة الأعشاب الطبية") }, "مشاركة")) }
+private fun shareApp(context: Context, shareText: String, chooserTitle: String) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, chooserTitle)) }
