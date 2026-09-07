@@ -70,7 +70,7 @@ fun AdminFeedbackScreen(
         when {
             isLoading && feedback.isEmpty() -> LoadingView(Modifier.padding(padding).fillMaxSize())
             error != null && feedback.isEmpty() -> EmptyView(error, Modifier.padding(padding).fillMaxSize())
-            feedback.isEmpty() -> EmptyView("لا توجد ملاحظات حالياً", Modifier.padding(padding).fillMaxSize())
+            feedback.isEmpty() -> EmptyView(tr("لا توجد ملاحظات حالياً"), Modifier.padding(padding).fillMaxSize())
             else -> ResponsiveScreenContent(windowInfo = rememberWindowSizeInfo(), modifier = Modifier.padding(padding)) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -91,7 +91,7 @@ fun AdminFeedbackScreen(
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
-                                    val typeLabel = if (item.targetType == "blend") "خلطة" else "عشبة"
+                                    val typeLabel = if (item.targetType == "blend") tr("خلطة") else tr("عشبة")
                                     Text(
                                         typeLabel,
                                         style = MaterialTheme.typography.labelSmall,
@@ -114,7 +114,7 @@ fun AdminFeedbackScreen(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    item.senderName?.ifBlank { null } ?: "مرسل مجهول",
+                                    item.senderName?.ifBlank { null } ?: tr("مرسل مجهول"),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

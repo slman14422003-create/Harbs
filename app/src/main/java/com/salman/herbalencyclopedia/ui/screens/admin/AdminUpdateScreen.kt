@@ -54,6 +54,9 @@ fun AdminUpdateScreen(
     var customProxyBaseUrl by remember(config) { mutableStateOf(config.customProxyBaseUrl ?: "") }
     var saving by remember { mutableStateOf(false) }
 
+    val msgSaved = tr("تم الحفظ")
+    val msgSaveError = tr("حدث خطأ أثناء الحفظ")
+
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
@@ -201,7 +204,7 @@ fun AdminUpdateScreen(
                     onClick = { onTestNow(context, currentFieldsAsConfig()) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (testState == UpdateCheckState.Checking) "جارٍ الاختبار..." else "تحقق الآن بهذه الإعدادات")
+                    Text(if (testState == UpdateCheckState.Checking) tr("جارٍ الاختبار...") else tr("تحقق الآن بهذه الإعدادات"))
                 }
             }
             when (val state = testState) {
@@ -210,8 +213,8 @@ fun AdminUpdateScreen(
                         Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "الإعدادات تعمل: تم العثور على إصدار v${state.info.versionName}" +
-                                (if (state.info.apkUrl != null) " (رابط APK متوفر)." else " (بدون ملف APK مرفق بالإصدار!)."),
+                            tr("الإعدادات تعمل: تم العثور على إصدار v${state.info.versionName}") +
+                                (if (state.info.apkUrl != null) tr(" (رابط APK متوفر).") else tr(" (بدون ملف APK مرفق بالإصدار!).")),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -240,12 +243,12 @@ fun AdminUpdateScreen(
                         val newConfig = currentFieldsAsConfig()
                         onSave(newConfig) { ok, msg ->
                             saving = false
-                            notify(msg ?: if (ok) "تم الحفظ" else "حدث خطأ أثناء الحفظ")
+                            notify(msg ?: if (ok) msgSaved else msgSaveError)
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (saving) "جارٍ الحفظ..." else "حفظ الإعدادات")
+                    Text(if (saving) tr("جارٍ الحفظ...") else tr("حفظ الإعدادات"))
                 }
             }
         }

@@ -77,13 +77,13 @@ fun AdminEditHerbScreen(
         }
     }
 
-    val selectedCategoryName = categories.firstOrNull { it.id == categoryId }?.name ?: "بدون تصنيف"
+    val selectedCategoryName = categories.firstOrNull { it.id == categoryId }?.name ?: tr("بدون تصنيف")
 
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text(if (existingHerb == null) "إضافة عشبة" else "تعديل عشبة") },
+                title = { Text(if (existingHerb == null) tr("إضافة عشبة") else tr("تعديل عشبة")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))

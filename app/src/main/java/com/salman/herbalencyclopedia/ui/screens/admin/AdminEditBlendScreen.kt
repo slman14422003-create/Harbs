@@ -82,7 +82,7 @@ fun AdminEditBlendScreen(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             GlassTopBar(
-                title = { Text(if (existingBlend == null) "إضافة خلطة" else "تعديل خلطة") },
+                title = { Text(if (existingBlend == null) tr("إضافة خلطة") else tr("تعديل خلطة")) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
@@ -115,7 +115,7 @@ fun AdminEditBlendScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (selectedHerbIds.isEmpty()) "اختر الأعشاب (${herbs.size} متاحة)"
+                        text = if (selectedHerbIds.isEmpty()) tr("اختر الأعشاب (${herbs.size} متاحة)")
                         else herbs.filter { it.id in selectedHerbIds }.joinToString(", ") { it.name },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
