@@ -1,5 +1,6 @@
 package com.salman.herbalencyclopedia
 
+import android.content.Context
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -15,14 +16,28 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.AppViewModelFactory
 import com.salman.herbalencyclopedia.ui.navigation.HerbalNavGraph
 import com.salman.herbalencyclopedia.ui.theme.HerbalEncyclopediaTheme
 import com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
+import com.salman.herbalencyclopedia.ui.util.AppLanguage
+import com.salman.herbalencyclopedia.ui.util.LocalAppLanguage
+import com.salman.herbalencyclopedia.ui.util.LocaleManager
 
 class MainActivity : ComponentActivity() {
+
+    // يُستدعى قبل onCreate وقبل أي Compose/ViewModel: يغلّف الـ Context
+    // بلغة المستخدم المحفوظة (عربي/إنجليزي) حتى تتبع كل موارد Android
+    // (بما فيها اتجاه RTL/LTR الافتراضي وأي مورد @string لاحق) تلك اللغة
+    // بدل لغة نظام الجهاز نفسه. راجع PreferencesRepository.getSavedLanguageCodeBlocking وLocaleManager.
+    override fun attachBaseContext(newBase: Context) {
+        val languageCode = PreferencesRepository.getSavedLanguageCodeBlocking(newBase)
+        super.attachBaseContext(LocaleManager.wrapContext(newBase, languageCode))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -44,6 +59,9 @@ class MainActivity : ComponentActivity() {
             val performanceMode by container.preferencesRepository.performanceMode.collectAsState(
                 initial = PerformanceMode.HIGH_QUALITY
             )
+            val appLanguage by container.preferencesRepository.appLanguage.collectAsState(
+                initial = AppLanguage.ARABIC
+            )
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
             SideEffect {
@@ -54,21 +72,16 @@ class MainActivity : ComponentActivity() {
                 controller.isAppearanceLightNavigationBars = !useDark
             }
 
-            // إصلاح جوهري: التطبيق بالكامل نصوصه عربية فقط (لا توجد أي موارد
-            // values-en أو غيرها، انظر strings.xml)، لكن اتجاه التخطيط
-            // (LayoutDirection) في Compose كان يُترك بلا تحديد صريح، فيتبع
-            // حينها لغة نظام الجهاز حرفياً بدل محتوى التطبيق نفسه: أي مستخدم
-            // بجهاز على لغة إنجليزية (شائع حتى بين مستخدمين عرب) كان يحصل على
-            // تخطيط LTR بالكامل رغم أن كل نص معروض عربي — وهذا بالضبط ما كان
-            // يُنتج ترتيب فقرات/أيقونات معكوساً، وأخطر من ذلك: خوارزمية
-            // Bidi نفسها (اتجاه الفقرة الأساسي LTR لمحتوى RTL بالكامل) تُنتج
-            // إعادة ترتيب فعلية لمواضع الكلمات والأقواس داخل نفس السطر (مثال
-            // فعلي أُبلغ عنه: تسمية حقل بين قوسين مثل "[الفوائد]" في رد سيمو
-            // كانت تظهر في نهاية السطر بدل بدايته). فرض RTL هنا صراحةً على
-            // مستوى التطبيق كاملاً (بدل الاعتماد على تخمين النظام) يجعل كل
-            // شاشة وكل فقاعة دردشة تُعرض بالاتجاه الصحيح فعلياً بغضّ النظر
-            // عن لغة نظام الجهاز.
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            // اتجاه التخطيط يتبع الآن لغة التطبيق المختارة من الإعدادات
+            // (عربي = RTL، إنجليزي = LTR) بدل فرض RTL دائماً كما كان
+            // سابقاً حين كان التطبيق عربياً فقط بلا أي لغة أخرى. راجع
+            // AppLanguage وLocalAppLanguage وSettingsScreen لآلية التبديل
+            // الكاملة (بما فيها إعادة إنشاء النشاط عبر attachBaseContext
+            // أعلاه لتطبيق اللغة على موارد Android أيضاً وليس فقط اتجاه Compose).
+            CompositionLocalProvider(
+                LocalAppLanguage provides appLanguage,
+                LocalLayoutDirection provides if (appLanguage == AppLanguage.ARABIC) LayoutDirection.Rtl else LayoutDirection.Ltr
+            ) {
                 HerbalEncyclopediaTheme(
                     darkTheme = useDark,
                     dynamicColor = dynamicColorPref,
@@ -92,3 +105,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
