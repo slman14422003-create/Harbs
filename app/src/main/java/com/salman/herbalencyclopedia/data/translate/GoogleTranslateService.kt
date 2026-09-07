@@ -34,6 +34,17 @@ object GoogleTranslateService {
                     requestMethod = "GET"
                     connectTimeout = 8_000
                     readTimeout = 8_000
+                    // مهم جداً: بعض الطلبات لهذه الواجهة غير الرسمية تُرفض أو
+                    // تُحجب (رد فارغ/403) إن لم تحمل ترويسة User-Agent شبيهة
+                    // بمتصفح حقيقي، لأن الطلبات بلا أي User-Agent (وهذا ما
+                    // يرسله HttpURLConnection افتراضياً على أندرويد) تُميَّز
+                    // بسهولة كطلبات آلية. هذا على الأرجح هو السبب الرئيسي وراء
+                    // عدم ترجمة أي بيانات فعلياً رغم أن الكود يعمل بلا أخطاء.
+                    setRequestProperty(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                            "Chrome/120.0.0.0 Mobile Safari/537.36"
+                    )
                 }
                 val body = try {
                     if (connection.responseCode in 200..299) {
