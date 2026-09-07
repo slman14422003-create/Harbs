@@ -26,6 +26,7 @@ import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.HerbThumbnail
 import com.salman.herbalencyclopedia.ui.util.ResponsiveScreenContent
 import com.salman.herbalencyclopedia.ui.util.rememberWindowSizeInfo
+import com.salman.herbalencyclopedia.ui.util.tr
 
 private data class BlendInfoSection(
     val title: String,
@@ -49,10 +50,10 @@ fun BlendDetailScreen(
     var confirmDelete by remember { mutableStateOf(false) }
 
     val sections = listOf(
-        BlendInfoSection("الفوائد", blend.benefits, Icons.Filled.Favorite, Color(0xFF2E7D32)),
-        BlendInfoSection("طريقة التحضير والاستخدام", blend.usage, Icons.Filled.LocalPharmacy, Color(0xFF1565C0)),
-        BlendInfoSection("التحذيرات", blend.warnings, Icons.Filled.WarningAmber, Color(0xFFEF6C00)),
-        BlendInfoSection("ملاحظات إضافية", blend.notes, Icons.Filled.StickyNote2, Color(0xFF6A1B9A))
+        BlendInfoSection(tr("الفوائد"), blend.benefits, Icons.Filled.Favorite, Color(0xFF2E7D32)),
+        BlendInfoSection(tr("طريقة التحضير والاستخدام"), blend.usage, Icons.Filled.LocalPharmacy, Color(0xFF1565C0)),
+        BlendInfoSection(tr("التحذيرات"), blend.warnings, Icons.Filled.WarningAmber, Color(0xFFEF6C00)),
+        BlendInfoSection(tr("ملاحظات إضافية"), blend.notes, Icons.Filled.StickyNote2, Color(0xFF6A1B9A))
     ).filter { it.content.isNotBlank() && it.content != "—" }
 
     Scaffold(
@@ -62,19 +63,19 @@ fun BlendDetailScreen(
                 title = { Text(blend.name) },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 },
                 actions = {
                     GlassIconButton(onClick = onReportIssue) {
-                        Icon(Icons.Filled.Feedback, contentDescription = "الإبلاغ عن خطأ بالمعلومات")
+                        Icon(Icons.Filled.Feedback, contentDescription = tr("الإبلاغ عن خطأ بالمعلومات"))
                     }
                     if (isAdmin) {
                         GlassIconButton(onClick = onEdit) {
-                            Icon(Icons.Filled.Edit, contentDescription = "تعديل")
+                            Icon(Icons.Filled.Edit, contentDescription = tr("تعديل"))
                         }
                         GlassIconButton(onClick = { confirmDelete = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Filled.Delete, contentDescription = tr("حذف"), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -123,7 +124,7 @@ fun BlendDetailScreen(
 
             item {
                 Text(
-                    "المكوّنات",
+                    tr("المكوّنات"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 4.dp)
@@ -132,7 +133,7 @@ fun BlendDetailScreen(
             if (ingredientHerbs.isEmpty()) {
                 item {
                     Text(
-                        "لا توجد مكوّنات محددة لهذه الخلطة",
+                        tr("لا توجد مكوّنات محددة لهذه الخلطة"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -205,16 +206,16 @@ fun BlendDetailScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("حذف \"${blend.name}\"؟") },
-            text = { Text("لا يمكن التراجع عن هذا الإجراء.") },
+            title = { Text(tr("حذف \"${blend.name}\"؟")) },
+            text = { Text(tr("لا يمكن التراجع عن هذا الإجراء.")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
                     onDelete()
-                }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+                }) { Text(tr("حذف"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("إلغاء") }
+                TextButton(onClick = { confirmDelete = false }) { Text(tr("إلغاء")) }
             }
         )
     }

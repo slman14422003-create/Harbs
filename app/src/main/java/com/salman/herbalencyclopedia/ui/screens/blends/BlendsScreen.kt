@@ -18,6 +18,7 @@ import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
+import com.salman.herbalencyclopedia.ui.util.tr
 
 /**
  * شاشة "الخلطات": تعرض كل خلطات الأعشاب لكل المستخدمين (قراءة فقط)، وتضيف
@@ -42,13 +43,13 @@ fun BlendsScreen(
                     TopBarBrandTitle(
                         icon = Icons.Filled.Blender,
                         iconTint = MaterialTheme.colorScheme.tertiary,
-                        title = "الخلطات",
+                        title = tr("الخلطات"),
                         subtitle = "${blends.size} خلطة من الأعشاب"
                     )
                 },
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
                     }
                 }
             )
@@ -58,14 +59,14 @@ fun BlendsScreen(
                 ExtendedFloatingActionButton(
                     onClick = onAddNew,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("إضافة خلطة") }
+                    text = { Text(tr("إضافة خلطة")) }
                 )
             }
         }
     ) { padding ->
         if (blends.isEmpty()) {
             EmptyView(
-                message = if (isAdmin) "لا توجد خلطات بعد — أضف أول خلطة" else "لا توجد خلطات بعد",
+                message = if (isAdmin) tr("لا توجد خلطات بعد — أضف أول خلطة") else tr("لا توجد خلطات بعد"),
                 modifier = Modifier.padding(padding).fillMaxSize()
             )
         } else {
