@@ -17,6 +17,7 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.search.HerbSearch
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
+import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,8 +65,8 @@ fun AllHerbsScreen(
                     TopBarBrandTitle(
                         icon = Icons.Filled.MenuBook,
                         iconTint = MaterialTheme.colorScheme.primary,
-                        title = "كل الأعشاب",
-                        subtitle = "${herbs.size} عشبة في الموسوعة"
+                        title = tr("كل الأعشاب"),
+                        subtitle = tr("${herbs.size} عشبة في الموسوعة")
                     )
                 }
             )
@@ -81,13 +82,13 @@ fun AllHerbsScreen(
                     value = query,
                     onValueChange = { query = it },
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
-                    placeholder = { Text("ابحث في الموسوعة") },
+                    placeholder = { Text(tr("ابحث في الموسوعة")) },
                     singleLine = true,
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 )
                 if (filtered.isEmpty()) {
-                    EmptyView(message = "لا توجد نتائج لـ \"$query\"", modifier = Modifier.fillMaxSize())
+                    EmptyView(message = tr("لا توجد نتائج لـ \"$query\""), modifier = Modifier.fillMaxSize())
                 } else {
                     LazyColumn(
                         contentPadding = PaddingValues(16.dp),
