@@ -171,7 +171,7 @@ fun HomeScreen(
                     // المزامنة الحيّة في AppViewModel.init البيانات القديمة
                     // ظاهرة ويُسجّل الخطأ فقط بدل مسحها بالكامل.
                     error != null && categories.isEmpty() -> ErrorView(error, onRetry, Modifier.fillMaxSize())
-                    categories.isEmpty() -> EmptyView("لا توجد تصنيفات بعد", Modifier.fillMaxSize())
+                    categories.isEmpty() -> EmptyView(tr("لا توجد تصنيفات بعد"), Modifier.fillMaxSize())
                     // كانت هذه شبكة (LazyVerticalGrid) تعرض عدة أعمدة، فتظهر
                     // بطاقات التصنيفات جنباً إلى جنب. الآن قائمة عمودية واحدة
                     // (LazyColumn) تعرض كل بطاقة بعرض كامل تحت التي قبلها،
