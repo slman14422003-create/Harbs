@@ -150,7 +150,7 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.USE_DYNAMIC_COLOR] = enabled }
     }
 
-    suspend fun setFontScale(level: Int) { context.dataStore.edit { it[Keys.FONT_SCALE] = level.coerceIn(0, 2) } }
+    suspend fun setFontScale(level: Int) { context.dataStore.edit { it[Keys.FONT_SCALE] = level.coerceIn(0, 4) } }
     suspend fun setThemePalette(palette: ThemePalette) {
         context.dataStore.edit { prefs -> prefs[Keys.THEME_PALETTE] = palette.name }
     }
