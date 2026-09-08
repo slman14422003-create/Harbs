@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
 import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -64,7 +65,10 @@ fun FavoritesScreen(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp, top = 16.dp, end = 16.dp,
+                    bottom = 16.dp + LocalBottomBarInset.current
+                ),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
