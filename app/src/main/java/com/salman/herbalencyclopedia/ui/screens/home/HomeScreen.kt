@@ -12,18 +12,23 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Blender
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Spa
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import com.salman.herbalencyclopedia.ui.util.tr
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.*
+import com.salman.herbalencyclopedia.ui.theme.entranceFade
 import com.salman.herbalencyclopedia.ui.theme.staggeredEntrance
 import java.util.Calendar
 
@@ -53,7 +58,8 @@ fun HomeScreen(
     onSettingsClick: () -> Unit,
     onAdminClick: () -> Unit,
     onSemoClick: () -> Unit,
-    onBlendsClick: () -> Unit
+    onBlendsClick: () -> Unit,
+    onSupportClick: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -70,6 +76,18 @@ fun HomeScreen(
         topBar = {
             GlassTopBar(
                 large = true,
+                // التطبيق بواجهة عربية (RTL)، وMaterial يعكس ترتيب الشريط
+                // العلوي تلقائياً في هذه الحالة: عنصر navigationIcon يظهر
+                // عند الحافة "القائدة" لاتجاه القراءة، وهي أقصى يمين الشاشة
+                // في RTL — بعكس actions التي تظهر عند الحافة المقابلة
+                // (أقصى يسار الشاشة). لذلك أيقونة الدعم المطلوبة "أعلى
+                // الشاشة يمين" توضع هنا في navigationIcon وليس actions، كي
+                // تظهر فعلياً بالزاوية العلوية اليمنى بدل اليسرى.
+                navigationIcon = {
+                    GlassIconButton(onClick = onSupportClick) {
+                        Icon(Icons.Filled.SupportAgent, contentDescription = tr("الدعم الفني"))
+                    }
+                },
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -123,7 +141,8 @@ fun HomeScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .entranceFade(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 QuickAction(
@@ -184,6 +203,18 @@ fun HomeScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // عنوان قسم بسيط أعلى القائمة يمنحها تنظيماً بصرياً
+                        // أوضح بدل انتقال البطاقات مباشرة تحت أزرار الإجراءات
+                        // السريعة بلا أي فاصل أو تسمية.
+                        item(key = "categories_header") {
+                            Text(
+                                tr("التصنيفات"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                            )
+                        }
                         itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
                             CategoryCard(
                                 category = category,
@@ -212,9 +243,18 @@ private fun QuickAction(
     label: String,
     onClick: () -> Unit
 ) {
+    // نفس نابض الضغط الموحّد المستخدم بأزرار الزجاج (GlassButton) — تصغير
+    // خفيف فوري عند الضغط ثم عودة نابضة، بتكلفة منخفضة جداً (قيمة واحدة
+    // متحركة فقط عند تغيّر حالة الضغط الفعلية، وليست حركة مستمرة)، تُبقي
+    // هذه البطاقات متّسقة الإحساس مع بقية عناصر التطبيق القابلة للنقر.
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressScale by com.salman.herbalencyclopedia.ui.theme.rememberPressScale(interactionSource)
     Surface(
         onClick = onClick,
-        modifier = modifier.height(54.dp),
+        interactionSource = interactionSource,
+        modifier = modifier
+            .height(54.dp)
+            .graphicsLayer { scaleX = pressScale; scaleY = pressScale },
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 2.dp
