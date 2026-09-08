@@ -153,7 +153,7 @@ fun LoginScreen(
                             onLogin(email, password) { success, message ->
                                 isLoading = false
                                 if (success) onSuccess()
-                                else errorMessage = message ?: tr("تعذّر تسجيل الدخول.")
+                                else errorMessage = message ?: "تعذّر تسجيل الدخول."
                             }
                         },
                         enabled = email.isNotBlank() && password.length >= 6 && !isLoading,
