@@ -95,6 +95,15 @@ fun LiquidGlassSurface(
     // العائمة الفريدة (الشريط السفلي/العلوي)، وليس في بطاقات الشبكة
     // المتكرّرة، لنفس اعتبارات التكلفة الموضّحة أعلاه لـ[blurBubbles].
     backdrop: GlassBackdropState? = null,
+    // شفافية صبغة اللون فوق التمويه الحقيقي (تُستخدم فقط حين backdrop غير
+    // null وuseBackdrop مفعّل أدناه). القيمة الافتراضية (0.46/0.30) كانت
+    // مناسبة للشريط العلوي الثابت الذي يظهر دائماً فوق نفس خلفية الصفحة،
+    // لكنها جعلت الشريط السفلي العائم شفافاً لدرجة يصعب معها تمييز خياراته
+    // فوق محتوى متنوّع الألوان يتحرّك خلفه (قوائم/شبكات بطاقات). عنصر مثل
+    // الشريط السفلي يمرّر قيمة أعلى هنا للحصول على تمويه "أكثر تعتيماً"
+    // يبقي التمويه الحقيقي ظاهراً خلفه لكن بصبغة أقوى تحمي وضوح النص/الأيقونات.
+    backdropTintAlphaTop: Float = 0.46f,
+    backdropTintAlphaBottom: Float = 0.30f,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
@@ -201,7 +210,7 @@ fun LiquidGlassSurface(
                                 // بلون شبه صلب، بل مجرّد صبغة خفيفة فوق الخلفية
                                 // المموَّهة فعلياً خلفه — وإلا يُغطّي التمويه الحقيقي
                                 // بالكامل ولا يظهر أي أثر له.
-                                if (useBackdrop) listOf(tint.copy(alpha = 0.46f), tint.copy(alpha = 0.30f))
+                                if (useBackdrop) listOf(tint.copy(alpha = backdropTintAlphaTop), tint.copy(alpha = backdropTintAlphaBottom))
                                 else if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
                                 else listOf(tint.copy(alpha = 0.97f), tint.copy(alpha = 0.88f))
                             )
