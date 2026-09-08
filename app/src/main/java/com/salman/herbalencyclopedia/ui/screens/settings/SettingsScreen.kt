@@ -68,8 +68,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
-private val fontScaleLabels = listOf("عادي", "كبير", "أكبر")
-private val fontScaleSizes = listOf(15.sp, 18.sp, 21.sp)
+// خُمس مراحل بدل ثلاث سابقاً (انظر FontScaleFactors في Type.kt)، بحد
+// أقصى أوضح لمن يحتاج تكبيراً حقيقياً بدل الاكتفاء بفارق طفيف.
+private val fontScaleLabels = listOf("عادي", "متوسط", "كبير", "أكبر", "الأكبر")
+private val fontScaleSizes = listOf(14.sp, 16.sp, 18.sp, 20.sp, 23.sp)
 
 /** طابع داخلي (غير مترجَم عمداً — تقني/محايد) لآخر جولة تحسينات هندسة واجهة
  *  ملحوظة: يظهر خافتاً جداً تحت رقم إصدار التطبيق في شاشة الإعدادات. */
@@ -554,8 +556,8 @@ private fun FontScaleRow(fontScale: Int, onFontScaleChange: (Int) -> Unit) {
         Slider(
             value = fontScale.toFloat(),
             onValueChange = { onFontScaleChange(it.roundToInt()) },
-            valueRange = 0f..2f,
-            steps = 1
+            valueRange = 0f..4f,
+            steps = 3
         )
     }
 }
