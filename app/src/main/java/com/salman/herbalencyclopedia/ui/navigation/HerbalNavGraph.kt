@@ -19,6 +19,7 @@ import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.components.GlassBackdropState
+import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
 import com.salman.herbalencyclopedia.ui.components.LocalGlassBackdrop
 import com.salman.herbalencyclopedia.ui.components.OneUiFloatingNavBar
 import com.salman.herbalencyclopedia.ui.components.OneUiNavItem
@@ -169,17 +170,29 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 )
             }
         Box(Modifier.weight(1f).fillMaxSize()) {
+          val floatingBarActive = showNav && !windowInfo.useNavigationRail
+          val navBarHeightDp = with(androidx.compose.ui.platform.LocalDensity.current) { navBarHeightPx.toDp() }
           // مزوَّدة هنا (فوق AmbientBackground والشريط العائم معاً) كي يقرأ
           // كلا الشريطين (العلوي داخل شاشات NavHost، والسفلي أدناه) نفس
           // حالة الخلفية الحيّة الواحدة.
-          CompositionLocalProvider(LocalGlassBackdrop provides glassBackdrop) {
-            val floatingBarActive = showNav && !windowInfo.useNavigationRail
-            val navBarHeightDp = with(androidx.compose.ui.platform.LocalDensity.current) { navBarHeightPx.toDp() }
+          CompositionLocalProvider(
+              LocalGlassBackdrop provides glassBackdrop,
+              // القيمة الحقيقية (لا صفر) تُزوَّد فقط هنا؛ أي شاشة تحتها
+              // تقرأها لتحجز نفس المساحة كهامش سفلي *داخل* قائمتها القابلة
+              // للتمرير (contentPadding) بدل هامش خارجي على NavHost كاملاً
+              // كما كان سابقاً — الفرق الجوهري: NavHost نفسه صار يمتد كامل
+              // الارتفاع خلف الشريط فعلياً (انظر أدناه)، فتظهر نهاية أي
+              // قائمة فعلياً خلف الزجاج أثناء التمرير نفسه بدل توقّفها قبل
+              // تلك المنطقة بمسافة ثابتة وكأن خلف الشريط صورة خلفية منفصلة.
+              LocalBottomBarInset provides if (floatingBarActive) navBarHeightDp else 0.dp
+          ) {
             com.salman.herbalencyclopedia.ui.components.AmbientBackground(
                 modifier = Modifier.glassBackdropSource(glassBackdrop)
             )
+            // بلا أي هامش سفلي هنا الآن (قارن بالتعليق أعلاه): NavHost يملأ
+            // كامل الصندوق حتى خلف الشريط العائم تماماً، وكل شاشة تتكفّل هي
+            // بحجز نفس [navBarHeightDp] كـcontentPadding داخل قائمتها.
             NavHost(
-                modifier = Modifier.padding(bottom = if (floatingBarActive) navBarHeightDp else 0.dp),
                 navController = navController,
                 startDestination = Screen.Splash.route,
                 enterTransition = {
