@@ -79,7 +79,11 @@ fun GlassTopBar(
     large: Boolean = false,
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
-    val surface = MaterialTheme.colorScheme.surfaceContainerHigh
+    val surface = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surfaceContainerHigh,
+        MaterialTheme.colorScheme.primary,
+        0.10f
+    )
     val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
     // ظل أسود افتراضي (Modifier.shadow بلا ألوان مخصّصة) يعطي إحساساً
     // "موحلاً"/رمادياً تحت سطح زجاجي ملوّن، ويبرز بشكل خاص في الوضع
@@ -143,7 +147,17 @@ fun OneUiFloatingNavBar(
     onItemClick: (OneUiNavItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val container = MaterialTheme.colorScheme.surfaceContainerHigh
+    // surfaceContainerHigh وحدها لون شبه محايد (تشبّع منخفض جداً)، فيبدو
+    // الشريط كأنه عنصر نظام عام رمادي بلا هوية بصرية — بالضبط الإحساس
+    // بـ"مربع/كبسولة غير مندمجة مع التطبيق" الذي لوحظ على الأجهزة الأقدم
+    // (بلا تمويه حقيقي متاح، فالتلوين هنا هو الفارق الوحيد المرئي). مزجه
+    // بقليل من primary اللوحة المختارة يمنحه هوية لونية واضحة تتبدّل
+    // تلقائياً مع أي ثيم بدل رمادي عام واحد لكل الثيمات.
+    val container = androidx.compose.ui.graphics.lerp(
+        MaterialTheme.colorScheme.surfaceContainerHigh,
+        MaterialTheme.colorScheme.primary,
+        0.14f
+    )
     val shape = RoundedCornerShape(30.dp)
     val highQuality = LocalPerformanceMode.current.isHighQuality
     // على تنقّل الإيماءات الحاجز السفلي (navigationBars) رفيع جداً (عادة
@@ -200,6 +214,7 @@ fun OneUiFloatingNavBar(
         LiquidGlassSurface(
             shape = shape,
             tint = container,
+            glowColor = MaterialTheme.colorScheme.tertiary,
             borderAlpha = 0.16f,
             // نفس خلفية الزجاج الحقيقي أعلاه: هذا الشريط يطفو مباشرة فوق
             // محتوى الشاشة (المفضلة/الأعشاب/الإعدادات...)، فالتمويه الحقيقي

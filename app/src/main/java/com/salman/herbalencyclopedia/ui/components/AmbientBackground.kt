@@ -57,13 +57,13 @@ fun AmbientBackground(modifier: Modifier = Modifier) {
     val glowAlpha = if (highQuality) {
         val transition = rememberInfiniteTransition(label = "ambientGlow")
         val animated by transition.animateFloat(
-            initialValue = 0.16f,
-            targetValue = 0.26f,
+            initialValue = 0.20f,
+            targetValue = 0.32f,
             animationSpec = infiniteRepeatable(tween(4200), RepeatMode.Reverse),
             label = "ambientGlowAlpha"
         )
         animated
-    } else 0.12f
+    } else 0.16f
 
     Box(
         modifier = modifier
@@ -79,12 +79,30 @@ fun AmbientBackground(modifier: Modifier = Modifier) {
             modifier = Modifier.align(Alignment.TopEnd).offset(x = 90.dp, y = (-90).dp)
         )
         // فقاعة ضوء سفلية-يسارية بلون Tertiary لتوازن بصري بلونين متكاملين.
+        // الإزاحة y الموجبة سابقاً (+120dp) كانت تدفع الفقاعة أسفل حافة
+        // الشاشة الفعلية أكثر فأكثر رغم أنها أصلاً محاذاة لأسفل الشاشة
+        // (BottomStart) — فتظهر غالباً مقصوصة تقريباً بالكامل، تاركة
+        // المنطقة السفلية (حيث يطفو الشريط العائم الآن فوقها مباشرة) شبه
+        // خالية من أي لون حي يستحق تمويهه خلف الزجاج. إزاحة سالبة ترفعها
+        // لتظهر فعلياً في النصف السفلي المرئي من الشاشة.
         BlurredBlob(
             color = tertiary,
             alpha = glowAlpha * 0.85f,
             size = 300.dp,
             highQuality = highQuality,
-            modifier = Modifier.align(Alignment.BottomStart).offset(x = (-100).dp, y = 120.dp)
+            modifier = Modifier.align(Alignment.BottomStart).offset(x = (-80).dp, y = (-30).dp)
+        )
+        // فقاعة ثالثة صغيرة بلون Primary أسفل-يمين، تحديداً في المنطقة
+        // التي يطفو فوقها الشريط العائم السفلي بمعظم الشاشات (منتصف/يمين
+        // أسفل الشاشة) — لضمان وجود لون حي واضح خلف الشريط دائماً بدل
+        // الاعتماد فقط على امتداد الفقاعتين الكبيرتين اللتين قد لا
+        // تصلانه على كل أحجام الشاشات.
+        BlurredBlob(
+            color = primary,
+            alpha = glowAlpha * 0.9f,
+            size = 220.dp,
+            highQuality = highQuality,
+            modifier = Modifier.align(Alignment.BottomEnd).offset(x = 40.dp, y = (-10).dp)
         )
 
         // تدرّج خافت جداً فوق الفقاعات ليوحّد السطح ولا يترك حواف واضحة.

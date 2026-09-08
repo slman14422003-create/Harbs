@@ -92,15 +92,23 @@ fun Modifier.glassBackdropBlur(
     tint: Color = Color.White,
     tintAlpha: Float = 0.30f
 ): Modifier = composed {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@composed this
-
     val consumerLayer = rememberGraphicsLayer()
     var myPositionInRoot by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
+    // التمويه الحقيقي (RenderEffect) غير متاح إلا من أندرويد 12 (API 31)
+    // فما فوق — قيد من نظام التشغيل نفسه، لا حل برمجي بديل رخيص له. على
+    // ما قبل ذلك كان هذا المكوّن يتوقف بالكامل ويرجع للتدرّج التقريبي
+    // القديم، فتظهر كبسولة مصمتة بلا أي أثر حي للمحتوى خلفها بتاتاً على
+    // كل تلك الأجهزة — وهذا بالضبط ما ظهر بلقطة شاشة جهاز أقدم. الآن حتى
+    // بلا RenderEffect نرسم نفس المحتوى الحي خلف الشريط فعلياً (بلا
+    // تمويه، لكن شفّافاً وحقيقياً يتحرك مع التمرير) مع صبغة أعلى قليلاً
+    // تعوّض غياب التمويه — "زجاج شفّاف حي" بدل "زجاج مموَّه" فقط على تلك
+    // الأجهزة، بدل العودة للتقريب الثابت القديم بالكامل.
+    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val blurPx = with(density) { blurRadius.toPx() }
-    val renderEffect = remember(blurPx) {
-        RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
+    val renderEffect = remember(blurPx, supportsBlur) {
+        if (supportsBlur) RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect() else null
     }
 
     this
@@ -116,9 +124,14 @@ fun Modifier.glassBackdropBlur(
                         drawLayer(source)
                     }
                 }
-                consumerLayer.renderEffect = renderEffect
+                if (renderEffect != null) consumerLayer.renderEffect = renderEffect
                 drawLayer(consumerLayer)
-                drawRect(tint.copy(alpha = tintAlpha))
+                drawRect(
+                    tint.copy(
+                        alpha = if (renderEffect != null) tintAlpha
+                        else (tintAlpha + 0.22f).coerceAtMost(0.75f)
+                    )
+                )
             }
             drawContent()
         }

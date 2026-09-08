@@ -14,6 +14,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -98,7 +100,11 @@ fun LiquidGlassSurface(
     val highQuality = LocalPerformanceMode.current.isHighQuality
     val showBlurBubbles = highQuality && blurBubbles
     val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
-    val useRealBlur = backdrop != null && highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // لم يعد هذا مشروطاً بإصدار أندرويد: glassBackdropBlur نفسه أصبح
+    // يرسم المحتوى الحي خلف الشريط دائماً عند توفّر backdrop (بتمويه حقيقي
+    // من أندرويد 12، وبشفافية حقيقية بلا تمويه على ما قبله) بدل التوقف
+    // كلياً على الأجهزة الأقدم — انظر التعليق داخل GlassBackdrop.kt.
+    val useBackdrop = backdrop != null && highQuality
     // حافة الزجاج تعتمد على الوضع: في الوضع الداكن، حدّ أبيض خافت يعطي
     // إحساس "توهّج" واضحاً على خلفية داكنة. نفس الحدّ الأبيض على خلفية
     // فاتحة يكاد يكون غير مرئي تماماً (أبيض على أبيض تقريباً) — وهذا بالضبط
@@ -130,7 +136,7 @@ fun LiquidGlassSurface(
     Box(
         modifier = modifier
             .clip(shape)
-            .let { if (useRealBlur) it.glassBackdropBlur(backdrop!!, tint = tint, tintAlpha = 0f) else it }
+            .let { if (useBackdrop) it.glassBackdropBlur(backdrop!!, tint = tint, tintAlpha = 0f) else it }
     ) {
         if (showBlurBubbles && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // كان RenderEffect.createBlurEffect يُستدعى مباشرة داخل كتلة
@@ -195,7 +201,7 @@ fun LiquidGlassSurface(
                                 // بلون شبه صلب، بل مجرّد صبغة خفيفة فوق الخلفية
                                 // المموَّهة فعلياً خلفه — وإلا يُغطّي التمويه الحقيقي
                                 // بالكامل ولا يظهر أي أثر له.
-                                if (useRealBlur) listOf(tint.copy(alpha = 0.46f), tint.copy(alpha = 0.30f))
+                                if (useBackdrop) listOf(tint.copy(alpha = 0.46f), tint.copy(alpha = 0.30f))
                                 else if (darkTheme) listOf(tint.copy(alpha = 0.92f), tint.copy(alpha = 0.74f))
                                 else listOf(tint.copy(alpha = 0.97f), tint.copy(alpha = 0.88f))
                             )
@@ -236,6 +242,27 @@ fun LiquidGlassSurface(
                         )
                     }
                 }
+        )
+
+        // خط لمعان علوي رفيع وثابت (بلا أي طبقة رسم/تمويه إضافية) يحاكي
+        // انعكاس الضوء على الحافة العليا لأي سطح زجاجي حقيقي — يظهر دائماً
+        // بكل الأوضاع (حتى الاقتصادي وما قبل أندرويد 12) على عكس بقية طبقات
+        // الزجاج المشروطة بـhighQuality، فيبقى إحساس "زجاج" واضحاً كحدّ
+        // أدنى مضمون على كل الأجهزة بلا أي تكلفة.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = if (darkTheme) 0.55f else 0.85f),
+                            Color.Transparent
+                        )
+                    )
+                )
         )
 
         content()
