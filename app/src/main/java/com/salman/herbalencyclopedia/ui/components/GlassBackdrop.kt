@@ -54,6 +54,16 @@ class GlassBackdropState {
 /** مصدر افتراضي منفصل (بلا اتصال فعلي) يُستخدم فقط إن نُسي تزويد الحالة الحقيقية. */
 val LocalGlassBackdrop = compositionLocalOf { GlassBackdropState() }
 
+/** الهامش السفلي الذي يجب أن يحجزه أي محتوى قابل للتمرير (LazyColumn/Grid)
+ *  كي يستقر آخر عنصر فيه فوق الشريط العائم السفلي مرتاحاً، مع بقاء إمكانية
+ *  التمرير خطوة إضافية بحيث تظهر (وتُموَّه) نهاية القائمة فعلياً خلف الزجاج
+ *  أثناء الحركة نفسها — بدل توقّف القائمة تماماً قبل منطقة الشريط وكأن ما
+ *  خلفه صورة خلفية ثابتة منفصلة عنها. القيمة الفعلية تُزوَّد من
+ *  HerbalNavGraph (ارتفاع الشريط الحقيقي المقاس)، صفر حين لا يوجد شريط
+ *  عائم (تابلت/شريط جانبي).
+ */
+val LocalBottomBarInset = compositionLocalOf { 0.dp }
+
 /**
  * يُوضع على الحاوية الأكبر التي تمثّل "خلفية التطبيق الحيّة" (هنا:
  * AmbientBackground الممتدة كامل الشاشة خلف NavHost) كي تُسجَّل كل إطار
@@ -92,23 +102,25 @@ fun Modifier.glassBackdropBlur(
     tint: Color = Color.White,
     tintAlpha: Float = 0.30f
 ): Modifier = composed {
+    // التمويه الحقيقي (RenderEffect) غير متاح إلا من أندرويد 12 (API 31)
+    // فما فوق — قيد من نظام التشغيل نفسه. جُرِّب سابقاً رسم نفس المحتوى
+    // الحي خلف الشريط بلا تمويه على الإصدارات الأقدم (شفافية فقط بلا
+    // RenderEffect) كتعويض، لكن النتيجة الفعلية كانت أسوأ من الشكل
+    // التقريبي القديم: نافذة صغيرة تكشف شريحة *حادة غير مموَّهة* مما تحتها
+    // (نص/ألوان القائمة خلفها) تُقرأ كخلل بصري/بقعة بيضاء غريبة بدل زجاج،
+    // بالضبط ما ظهر بلقطة الشاشة. لذلك رجعنا لتعطيل هذا المكوّن بالكامل
+    // على ما قبل أندرويد 12، فيستخدم [LiquidGlassSurface] عندها تلقائياً
+    // تدرّجه التقريبي المصمت الغني (المُحسَّن هذه الجولة بتشبّع أعلى) بدل
+    // أي محاولة لعرض محتوى حي حادّ الحواف.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@composed this
+
     val consumerLayer = rememberGraphicsLayer()
     var myPositionInRoot by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    // التمويه الحقيقي (RenderEffect) غير متاح إلا من أندرويد 12 (API 31)
-    // فما فوق — قيد من نظام التشغيل نفسه، لا حل برمجي بديل رخيص له. على
-    // ما قبل ذلك كان هذا المكوّن يتوقف بالكامل ويرجع للتدرّج التقريبي
-    // القديم، فتظهر كبسولة مصمتة بلا أي أثر حي للمحتوى خلفها بتاتاً على
-    // كل تلك الأجهزة — وهذا بالضبط ما ظهر بلقطة شاشة جهاز أقدم. الآن حتى
-    // بلا RenderEffect نرسم نفس المحتوى الحي خلف الشريط فعلياً (بلا
-    // تمويه، لكن شفّافاً وحقيقياً يتحرك مع التمرير) مع صبغة أعلى قليلاً
-    // تعوّض غياب التمويه — "زجاج شفّاف حي" بدل "زجاج مموَّه" فقط على تلك
-    // الأجهزة، بدل العودة للتقريب الثابت القديم بالكامل.
-    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val blurPx = with(density) { blurRadius.toPx() }
-    val renderEffect = remember(blurPx, supportsBlur) {
-        if (supportsBlur) RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect() else null
+    val renderEffect = remember(blurPx) {
+        RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
     }
 
     this
@@ -124,14 +136,9 @@ fun Modifier.glassBackdropBlur(
                         drawLayer(source)
                     }
                 }
-                if (renderEffect != null) consumerLayer.renderEffect = renderEffect
+                consumerLayer.renderEffect = renderEffect
                 drawLayer(consumerLayer)
-                drawRect(
-                    tint.copy(
-                        alpha = if (renderEffect != null) tintAlpha
-                        else (tintAlpha + 0.22f).coerceAtMost(0.75f)
-                    )
-                )
+                drawRect(tint.copy(alpha = tintAlpha))
             }
             drawContent()
         }

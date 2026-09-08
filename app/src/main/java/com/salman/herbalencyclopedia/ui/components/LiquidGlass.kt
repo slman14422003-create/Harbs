@@ -100,11 +100,11 @@ fun LiquidGlassSurface(
     val highQuality = LocalPerformanceMode.current.isHighQuality
     val showBlurBubbles = highQuality && blurBubbles
     val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
-    // لم يعد هذا مشروطاً بإصدار أندرويد: glassBackdropBlur نفسه أصبح
-    // يرسم المحتوى الحي خلف الشريط دائماً عند توفّر backdrop (بتمويه حقيقي
-    // من أندرويد 12، وبشفافية حقيقية بلا تمويه على ما قبله) بدل التوقف
-    // كلياً على الأجهزة الأقدم — انظر التعليق داخل GlassBackdrop.kt.
-    val useBackdrop = backdrop != null && highQuality
+    // مرتبط بإصدار أندرويد مجدداً: على ما قبل 12 تعطي glassBackdropBlur
+    // نفسها (Modifier) بلا أي تأثير (انظر تعليقها بـGlassBackdrop.kt)، لذا
+    // يجب أن يستخدم هذا السطح تدرّجه التقريبي المصمت الكامل في تلك الحالة
+    // بدل تدرّج مخفَّف يفترض وجود تمويه لن يحدث فعلياً.
+    val useBackdrop = backdrop != null && highQuality && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     // حافة الزجاج تعتمد على الوضع: في الوضع الداكن، حدّ أبيض خافت يعطي
     // إحساس "توهّج" واضحاً على خلفية داكنة. نفس الحدّ الأبيض على خلفية
     // فاتحة يكاد يكون غير مرئي تماماً (أبيض على أبيض تقريباً) — وهذا بالضبط
@@ -242,27 +242,6 @@ fun LiquidGlassSurface(
                         )
                     }
                 }
-        )
-
-        // خط لمعان علوي رفيع وثابت (بلا أي طبقة رسم/تمويه إضافية) يحاكي
-        // انعكاس الضوء على الحافة العليا لأي سطح زجاجي حقيقي — يظهر دائماً
-        // بكل الأوضاع (حتى الاقتصادي وما قبل أندرويد 12) على عكس بقية طبقات
-        // الزجاج المشروطة بـhighQuality، فيبقى إحساس "زجاج" واضحاً كحدّ
-        // أدنى مضمون على كل الأجهزة بلا أي تكلفة.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .height(1.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            Color.Transparent,
-                            Color.White.copy(alpha = if (darkTheme) 0.55f else 0.85f),
-                            Color.Transparent
-                        )
-                    )
-                )
         )
 
         content()
