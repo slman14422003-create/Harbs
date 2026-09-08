@@ -101,18 +101,37 @@ fun rememberPressScale(
  * كل الشاشات فعلاً (`items(list, key = { it.id })`)، فتبقى حالة "ظهر
  * سابقاً" محفوظة لكل عنصر باسمه الحقيقي حتى لو تغيّر index لاحقاً (بعد
  * فرز/تصفية)، وتُشغَّل الحركة مرة واحدة فعلية فقط.
+ *
+ * قبل هذا التعديل كانت هذه الحركة تعمل بنفس التفصيل (تأخير متدرّج + تلاشي
+ * + انزلاق) بغضّ النظر عن وضع الأداء المختار — أي أن الأجهزة الضعيفة في
+ * الوضع الاقتصادي كانت تدفع نفس تكلفة animateFloatAsState المزدوجة (قيمتان
+ * متحركتان لكل عنصر) ونفس سلسلة التأخيرات التراكمية عند التمرير السريع،
+ * رغم أن هذا الوضع مخصّص أصلاً لتقليل عبء المعالج للحد الأقصى. الآن:
+ *
+ * - في [PerformanceMode.ECO]: العنصر يظهر فوراً بلا تأخير ولا حركتين
+ *   متحركتين منفصلتين — تكلفة شبه معدومة، وهذا بالضبط ما يحتاجه جهاز ضعيف
+ *   عند التمرير السريع بقائمة طويلة.
+ * - في [PerformanceMode.HIGH_QUALITY]: تُضاف حركة تكبير خفيفة (scale) فوق
+ *   التلاشي والانزلاق الأصليين، فيبدو الظهور أكثر "حيوية" على الأجهزة
+ *   القوية القادرة على تحمّل حركة إضافية بلا أي تقطيع.
  */
 fun Modifier.staggeredEntrance(
     index: Int,
     stepMillis: Long = 45L,
     maxDelayMillis: Long = 360L
 ): Modifier = composed {
+    val highQuality = LocalPerformanceMode.current.isHighQuality
     var visible by rememberSaveable(index) { mutableStateOf(false) }
-    LaunchedEffect(index) {
+    LaunchedEffect(index, highQuality) {
         if (!visible) {
-            delay(minOf(index * stepMillis, maxDelayMillis))
+            if (highQuality) delay(minOf(index * stepMillis, maxDelayMillis))
             visible = true
         }
+    }
+    if (!highQuality) {
+        // بلا أي AnimationSpec متحرك: قيمة ثابتة فوراً، فلا يوجد إطار رسم
+        // إضافي واحد يُعاد رسمه بسبب هذا المعدّل على الإطلاق.
+        return@composed this.graphicsLayer { alpha = if (visible) 1f else 0f }
     }
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
@@ -123,6 +142,47 @@ fun Modifier.staggeredEntrance(
         targetValue = if (visible) 0f else 22f,
         animationSpec = AppMotion.smooth<Float>(AppMotion.Standard),
         label = "entranceSlide"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0.94f,
+        animationSpec = AppMotion.smooth<Float>(AppMotion.Slow),
+        label = "entranceScale"
+    )
+    this.graphicsLayer {
+        this.alpha = alpha
+        translationY = slide.dp.toPx()
+        scaleX = scale
+        scaleY = scale
+    }
+}
+
+/**
+ * حركة ظهور بسيطة (تلاشي + انزلاق خفيف من الأسفل) لعنصر واحد بارز بالشاشة
+ * (بطاقة تسجيل الدخول، رأس شاشة...) بدل قائمة متكرّرة — نفس مبدأ الحساسية
+ * لوضع الأداء أعلاه: تظهر فوراً بلا حركة في الوضع الاقتصادي.
+ */
+fun Modifier.entranceFade(
+    delayMillis: Long = 0L,
+    slideFrom: androidx.compose.ui.unit.Dp = 18.dp
+): Modifier = composed {
+    val highQuality = LocalPerformanceMode.current.isHighQuality
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (highQuality && delayMillis > 0) delay(delayMillis)
+        visible = true
+    }
+    if (!highQuality) {
+        return@composed this.graphicsLayer { alpha = 1f }
+    }
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = AppMotion.smooth<Float>(AppMotion.Slow),
+        label = "fadeAlpha"
+    )
+    val slide by animateFloatAsState(
+        targetValue = if (visible) 0f else slideFrom.value,
+        animationSpec = AppMotion.smooth<Float>(AppMotion.Slow),
+        label = "fadeSlide"
     )
     this.graphicsLayer {
         this.alpha = alpha

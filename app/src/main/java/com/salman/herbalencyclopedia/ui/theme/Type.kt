@@ -47,8 +47,16 @@ val HerbalTypography = Typography(
 )
 
 
+/**
+ * قبل هذا التعديل كان حجم النص يقدّم 3 مراحل فقط (عادي/كبير/أكبر) بحد
+ * أقصى 1.30x — غير كافٍ لمن يحتاج تكبيراً أوضح لصعوبة في الرؤية. الآن 5
+ * مراحل تدريجية تصل حتى 1.55x، بخطوات أصغر بين المراحل الأولى (لتغيير
+ * لطيف قابل للملاحظة) وخطوات أوسع قرب النهاية (لمن يحتاج تكبيراً حقيقياً).
+ */
+val FontScaleFactors = listOf(1f, 1.12f, 1.24f, 1.38f, 1.55f)
+
 fun Typography.scaled(level: Int): Typography {
-    val factor = when (level.coerceIn(0,2)) { 1 -> 1.15f; 2 -> 1.30f; else -> 1f }
+    val factor = FontScaleFactors[level.coerceIn(0, FontScaleFactors.lastIndex)]
     fun TextStyle.s() = copy(fontSize = fontSize * factor, lineHeight = lineHeight * factor)
     return copy(headlineLarge=headlineLarge.s(), headlineMedium=headlineMedium.s(), titleLarge=titleLarge.s(), titleMedium=titleMedium.s(), bodyLarge=bodyLarge.s(), bodyMedium=bodyMedium.s(), labelLarge=labelLarge.s())
 }
