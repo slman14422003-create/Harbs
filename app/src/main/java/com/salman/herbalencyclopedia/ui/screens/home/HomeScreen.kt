@@ -178,7 +178,10 @@ fun HomeScreen(
                     // مثل باقي قوائم التطبيق (الأعشاب/المفضلة/الخلطات).
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp, end = 16.dp,
+                            bottom = 20.dp + LocalBottomBarInset.current
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         itemsIndexed(categories, key = { _, category -> category.id }) { index, category ->
