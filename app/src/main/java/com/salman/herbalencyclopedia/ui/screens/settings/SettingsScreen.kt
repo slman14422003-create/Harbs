@@ -42,6 +42,7 @@ import com.salman.herbalencyclopedia.ui.UpdateCheckState
 import com.salman.herbalencyclopedia.ui.UpdateDownloadState
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
@@ -158,7 +159,10 @@ fun SettingsScreen(
         ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp, top = 16.dp, end = 16.dp,
+                bottom = 16.dp + LocalBottomBarInset.current
+            ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
