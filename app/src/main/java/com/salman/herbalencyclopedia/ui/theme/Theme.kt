@@ -78,8 +78,14 @@ private fun lightSchemeFor(palette: ThemePalette): androidx.compose.material3.Co
         surfaceContainerLowest = t(hue, 0.05f, 0.995f),
         surfaceContainerLow = t(hue, 0.09f, 0.95f),
         surfaceContainer = t(hue, 0.12f, 0.92f),
-        surfaceContainerHigh = t(hue, 0.15f, 0.88f),
-        surfaceContainerHighest = t(hue, 0.18f, 0.84f),
+        // تشبّع أعلى قليلاً هنا تحديداً (0.15→0.24 / 0.18→0.28) بدل بقية
+        // الأسطح: هذان أكثر سطحين "بارزين" استخداماً (بطاقات مرتفعة،
+        // الشريط العلوي/السفلي الزجاجي...)، فحصّتهما من هوية اللوحة اللونية
+        // كانت الأخفّ من كل الأسطح رغم كونها الأكثر ظهوراً — وهذا تحديداً
+        // ما يجعل عناصر الزجاج تبدو رمادية عامة بدل متجانسة مع لون الثيم.
+        // القيمة V لم تتغيّر (لا أثر على تباين النص فوقها).
+        surfaceContainerHigh = t(hue, 0.24f, 0.88f),
+        surfaceContainerHighest = t(hue, 0.28f, 0.84f),
         outline = t(hue, 0.12f, 0.50f),
         outlineVariant = t(hue, 0.12f, 0.78f),
         inverseSurface = t(hue, 0.15f, 0.20f),
@@ -122,8 +128,11 @@ private fun darkSchemeFor(palette: ThemePalette): androidx.compose.material3.Col
         surfaceContainerLowest = t(hue, 0.18f, 0.10f),
         surfaceContainerLow = t(hue, 0.17f, 0.18f),
         surfaceContainer = t(hue, 0.18f, 0.21f),
-        surfaceContainerHigh = t(hue, 0.19f, 0.25f),
-        surfaceContainerHighest = t(hue, 0.20f, 0.30f),
+        // نفس ملاحظة النسخة الفاتحة أعلاه: تشبّع أعلى لهذين السطحين
+        // تحديداً فقط (البطاقات المرتفعة والأشرطة الزجاجية)، بلا أي تغيير
+        // على V فلا يتأثر تباين النص فوقهما.
+        surfaceContainerHigh = t(hue, 0.28f, 0.25f),
+        surfaceContainerHighest = t(hue, 0.30f, 0.30f),
         outline = t(hue, 0.12f, 0.60f),
         outlineVariant = t(hue, 0.16f, 0.32f),
         inverseSurface = t(hue, 0.08f, 0.94f),
