@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
 import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -91,7 +92,10 @@ fun AllHerbsScreen(
                     EmptyView(message = tr("لا توجد نتائج لـ \"$query\""), modifier = Modifier.fillMaxSize())
                 } else {
                     LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp, top = 16.dp, end = 16.dp,
+                            bottom = 16.dp + LocalBottomBarInset.current
+                        ),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(filtered, key = { it.id }) { herb -> HerbCard(herb, herb.id in favoriteIds, { onHerbClick(herb) }, { onToggleFavorite(herb.id) }) }
