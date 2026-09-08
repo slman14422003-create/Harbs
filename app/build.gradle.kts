@@ -3,7 +3,9 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // "org.jetbrains.kotlin.android" أُزيل: AGP 9+ يوفّر دعم Kotlin مدمجاً
+    // (built-in Kotlin) في محرّك البناء نفسه، وتطبيق الإضافة القديمة معه
+    // يمنع البناء بدل تخصيصه. مترجم Compose يبقى إضافة منفصلة كالمعتاد.
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -29,12 +31,12 @@ val hasLocalSigning = keystorePropertiesFile.exists()
 
 android {
     namespace = "com.salman.herbalencyclopedia"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.salman.herbalencyclopedia"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("APP_VERSION_NAME") ?: "1.0"
 
@@ -105,7 +107,7 @@ android {
 
 dependencies {
     // --- Compose ---
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -120,31 +122,31 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.navigation:navigation-compose:2.8.5")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-splashscreen:1.2.0")
 
     // --- Storage / images / EXIF ---
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // --- Firebase (project configured manually in HerbalApp.kt, no google-services.json) ---
-    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     debugImplementation("com.google.firebase:firebase-appcheck-debug")
     releaseImplementation("com.google.firebase:firebase-appcheck-playintegrity")
 
     // --- Coroutines (Task.await() used with Firebase calls) ---
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     // --- Testing ---
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
