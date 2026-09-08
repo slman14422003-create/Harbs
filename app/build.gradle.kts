@@ -135,9 +135,13 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // --- Firebase (project configured manually in HerbalApp.kt, no google-services.json) ---
+    // ملاحظة: وحدات KTX (مثل firebase-firestore-ktx) أُزيلت من BoM إصدار 34+
+    // (توقفت Google عن إصدارها منذ يوليو 2025)، ودُمجت واجهات KTX داخل
+    // الوحدات الرئيسية نفسها. لذلك نعتمد الآن على firebase-firestore و
+    // firebase-auth مباشرة بدل الإصدارات المنتهية.
     implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
-    implementation("com.google.firebase:firebase-firestore-ktx")
-    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth")
     debugImplementation("com.google.firebase:firebase-appcheck-debug")
     releaseImplementation("com.google.firebase:firebase-appcheck-playintegrity")
 
