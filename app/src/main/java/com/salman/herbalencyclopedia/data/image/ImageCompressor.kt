@@ -48,6 +48,11 @@ object ImageCompressor {
     private const val INITIAL_QUALITY = 92
     private const val MIN_QUALITY = 50
 
+    // سقف الرفع كملف حقيقي (راجع [compressToWebpBytes] و[GithubImageUploader]):
+    // لا علاقة له بحد مستند Firestore (١ ميجابايت) لأن الصورة هنا لا تُخزَّن
+    // داخل أي مستند إطلاقاً، فيُسمح بجودة أعلى (١.٥ ميجابايت خام) قبل بدء تقليصها.
+    private const val MAX_UPLOAD_BYTES = 1_500_000
+
     suspend fun compressToDataUrl(context: Context, uri: Uri): String? = withContext(Dispatchers.Default) {
         runCatching {
             val bounds = decodeBounds(context, uri) ?: return@runCatching null
@@ -89,6 +94,56 @@ object ImageCompressor {
             // إذا ظلت الصورة أكبر من الحد المسموح حتى بعد أقصى ضغط ممكن، لا
             // نرجع نصاً سيفشل حفظه لاحقاً بصمت - نرجع null ليظهر خطأ واضح.
             if (dataUrl.length > MAX_DATA_URL_BYTES) null else dataUrl
+        }.getOrNull()
+    }
+
+    /**
+     * نفس منطق ضغط [compressToDataUrl] تماماً (نفس القراءة الآمنة للذاكرة عبر
+     * inSampleSize، تصحيح دوران EXIF، ومخرج WebP)، لكن يُرجع البايتات الخام
+     * المضغوطة مباشرة بدل تغليفها Base64/data URL - هذا المسار مخصَّص للرفع
+     * كملف حقيقي إلى مستودع خارجي (راجع [GithubImageUploader]) لا للتضمين
+     * داخل مستند Firestore، فلا ينطبق هامش الـ ٧٥٠ كيلوبايت المشدَّد هنا
+     * (حد مستند Firestore غير ذي صلة بهذا المسار إطلاقاً)، ويُستخدم بدلاً
+     * منه سقف أعلى وأريح ([MAX_UPLOAD_BYTES]) يحافظ على جودة أفضل للصورة
+     * المخزَّنة فعلياً على GitHub.
+     */
+    suspend fun compressToWebpBytes(context: Context, uri: Uri): ByteArray? = withContext(Dispatchers.Default) {
+        runCatching {
+            val bounds = decodeBounds(context, uri) ?: return@runCatching null
+            val sampleSize = calculateInSampleSize(bounds.first, bounds.second, INITIAL_MAX_DIMENSION)
+            val sampled = decodeSampledBitmap(context, uri, sampleSize) ?: return@runCatching null
+            val bitmap = correctOrientation(context, uri, sampled)
+
+            var maxDimension = INITIAL_MAX_DIMENSION
+            var quality = INITIAL_QUALITY
+            var bytes: ByteArray
+
+            while (true) {
+                val scale = minOf(1f, maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height))
+                val scaled = if (scale < 1f) {
+                    Bitmap.createScaledBitmap(
+                        bitmap,
+                        (bitmap.width * scale).toInt().coerceAtLeast(1),
+                        (bitmap.height * scale).toInt().coerceAtLeast(1),
+                        true
+                    )
+                } else bitmap
+
+                val out = ByteArrayOutputStream()
+                scaled.compress(webpFormat(), quality, out)
+                if (scaled !== bitmap) scaled.recycle()
+                bytes = out.toByteArray()
+
+                if (bytes.size <= MAX_UPLOAD_BYTES || (quality <= MIN_QUALITY && maxDimension <= MIN_MAX_DIMENSION)) break
+
+                quality = if (quality > MIN_QUALITY) quality - 10 else quality
+                if (quality <= MIN_QUALITY) {
+                    maxDimension = (maxDimension * 0.75f).toInt().coerceAtLeast(MIN_MAX_DIMENSION)
+                }
+            }
+
+            bitmap.recycle()
+            if (bytes.size > MAX_UPLOAD_BYTES) null else bytes
         }.getOrNull()
     }
 
