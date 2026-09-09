@@ -25,10 +25,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
+import com.salman.herbalencyclopedia.data.image.GithubImageUploader
 import com.salman.herbalencyclopedia.data.image.ImageCompressor
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,13 +68,31 @@ fun AdminEditHerbScreen(
             isCompressingImage = true
             // الضغط ينفَّذ الآن على خيط خلفي (راجع ImageCompressor) بدل تجميد
             // الواجهة أثناء معالجة الصور الكبيرة.
+            //
+            // نحاول أولاً الرفع الخارجي (GitHub عبر Cloudflare Worker، راجع
+            // GithubImageUploader) لتفريغ مساحة Firestore المجانية من الصور
+            // كلياً؛ أي فشل هنا (بلا إنترنت، الـ Worker متوقف أو غير مُعدّ
+            // بعد، فشل التحقق من الهوية) يرجع null بهدوء، فنعود للتضمين
+            // المحلي القديم (data URL داخل المستند نفسه) بدل تعطيل حفظ
+            // العشبة بالكامل بسبب مشكلة بخدمة رفع خارجية.
             coroutineScope.launch {
-                val compressed = ImageCompressor.compressToDataUrl(context, it)
-                isCompressingImage = false
-                if (compressed != null) {
-                    imageUrl = compressed
+                val idToken = runCatching {
+                    FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token
+                }.getOrNull()
+
+                val uploadedUrl = idToken?.let { token ->
+                    ImageCompressor.compressToWebpBytes(context, it)?.let { bytes ->
+                        GithubImageUploader.upload(bytes, token)
+                    }
+                }
+
+                if (uploadedUrl != null) {
+                    imageUrl = uploadedUrl
+                    isCompressingImage = false
                 } else {
-                    errorMessage = imageCompressionErrorMessage
+                    val fallback = ImageCompressor.compressToDataUrl(context, it)
+                    isCompressingImage = false
+                    if (fallback != null) imageUrl = fallback else errorMessage = imageCompressionErrorMessage
                 }
             }
         }
