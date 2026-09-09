@@ -11,6 +11,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -22,7 +25,11 @@ import com.salman.herbalencyclopedia.ui.AppViewModelFactory
 import com.salman.herbalencyclopedia.ui.navigation.HerbalNavGraph
 import com.salman.herbalencyclopedia.ui.theme.HerbalEncyclopediaTheme
 import com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode
+import com.salman.herbalencyclopedia.ui.theme.LocalRefreshRateTier
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
+import com.salman.herbalencyclopedia.ui.theme.applyPreferredRefreshRate
+import com.salman.herbalencyclopedia.ui.theme.currentRefreshRateHz
+import com.salman.herbalencyclopedia.ui.theme.nearestRefreshRateTier
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import com.salman.herbalencyclopedia.ui.util.LocalAppLanguage
 import com.salman.herbalencyclopedia.ui.util.LocaleManager
@@ -64,6 +71,17 @@ class MainActivity : ComponentActivity() {
             )
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
+            // معدل تحديث الشاشة الفعلي الحالي (مُقرَّب لأقرب طبقة من
+            // 20/40/60/90/120 — راجع RefreshRate.kt)، يُعاد حسابه في كل
+            // مرة يتغيّر فيها وضع الأداء المختار (تبديله من الإعدادات
+            // يُعيد تشغيل SideEffect التالي، الذي يطلب من النظام وضع عرض
+            // جديد أولاً ثم يقرأ المعدل الفعلي الناتج).
+            var refreshRateTier by remember { mutableIntStateOf(60) }
+            SideEffect {
+                applyPreferredRefreshRate(this@MainActivity, performanceMode)
+                refreshRateTier = nearestRefreshRateTier(currentRefreshRateHz())
+            }
+
             SideEffect {
                 window.statusBarColor = android.graphics.Color.TRANSPARENT
                 window.navigationBarColor = android.graphics.Color.TRANSPARENT
@@ -94,7 +112,10 @@ class MainActivity : ComponentActivity() {
                     // فكانت كل مكوّنات الزجاج السائل (LiquidGlassSurface وغيرها)
                     // تقرأ دائماً القيمة الافتراضية HIGH_QUALITY بغض النظر عن
                     // اختيار المستخدم — هذا هو إصلاح "الزر الاقتصادي".
-                    CompositionLocalProvider(LocalPerformanceMode provides performanceMode) {
+                    CompositionLocalProvider(
+                        LocalPerformanceMode provides performanceMode,
+                        LocalRefreshRateTier provides refreshRateTier
+                    ) {
                         HerbalNavGraph(
                             appViewModel = appViewModel,
                             preferencesRepository = container.preferencesRepository
