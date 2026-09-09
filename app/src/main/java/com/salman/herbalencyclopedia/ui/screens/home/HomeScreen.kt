@@ -74,6 +74,7 @@ fun HomeScreen(
     onBlendsClick: () -> Unit,
     onSupportClick: () -> Unit = {}
 ) {
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         // هذه الشاشة تظهر دائماً فوق OneUiFloatingNavBar (شاشة جذر ضمن
@@ -151,19 +152,6 @@ fun HomeScreen(
                 .padding(padding)
                 .fillMaxSize()
         ) {
-            // شارة الشعار الوطني — تظهر بالنصف العلوي من الشاشة أعلى أزرار
-            // الإجراءات السريعة مباشرة، مع لمعة (glint) دورية كل ٥ ثوانٍ
-            // تعطيها إحساساً حيّاً بدل شارة ثابتة جامدة.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 10.dp)
-                    .entranceFade(),
-                contentAlignment = Alignment.Center
-            ) {
-                ShimmeringEmblem()
-            }
-
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -260,6 +248,17 @@ fun HomeScreen(
             }
         }
     }
+
+    // شعار صغير مثبّت أعلى منتصف الشاشة تماماً (تحت شريط الحالة مباشرة)،
+    // بدل شارة كبيرة بمنتصف المحتوى — مجرد رمز صغير ثابت بأعلى الشاشة مع
+    // نفس لمعة الـ٥ ثوانٍ.
+    ShimmeringEmblem(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .statusBarsPadding()
+            .padding(top = 4.dp)
+    )
+    }
 }
 
 @Composable
@@ -281,8 +280,8 @@ private fun ShimmeringEmblem(modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .size(84.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .size(28.dp)
+            .clip(RoundedCornerShape(8.dp))
     ) {
         Image(
             painter = painterResource(id = R.drawable.ic_syria_emblem),
