@@ -114,21 +114,27 @@ fun rememberPressScale(
  * - في [PerformanceMode.HIGH_QUALITY]: تُضاف حركة تكبير خفيفة (scale) فوق
  *   التلاشي والانزلاق الأصليين، فيبدو الظهور أكثر "حيوية" على الأجهزة
  *   القوية القادرة على تحمّل حركة إضافية بلا أي تقطيع.
+ *
+ * إضافة أخيرة: الشرط لم يعد يعتمد فقط على اختيار المستخدم لوضع الأداء —
+ * راجع [rememberSmoothMotionAllowed] في RefreshRate.kt: حتى لو اختار
+ * "أداء عالٍ"، لو كانت الشاشة تعمل حالياً بمعدل تحديث منخفض فعلياً (أقل
+ * من 60Hz)، تُعامَل كوضع اقتصادي هنا تحديداً، لأن حركة متصلة على شاشة
+ * 20/40Hz تظهر متقطّعة بلا أي فائدة بصرية تُذكر.
  */
 fun Modifier.staggeredEntrance(
     index: Int,
     stepMillis: Long = 45L,
     maxDelayMillis: Long = 360L
 ): Modifier = composed {
-    val highQuality = LocalPerformanceMode.current.isHighQuality
+    val smoothAllowed = rememberSmoothMotionAllowed()
     var visible by rememberSaveable(index) { mutableStateOf(false) }
-    LaunchedEffect(index, highQuality) {
+    LaunchedEffect(index, smoothAllowed) {
         if (!visible) {
-            if (highQuality) delay(minOf(index * stepMillis, maxDelayMillis))
+            if (smoothAllowed) delay(minOf(index * stepMillis, maxDelayMillis))
             visible = true
         }
     }
-    if (!highQuality) {
+    if (!smoothAllowed) {
         // بلا أي AnimationSpec متحرك: قيمة ثابتة فوراً، فلا يوجد إطار رسم
         // إضافي واحد يُعاد رسمه بسبب هذا المعدّل على الإطلاق.
         return@composed this.graphicsLayer { alpha = if (visible) 1f else 0f }
@@ -159,19 +165,21 @@ fun Modifier.staggeredEntrance(
 /**
  * حركة ظهور بسيطة (تلاشي + انزلاق خفيف من الأسفل) لعنصر واحد بارز بالشاشة
  * (بطاقة تسجيل الدخول، رأس شاشة...) بدل قائمة متكرّرة — نفس مبدأ الحساسية
- * لوضع الأداء أعلاه: تظهر فوراً بلا حركة في الوضع الاقتصادي.
+ * لوضع الأداء *ومعدل التحديث الفعلي* معاً (راجع [rememberSmoothMotionAllowed]):
+ * تظهر فوراً بلا حركة في الوضع الاقتصادي، أو لو كانت الشاشة تعمل حالياً
+ * بمعدل تحديث أقل من 60Hz حتى في وضع الأداء العالي.
  */
 fun Modifier.entranceFade(
     delayMillis: Long = 0L,
     slideFrom: androidx.compose.ui.unit.Dp = 18.dp
 ): Modifier = composed {
-    val highQuality = LocalPerformanceMode.current.isHighQuality
+    val smoothAllowed = rememberSmoothMotionAllowed()
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (highQuality && delayMillis > 0) delay(delayMillis)
+        if (smoothAllowed && delayMillis > 0) delay(delayMillis)
         visible = true
     }
-    if (!highQuality) {
+    if (!smoothAllowed) {
         return@composed this.graphicsLayer { alpha = 1f }
     }
     val alpha by animateFloatAsState(
