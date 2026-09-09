@@ -1,9 +1,5 @@
 package com.salman.herbalencyclopedia.ui.screens.home
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,30 +16,21 @@ import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.salman.herbalencyclopedia.ui.util.tr
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.salman.herbalencyclopedia.R
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.*
 import com.salman.herbalencyclopedia.ui.theme.entranceFade
 import com.salman.herbalencyclopedia.ui.theme.staggeredEntrance
 import java.util.Calendar
-import kotlinx.coroutines.delay
 
 /**
  * قبل هذا التعديل كان الشريط العلوي يعرض جملة تعريفية ثابتة لا تتغيّر أبداً
@@ -74,7 +61,6 @@ fun HomeScreen(
     onBlendsClick: () -> Unit,
     onSupportClick: () -> Unit = {}
 ) {
-    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         // هذه الشاشة تظهر دائماً فوق OneUiFloatingNavBar (شاشة جذر ضمن
@@ -247,68 +233,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    // شعار صغير مثبّت أعلى منتصف الشاشة تماماً (تحت شريط الحالة مباشرة)،
-    // بدل شارة كبيرة بمنتصف المحتوى — مجرد رمز صغير ثابت بأعلى الشاشة مع
-    // نفس لمعة الـ٥ ثوانٍ.
-    ShimmeringEmblem(
-        modifier = Modifier
-            .align(Alignment.TopCenter)
-            .statusBarsPadding()
-            .padding(top = 4.dp)
-    )
-    }
-}
-
-@Composable
-private fun ShimmeringEmblem(modifier: Modifier = Modifier) {
-    // تتحرك من 0 إلى 1 خلال أقل من ثانية، ثم تنتظر حتى تكتمل ٥ ثوانٍ من بداية
-    // الدورة السابقة، وتُعيد الكرّة — أي "لمعة" واحدة كل ٥ ثوانٍ بالضبط، لا
-    // حركة متكررة بلا توقف.
-    val shineProgress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            shineProgress.snapTo(0f)
-            shineProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
-            )
-            delay(4100) // 900ms حركة + 4100ms انتظار = ٥ ثوانٍ لكل دورة كاملة
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .size(28.dp)
-            .clip(RoundedCornerShape(8.dp))
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.ic_syria_emblem),
-            contentDescription = tr("الشعار الوطني السوري"),
-            modifier = Modifier.matchParentSize()
-        )
-        // شريط لمعان قطري شفاف يمر فوق الشعار بحركة إضافية (Additive) تُبرز
-        // الألوان الذهبية دون تغيير الشعار نفسه أو تغطيته بالكامل.
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .drawBehind {
-                    val bandWidth = size.width * 0.6f
-                    val travel = size.width + bandWidth * 2f
-                    val startX = -bandWidth + travel * shineProgress.value
-                    val brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.White.copy(alpha = 0.65f),
-                            Color.Transparent
-                        ),
-                        start = Offset(startX, 0f),
-                        end = Offset(startX + bandWidth, size.height)
-                    )
-                    drawRect(brush = brush, blendMode = BlendMode.Plus)
-                }
-        )
     }
 }
 
