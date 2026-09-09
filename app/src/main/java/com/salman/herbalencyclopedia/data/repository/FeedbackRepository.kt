@@ -5,8 +5,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.salman.herbalencyclopedia.data.model.Feedback
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -37,7 +39,13 @@ class FeedbackRepository(
         db.collection("feedback").add(data).await()
     }
 
-    /** Live listener, admin-only per firestore.rules — newest feedback first. */
+    /**
+     * Live listener, admin-only per firestore.rules — newest feedback first.
+     * كانت أي انقطاعة لحظية أو انتهاء صلاحية توكن يُنهي صندوق الوارد هذا
+     * نهائياً بلا أي مؤشر للأدمن سوى شاشة فارغة، إلى أن يُعاد فتح الشاشة
+     * يدوياً. نفس منطق إعادة المحاولة بتأخير تصاعدي المستخدم في
+     * [HerbRepository.observeCollection] (1s ثم 2s ثم 4s... سقف 30s).
+     */
     fun observeFeedback(): Flow<List<Feedback>> = callbackFlow {
         val registration = db.collection("feedback")
             .orderBy("created_at", Query.Direction.DESCENDING)
@@ -51,6 +59,10 @@ class FeedbackRepository(
                 }
             }
         awaitClose { registration.remove() }
+    }.retryWhen { _, attempt ->
+        val delayMs = (1000L shl attempt.toInt().coerceAtMost(5)).coerceAtMost(30_000L)
+        delay(delayMs)
+        true
     }
 
     suspend fun deleteFeedback(id: String) {
