@@ -30,7 +30,18 @@ data class AppUpdateConfig(
      * tried before the built-in public mirrors. Expected to work as a prefix:
      * "<base><original GitHub URL>", e.g. "https://my-proxy.example.com/".
      */
-    val customProxyBaseUrl: String? = null
+    val customProxyBaseUrl: String? = null,
+    /**
+     * Optional: base URL of a self-hosted "app-download-proxy" Cloudflare
+     * Worker (the same worker used for the public download page). When set,
+     * this becomes the ONLY source used for update checks — GitHub is not
+     * contacted at all. The app calls "<url>/api/latest" for version info
+     * and points the download at "<url>/download", so the check always goes
+     * through the worker's own cache instead of hitting api.github.com
+     * directly. Expected format: "https://my-worker.example.workers.dev"
+     * (a trailing slash is stripped automatically).
+     */
+    val updateSourceUrl: String? = null
 )
 
 /** Result of a successful update check: there IS a newer version available. */
