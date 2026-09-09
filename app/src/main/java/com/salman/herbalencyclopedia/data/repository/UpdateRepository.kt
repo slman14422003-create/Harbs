@@ -67,6 +67,7 @@ class UpdateRepository(
                     minVersionCode = (doc.getLong("min_version_code") ?: 0L).toInt(),
                     useProxyFallback = doc.getBoolean("use_proxy_fallback") ?: true,
                     customProxyBaseUrl = doc.getString("custom_proxy_base_url")?.trim()?.takeIf { it.isNotBlank() },
+                    updateSourceUrl = doc.getString("update_source_url")?.trim()?.takeIf { it.isNotBlank() },
                 )
             } else {
                 AppUpdateConfig(githubRepo = DEFAULT_REPO)
@@ -87,6 +88,7 @@ class UpdateRepository(
                 "min_version_code" to config.minVersionCode,
                 "use_proxy_fallback" to config.useProxyFallback,
                 "custom_proxy_base_url" to (config.customProxyBaseUrl?.trim() ?: ""),
+                "update_source_url" to (config.updateSourceUrl?.trim() ?: ""),
                 "updated_at" to FieldValue.serverTimestamp()
             )
         ).await()
@@ -112,6 +114,16 @@ class UpdateRepository(
         currentVersionName: String
     ): AppUpdateInfo? = withContext(Dispatchers.IO) {
             if (!config.enabled) return@withContext null
+
+            // إن كان هناك رابط Worker مخصّص، هو المصدر الوحيد للتحقق من
+            // التحديث — لا يُتصل بـ GitHub إطلاقاً في هذه الحالة، لأن
+            // الـ Worker نفسه هو من يقرأ من GitHub ويخزّن النتيجة مؤقتاً
+            // (Cache)، فالاتصال به مباشرة أسرع وأكثر ثباتاً من تكرار نفس
+            // المنطق على الجهاز.
+            if (!config.updateSourceUrl.isNullOrBlank()) {
+                return@withContext checkCustomSourceUpdate(config, currentVersionCode, currentVersionName)
+            }
+
             val repo = config.githubRepo.trim().trim('/')
             if (repo.isBlank()) return@withContext null
 
@@ -379,6 +391,71 @@ class UpdateRepository(
             // apkUrl/htmlUrl are left as plain github.com URLs here regardless of
             // [proxyBase] — see the ReleaseData/downloadCandidates doc comments.
             if (tag.isBlank()) null else ReleaseData(tag, body, htmlUrl, apkUrl)
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    // ------------------------------------------------------------------
+    // Custom update source (self-hosted "app-download-proxy" Worker)
+    // ------------------------------------------------------------------
+
+    /**
+     * Checks for an update using [AppUpdateConfig.updateSourceUrl] instead of
+     * GitHub. Calls "<url>/api/latest" for `{ version, size, published_at }`
+     * (the same JSON shape the worker's download page itself consumes) and
+     * points the resulting download link at "<url>/download".
+     */
+    private fun checkCustomSourceUpdate(
+        config: AppUpdateConfig,
+        currentVersionCode: Int,
+        currentVersionName: String
+    ): AppUpdateInfo? {
+        val data = fetchCustomSourceRelease(config.updateSourceUrl!!) ?: return null
+
+        val remoteVersionName = config.overrideVersionName ?: data.version
+        if (remoteVersionName.isBlank()) return null
+
+        val mandatory = config.minVersionCode > 0 && currentVersionCode < config.minVersionCode
+        val newer = isVersionNewer(remoteVersionName, currentVersionName)
+        if (!newer && !mandatory) return null
+
+        return AppUpdateInfo(
+            versionName = remoteVersionName,
+            releaseNotes = config.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
+            releasePageUrl = data.apkUrl,
+            apkUrl = data.apkUrl,
+            mandatory = mandatory,
+            // لا داعي لسلسلة البروكسي هنا: الرابط أصلاً يشير إلى الـ Worker
+            // الخاص بالمستخدم، وهو نفسه المسؤول عن أي وصول بديل لـ GitHub.
+            useProxyFallback = false,
+            customProxyBaseUrl = null
+        )
+    }
+
+    private data class CustomSourceData(val version: String, val apkUrl: String)
+
+    private fun fetchCustomSourceRelease(baseUrl: String): CustomSourceData? = try {
+        val base = baseUrl.trim().trimEnd('/')
+        val apiUrl = "$base/api/latest"
+        val conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 8000
+            readTimeout = 8000
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
+        }
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            conn.disconnect()
+            null
+        } else {
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+            val json = JSONObject(text)
+            if (json.optBoolean("error", false)) return null
+            val version = json.optString("version").trim()
+            if (version.isBlank()) null else CustomSourceData(version = version, apkUrl = "$base/download")
         }
     } catch (e: Exception) {
         null
