@@ -52,6 +52,7 @@ fun AdminUpdateScreen(
     }
     var useProxyFallback by remember(config) { mutableStateOf(config.useProxyFallback) }
     var customProxyBaseUrl by remember(config) { mutableStateOf(config.customProxyBaseUrl ?: "") }
+    var updateSourceUrl by remember(config) { mutableStateOf(config.updateSourceUrl ?: "") }
     var saving by remember { mutableStateOf(false) }
 
     val msgSaved = tr("تم الحفظ")
@@ -70,7 +71,8 @@ fun AdminUpdateScreen(
         releaseNotesOverride = notes.trim().ifBlank { null },
         minVersionCode = minVersionCode.toIntOrNull() ?: 0,
         useProxyFallback = useProxyFallback,
-        customProxyBaseUrl = customProxyBaseUrl.trim().ifBlank { null }
+        customProxyBaseUrl = customProxyBaseUrl.trim().ifBlank { null },
+        updateSourceUrl = updateSourceUrl.trim().ifBlank { null }
     )
 
     Scaffold(
@@ -124,11 +126,27 @@ fun AdminUpdateScreen(
             }
             item {
                 OutlinedTextField(
+                    value = updateSourceUrl,
+                    onValueChange = { updateSourceUrl = it },
+                    label = { Text(tr("رابط Worker للتحديثات (اختياري)")) },
+                    placeholder = { Text("https://my-worker.example.workers.dev") },
+                    supportingText = {
+                        Text(
+                            tr("إن تُرك فارغاً يتحقق التطبيق من GitHub مباشرة كما في الأسفل. إن مُلئ، يصبح هذا الرابط هو المصدر الوحيد: يقرأ التطبيق /api/latest منه للنسخة، ويحمّل الملف من /download — ولا يتصل بـ GitHub إطلاقاً (نفس رابط صفحة التحميل).")
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            item {
+                OutlinedTextField(
                     value = repo,
                     onValueChange = { repo = it },
                     label = { Text(tr("مستودع GitHub")) },
                     placeholder = { Text("owner/repo") },
-                    supportingText = { Text(tr("يُقرأ منه أحدث Release تلقائياً، مثال: slman14422003-create/Harbs")) },
+                    supportingText = { Text(tr("يُقرأ منه أحدث Release تلقائياً، مثال: slman14422003-create/Harbs — يُتجاهل عند تعبئة رابط الـ Worker أعلاه")) },
+                    enabled = updateSourceUrl.isBlank(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -200,7 +218,7 @@ fun AdminUpdateScreen(
             }
             item {
                 OutlinedButton(
-                    enabled = testState != UpdateCheckState.Checking && repo.isNotBlank(),
+                    enabled = testState != UpdateCheckState.Checking && (repo.isNotBlank() || updateSourceUrl.isNotBlank()),
                     onClick = { onTestNow(context, currentFieldsAsConfig()) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -237,7 +255,7 @@ fun AdminUpdateScreen(
             }
             item {
                 Button(
-                    enabled = !saving && repo.isNotBlank(),
+                    enabled = !saving && (repo.isNotBlank() || updateSourceUrl.isNotBlank()),
                     onClick = {
                         saving = true
                         val newConfig = currentFieldsAsConfig()
