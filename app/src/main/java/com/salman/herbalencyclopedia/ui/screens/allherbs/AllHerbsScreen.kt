@@ -74,7 +74,12 @@ fun AllHerbsScreen(
         }
     ) { padding ->
         PullToRefreshBox(
-            isRefreshing = isRefreshing,
+            // نفس إصلاح HomeScreen: isRefreshing لا يُربَط بـisLoading مباشرة
+            // (وإلا فأي تحديث صامت في الخلفية - كتغيير اللغة أو المزامنة كل
+            // ٢٤ ساعة - يُشعل دائرة السحب-للتحديث فوق شريط البحث دون أي سحب
+            // فعلي من المستخدم) بل فقط عندما توجد بيانات مُحمَّلة أصلاً على
+            // الشاشة، تماماً بنفس منطق HomeScreen.
+            isRefreshing = isRefreshing && herbs.isNotEmpty(),
             onRefresh = onRefresh,
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
