@@ -426,16 +426,23 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 }
                 composable(Screen.AdminFeedback.route) {
                     if (appViewModel.isAdmin) {
-                        LaunchedEffect(Unit) { appViewModel.loadFeedback() }
+                        LaunchedEffect(Unit) {
+                            appViewModel.loadFeedback()
+                            appViewModel.loadBlockedUsers()
+                        }
                         val feedbackList by appViewModel.feedbackList.collectAsState()
                         val feedbackLoading by appViewModel.feedbackLoading.collectAsState()
                         val feedbackError by appViewModel.feedbackError.collectAsState()
+                        val blockedUserIds by appViewModel.blockedUserIds.collectAsState()
                         AdminFeedbackScreen(
                             feedback = feedbackList,
                             isLoading = feedbackLoading,
                             error = feedbackError,
                             onBack = { navController.popBackStack() },
-                            onDelete = { f -> appViewModel.deleteFeedback(f.id) }
+                            onDelete = { f -> appViewModel.deleteFeedback(f.id) },
+                            blockedUserIds = blockedUserIds,
+                            onBlock = { f -> f.senderUid?.let { appViewModel.blockUser(it, f.senderName) } },
+                            onUnblock = { f -> f.senderUid?.let { appViewModel.unblockUser(it) } }
                         )
                     }
                 }
