@@ -1910,4 +1910,183 @@ object HerbAssistant {
         val organizedBlends = organizeBlendHits(blendHits)
 
         // قدرة جديدة — مؤشر ثقة: أقوى نتيجة فعلية (بغضّ النظر عن كونها من
-        // أعشاب أو خلطا
+        // أعشاب أو خلطات) تُقاس مقابل عتبة أعلى بكثير من عتبة القبول الأدنى؛
+        // إن لم تبلغها، تُستخدم صياغة افتتاحية أكثر تحفّظاً في [composeAnswer]
+        // بدل الإيحاء بنفس درجة الثقة لكل نتيجة بغضّ النظر عن قوة تطابقها.
+        val topScore = maxOf(
+            hits.maxOfOrNull { it.score } ?: 0.0,
+            blendHits.maxOfOrNull { it.score } ?: 0.0
+        )
+        val lowConfidence = topScore < AiConfig.searchThreshold * 2.2
+
+        return composeAnswer(organized, organizedBlends, triedHarder, lowConfidence) to true
+    }
+
+    /**
+     * المرحلة ١ — تحليل السؤال: كلمات مفتاحية، مُوسَّعة على ثلاث مراحل
+     * متتالية (كل مرحلة تضيف احتمالات مطابقة أكثر، بلا حذف لما قبلها):
+     * 1) علاقات الموسوعة الضمنية ([CorpusIndex.expand]).
+     * 2) جذور اللغة التقريبية ([ArabicLexicon.expand]) — تُطبَّق *قبل*
+     *    القاموس عمداً (كانت بعده سابقاً): [DictionaryLexicon.synonymsOf]
+     *    يبحث عن الكلمة بصيغتها المُطبَّعة تماماً كمفتاح أساسي في قاعدة
+     *    البيانات، فكلمة سؤال بصيغة مختلفة عن الصيغة المخزَّنة (جمع، لاحقة
+     *    ضمير، أداة تعريف...) كانت تفوّت أي مرادف موجود فعلياً لجذرها لمجرد
+     *    اختلاف الصيغة — لا لعدم وجود المرادف. تجذير الكلمة أولاً ثم البحث
+     *    عن مرادفات كل من الصيغة الأصلية *و* جذرها يرفع فعلياً عدد المرادفات
+     *    التي يستخدمها سيمو من نفس القاموس المرفق دون أي بيانات إضافية.
+     * 3) مرادفات القاموس الخارجي المرفق محلياً ([DictionaryLexicon.expand]
+     *    — Rabih Dictionary + Arabic WordNet، بلا إنترنت ولا تكلفة)، وهذا
+     *    ما يمكّن سيمو من فهم اسم بديل لعشبة أو مرادف عام لكلمة في السؤال
+     *    (مثل "دواء" بدل "علاج") لم تُذكر حرفياً في نص الموسوعة.
+     */
+    private fun analyzeQuestion(question: String, index: CorpusIndex): Set<String> {
+        val base = wordsOf(question)
+        if (base.isEmpty()) return base
+        val expandedByCorpus = index.expand(base)
+        val expandedByStems = ArabicLexicon.expand(expandedByCorpus)
+        val expandedByDictionary = DictionaryLexicon.expand(expandedByStems)
+        return HealthTopicSynonyms.expand(expandedByDictionary)
+    }
+
+    /**
+     * توسيع "خفيف" مماثل لِـ[analyzeQuestion] (تجذير + قاموس المرادفات)
+     * لكن بلا حاجة لفهرس موسوعة ([CorpusIndex]) — يُستخدم لمطابقة نصوص
+     * قصيرة مستقلة عن نصوص عشبة معيّنة (حالات التدريب اليدوي/الذاتي)، حتى
+     * تفهم مطابقة الحالات المدرَّبة صياغات مرادفة لا الصياغة الحرفية فقط
+     * — وهذا هو أثر "تعلّم سيمو من المرادفات" فعلياً على الحالات التي
+     * يحفظها من تقييمات المستخدمين.
+     */
+    private fun richWordsOf(text: String): Set<String> {
+        val base = wordsOf(text)
+        if (base.isEmpty()) return base
+        return HealthTopicSynonyms.expand(DictionaryLexicon.expand(ArabicLexicon.expand(base)))
+    }
+
+    /** المرحلة ٢ — "التفكير بالإجابة": مسح كل نقاط كل حقل، وترجيح كل نقطة حسب مدى صلتها الفعلية بالسؤال. */
+    private fun gatherCandidates(
+        qWords: Set<String>,
+        herbs: List<Herb>,
+        index: CorpusIndex,
+        threshold: Double = AiConfig.searchThreshold
+    ): List<SearchHit> {
+        val hits = mutableListOf<SearchHit>()
+        herbs.forEach { herb ->
+            searchableFields.forEach { (label, getter) ->
+                splitPoints(getter(herb)).forEach { point ->
+                    val sim = matchScore(index, qWords, point)
+                    if (sim > threshold) hits += SearchHit(herb, label, point, sim)
+                }
+            }
+        }
+        return hits
+    }
+
+    /**
+     * المرحلة ٣ — تنسيق الأفكار: تُجمَّع كل النقاط حسب العشبة أولاً، ثم
+     * تُرتَّب *الأعشاب نفسها* تنازلياً حسب أقوى نقطة لديها (لا الاكتفاء
+     * بترتيب النقاط المبعثرة عالمياً كما كان سابقاً)، فتظهر العشبة الأكثر
+     * صلة بالسؤال أولاً دوماً، مع أفضل ٣ نقاط من نصوصها فقط — هذا هو
+     * "التحليل" الفعلي لبيانات الموسوعة بدل عرض أول ٤ نقاط بغضّ النظر عن
+     * مصدرها.
+     */
+    private fun organizeHits(hits: List<SearchHit>): Map<Herb, List<SearchHit>> =
+        hits.groupBy { it.herb }
+            .entries
+            .sortedByDescending { (_, herbHits) -> herbHits.maxOf { it.score } }
+            .take(3)
+            .associate { (herb, herbHits) -> herb to herbHits.sortedByDescending { it.score }.take(3) }
+
+    /**
+     * إصلاح عرض حقيقي أُبلغ عنه: كانت كل نقطة تُعرض بصيغة "[التصنيف] النص"
+     * (تسمية الحقل بين قوسين *قبل* النص). القوسان "[" "]" حرفان "محايدان"
+     * في خوارزمية Bidi (تخضعان لـ"خوارزمية الأقواس المزدوجة" الخاصة بها)،
+     * وعند غياب فرض اتجاه RTL صريح على مستوى التطبيق (انظر الإصلاح في
+     * MainActivity) كانا يُعاد ترتيبهما بصرياً في نهاية السطر بدل بدايته —
+     * تحديداً المشكلة الظاهرة في الصورة المُبلَّغ عنها (تسمية الحقل تظهر بعد
+     * النص لا قبله). الصيغة الجديدة "التصنيف: النص" (نقطتان بدل قوسين) هي
+     * الأسلوب العربي القياسي في عرض تسمية حقل، ولا تخضع لخوارزمية الأقواس
+     * المزدوجة، فتبقى ثابتة الترتيب حتى في أسوأ ظروف Bidi — طبقة حماية
+     * إضافية فوق إصلاح الاتجاه نفسه لا بديلاً عنه.
+     */
+    private fun formatPoint(field: String, text: String): String = "$field: $text"
+
+    /**
+     * المرحلة ٤ — تجميع النتيجة النهائية وإرسالها كرد واحد مقروء. تُعرض
+     * نتائج الأعشاب أولاً ثم الخلطات (إن وُجدت) في قسم منفصل بعلامة مميّزة
+     * (🧪) حتى يُدرك المستخدم أن الرد قد يخلط بين نوعين مختلفين من عناصر
+     * الموسوعة. [triedHarder] = هل احتاج سيمو لمحاولة ثانية/ثالثة أوسع
+     * (انظر [buildGeneralSearchAnswer]) قبل الوصول لهذه النتائج؟ إن كان
+     * كذلك، تُستخدم صياغة افتتاحية مختلفة تعكس أن البحث لم يكن مباشراً.
+     */
+    private fun composeAnswer(
+        organized: Map<Herb, List<SearchHit>>,
+        organizedBlends: Map<Blend, List<BlendHit>> = emptyMap(),
+        triedHarder: Boolean = false,
+        lowConfidence: Boolean = false
+    ): String = buildString {
+        when {
+            triedHarder && lowConfidence ->
+                append("بحثت في كل زوايا الموسوعة ووسّعت البحث أكثر من مرة، ومش متأكد تماماً من دقة هذا الجواب، بس هاي أقرب النتائج لسؤالك:\n\n")
+            triedHarder ->
+                append("بحثت في كل زوايا الموسوعة ووسّعت البحث أكثر من مرة قبل أن أصل لهذا:\n\n")
+            lowConfidence ->
+                append("مش متأكد تماماً من دقة هذا الجواب، بس هاي أقرب نتيجة لقيتها ضمن بيانات الموسوعة:\n\n")
+            else ->
+                append("بحثت وحلّلت بيانات الموسوعة، وهذه أقرب النتائج لسؤالك:\n\n")
+        }
+        organized.forEach { (herb, herbHits) ->
+            append("🔸 ${herb.name}:\n")
+            herbHits.forEach { append("• ${formatPoint(it.field, it.text)}\n") }
+            append("\n")
+        }
+        organizedBlends.forEach { (blend, blendHits) ->
+            append("🧪 خلطة ${blend.name}:\n")
+            blendHits.forEach { append("• ${formatPoint(it.field, it.text)}\n") }
+            append("\n")
+        }
+    }.trimEnd()
+
+    /** ثلاثيات حروف متتالية لكلمة مُطبَّعة — أساس مقياس تشابه يتحمّل الأخطاء الإملائية الطفيفة أدناه. */
+    private fun trigramsOf(word: String): Set<String> {
+        if (word.length < 3) return setOf(word)
+        return (0..word.length - 3).map { word.substring(it, it + 3) }.toSet()
+    }
+
+    /**
+     * قدرة جديدة: "هل تقصد؟" — عندما يفشل البحث الحر تماماً في إيجاد أي
+     * نتيجة (لا كلمة من السؤال طابقت شيئاً في الموسوعة)، سبب شائع فعلياً هو
+     * خطأ إملائي بسيط في اسم العشبة نفسها (حرف ناقص/زائد/مبدَّل) لا غياب
+     * حقيقي للمعلومة. بدل الاكتفاء برسالة "لم أجد" عامة، تُقارَن كلمات
+     * السؤال بأسماء كل أعشاب الموسوعة عبر تشابه الثلاثيات الحرفية
+     * (Trigram Jaccard) — مقياس رخيص لا يحتاج أي قاموس، ويتحمّل فروقاً
+     * إملائية بسيطة بعكس المطابقة الحرفية التامة. يُقترَح اسم فقط إن تجاوز
+     * التشابه عتبة معقولة (0.4) تكفي لالتقاط خطأ حرف أو اثنين في كلمة
+     * متوسطة الطول دون اقتراح أسماء لا علاقة لها بالسؤال أصلاً.
+     */
+    private fun suggestSimilarHerbNames(question: String, herbs: List<Herb>): List<String> {
+        val qWords = normalize(question).split(Regex("\\s+")).filter { it.length > 2 }
+        if (qWords.isEmpty()) return emptyList()
+        val qTrigrams = qWords.map { trigramsOf(it) }
+        val scored = herbs.mapNotNull { herb ->
+            val nameWords = normalize(herb.name).split(Regex("[\\s,()]+")).filter { it.length > 2 }
+            if (nameWords.isEmpty()) return@mapNotNull null
+            val best = nameWords.maxOf { nw ->
+                val nwTrigrams = trigramsOf(nw)
+                qTrigrams.maxOf { qt -> jaccard(qt, nwTrigrams) }
+            }
+            if (best >= 0.4) herb.name to best else null
+        }
+        return scored.sortedByDescending { it.second }.take(2).map { it.first }
+    }
+
+    private fun fallbackHelp(herbs: List<Herb>, question: String = ""): String {
+        val suggestions = if (question.isNotBlank()) suggestSimilarHerbNames(question, herbs) else emptyList()
+        val suggestionLine = if (suggestions.isNotEmpty())
+            "\n\nهل تقصد ${suggestions.joinToString(" أو ")}؟ جرّب السؤال باسمها هكذا."
+        else ""
+        return if (herbs.size <= 3)
+            "لم أجد إجابة مباشرة لسؤالك ضمن بيانات ${herbNames(herbs)}. جرّب أن تسأل عن: الفوائد، الاستخدام، التحذيرات، أو الفرق بينها إن ذكرت أكثر من عشبة." + suggestionLine
+        else
+            "لم أجد إجابة مباشرة لسؤالك في الموسوعة. جرّب ذكر اسم عشبة معيّنة، أو اسأل عن أعراض/فائدة محددة تبحث عن عشبة لها." + suggestionLine
+    }
+}
