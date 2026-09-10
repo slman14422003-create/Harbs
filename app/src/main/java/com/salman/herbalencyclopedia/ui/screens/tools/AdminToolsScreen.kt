@@ -130,9 +130,9 @@ fun AdminToolsScreen(
             item { Text(tr("الصيانة والمزامنة"), style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", { onRefresh(); notify(true, msgDataRefreshing) }) }
             item { AdminButton(Icons.Filled.NetworkCheck, "اختبار الاتصال", "التحقق من الوصول إلى البيانات", { onTestConnection { ok, msg -> notify(ok, msg) } }) }
-            item { AdminButton(Icons.Filled.Backup, "نسخة احتياطية", "مشاركة JSON تشمل الأعشاب والتصنيفات", { shareText(context, strBackupTitle, backupJson(categories, herbs)) }) }
+            item { AdminButton(Icons.Filled.Backup, "نسخة احتياطية", "مشاركة JSON تشمل الأعشاب والتصنيفات", { shareFile(context, "harbs-backup.json", "application/json", backupJson(categories, herbs), strBackupTitle) }) }
             item { AdminButton(Icons.Filled.Restore, "استعادة نسخة", "استيراد JSON إلى Firestore", { restoreLauncher.launch(arrayOf("application/json", "text/plain")) }) }
-            item { AdminButton(Icons.Filled.TableChart, "تصدير CSV", "تصدير جميع الأعشاب كملف نصي CSV", { shareText(context, "herbs.csv", csvText(herbs)) }) }
+            item { AdminButton(Icons.Filled.TableChart, "تصدير CSV", "تصدير جميع الأعشاب كملف نصي CSV", { shareFile(context, "herbs.csv", "text/csv", csvText(herbs), "herbs.csv") }) }
             item { AdminButton(Icons.Filled.Share, "مشاركة التطبيق", "فتح مشاركة النظام", { shareApp(context, strAppShareText, strShareChooserTitle) }) }
             item { AdminButton(Icons.Filled.Link, "نسخ رابط التطبيق", "نسخ رابط المشروع إلى الحافظة", { context.getSystemService(Context.CLIPBOARD_SERVICE).let { (it as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("app", "https://github.com/")); }; notify(true, msgLinkCopied) }) }
             item { AdminButton(Icons.Filled.SystemUpdate, "إعدادات التحديثات", "تعديل مستودع ورابط وملاحظات التحديث", onUpdateSettingsClick) }
@@ -678,7 +678,38 @@ private fun backupJson(categories: List<Category>, herbs: List<Herb>): String {
 }
 private fun csvText(herbs: List<Herb>): String {
     fun e(s:String) = "\"" + s.replace("\"", "\"\"") + "\""
-    return buildString { appendLine("name,category_id,benefits,warnings,harms,usage,notes,image_url"); herbs.forEach { appendLine(listOf(it.name,it.categoryId ?: "",it.benefits,it.warnings,it.harms,it.usage,it.notes,it.imageUrl ?: "").joinToString(",", transform=::e)) } }
+    // BOM (U+FEFF) في البداية ضروري لفتح Excel/Sheets الملف بترميز UTF-8
+    // الصحيح تلقائياً؛ بدونه يعرض Excel كل النصوص العربية كرموز مشوَّهة
+    // (؟؟؟ أو حروف عشوائية) رغم أن الملف نفسه سليم تماماً بترميز UTF-8 —
+    // هذا سبب شكوى "تصدير CSV فيه مشكلة" الأكثر شيوعاً مع بيانات عربية.
+    return "\uFEFF" + buildString { appendLine("name,category_id,benefits,warnings,harms,usage,notes,image_url"); herbs.forEach { appendLine(listOf(it.name,it.categoryId ?: "",it.benefits,it.warnings,it.harms,it.usage,it.notes,it.imageUrl ?: "").joinToString(",", transform=::e)) } }
 }
-private fun shareText(context: Context, title: String, text: String) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }, title)) }
 private fun shareApp(context: Context, shareText: String, chooserTitle: String) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shareText) }, chooserTitle)) }
+
+/**
+ * يكتب [text] إلى ملف حقيقي في cacheDir/exports (انظر res/xml/file_paths.xml)
+ * ثم يشاركه عبر FileProvider كـ content:// Uri بدل مشاركته كنص خام مباشر.
+ *
+ * كانت النسخة الاحتياطية وCSV تُشارَكان سابقاً عبر Intent.EXTRA_TEXT (نص
+ * خام) بدل ملف فعلي، وهذا يسبب مشكلتين حقيقيتين:
+ * 1) قيد حجم صارم على بيانات الـIntent بين التطبيقات (Binder transaction،
+ *    ~1 ميجابايت لكل التطبيق)؛ مع نمو عدد الأعشاب يفشل التصدير بصمت أو
+ *    يتحطم التطبيق (TransactionTooLargeException) دون أي ملف يصل فعلياً.
+ * 2) التطبيقات المستقبِلة (واتساب، الرسائل، إلخ) تتعامل مع النص كرسالة لا
+ *    كملف .json/.csv، فيضيع الامتداد والترميز الصحيحين، ولا يمكن اختيار
+ *    "استعادة نسخة" لاحقاً على نفس المحتوى مباشرة لأنه لم يعد ملفاً أصلاً.
+ * الكتابة كملف حقيقي ومشاركته بامتداده ونوعه (MIME) الصحيحين تحل المشكلتين
+ * معاً، وتسمح أيضاً بحفظه مباشرة عبر "حفظ في الجهاز" من قائمة المشاركة.
+ */
+private fun shareFile(context: Context, fileName: String, mimeType: String, text: String, chooserTitle: String) {
+    val exportsDir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+    val file = java.io.File(exportsDir, fileName)
+    file.writeText(text, Charsets.UTF_8)
+    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, chooserTitle))
+}
