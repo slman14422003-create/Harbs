@@ -292,9 +292,18 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         // ── ترجمة تفاعلية: تعيد ترجمة القوائم الخام كلما تغيّرت هي أو اللغة ──
-        // منفصلة عمداً عن isLoading/error (تُداران أدناه من مصدر البيانات
-        // نفسه: الكاش المحلي أو المزامنة الشبكية) حتى لا يمسح تغيّر اللغة
-        // حالة التحميل أو الخطأ الحاليين بالخطأ.
+        // *** إصلاح: دائرة تحميل عالقة للأبد (السبب الفعلي المُبلَّغ عنه) ***
+        // كان التعليق هنا يدّعي أن isLoading "يُطفأ تلقائياً" من وصول الحالة
+        // المُترجَمة أدناه، لكن كتلة collect لم تكن تلمس isLoading إطلاقاً -
+        // فقط categories/herbs/blends. المصدر الوحيد الذي يُشعل isLoading=true
+        // عند تغيير اللغة (drop(1).collect أدناه) لا يقابله أي مصدر يُطفئها
+        // بعد ذلك، فتبقى isLoading=true دائماً منذ أول تغيير لغة يفعله
+        // المستخدم - أي أن مؤشر التحميل (دائرة السحب-للتحديث فوق شريط البحث
+        // مثلاً) يبقى ظاهراً بلا توقف إلى أن يُغلق التطبيق فعلياً ويُعاد
+        // تشغيله (عندها يُعاد تشغيل init{} من الصفر). الإصلاح: هذه الكتلة
+        // الآن تُطفئ isLoading أيضاً (بجانب مسح أي خطأ قديم) في كل مرة تصل
+        // فيها نسخة مُترجَمة جديدة، فتتحقق فعلياً الفرضية الأصلية بدل أن
+        // تبقى وعداً غير منفَّذ.
         viewModelScope.launch {
             combine(
                 _rawCategories,
@@ -317,7 +326,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 _uiState.value = _uiState.value.copy(
                     categories = categories,
                     herbs = herbs,
-                    blends = blends
+                    blends = blends,
+                    isLoading = false
                 )
             }
         }
