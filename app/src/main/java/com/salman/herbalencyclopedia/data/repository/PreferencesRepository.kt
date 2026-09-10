@@ -4,12 +4,18 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.salman.herbalencyclopedia.data.ai.AiConfig
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
+import com.salman.herbalencyclopedia.data.model.Blend
+import com.salman.herbalencyclopedia.data.model.Category
+import com.salman.herbalencyclopedia.data.model.Herb
+import org.json.JSONArray
+import org.json.JSONObject
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.theme.recommendedPerformanceMode
@@ -25,6 +31,15 @@ private val Context.dataStore by preferencesDataStore(name = "herbal_prefs")
  *  DataStore يخزّن Set<String> فقط دون بنية key-value متداخلة. حرف تحكم
  *  غير مرئي وشبه مستحيل ورودُه ضمن نص عربي طبيعي يكتبه المطوّر. */
 private const val AI_ENTRY_SEP = "\u241F"
+
+/** لقطة كاملة من كاش الموسوعة المحلي (راجع [PreferencesRepository.loadCachedCatalog]). */
+data class CatalogSnapshot(
+    val herbs: List<Herb>,
+    val categories: List<Category>,
+    val blends: List<Blend>,
+    /** وقت آخر مزامنة ناجحة مع Firestore بالمللي ثانية (epoch). */
+    val lastSyncAt: Long
+)
 
 /**
  * Stores favorite herb IDs and the dark-mode preference locally on-device
@@ -62,6 +77,12 @@ class PreferencesRepository(private val context: Context) {
         // (👍) على إجابات البحث الحر — منفصلة عن حالات المطوّر اليدوية أعلاه.
         val AI_AUTO_LEARNED_EXAMPLES = stringSetPreferencesKey("ai_auto_learned_examples")
         val AI_AUTO_LEARN_ENABLED = booleanPreferencesKey("ai_auto_learn_enabled")
+        // كاش كامل لمحتوى الموسوعة (راجع توثيق loadCachedCatalog/saveCatalogCache
+        // أسفل الملف لسبب وجود هذا الكاش المنفصل عن كاش Firestore الداخلي).
+        val CATALOG_HERBS_JSON = stringPreferencesKey("catalog_herbs_json")
+        val CATALOG_CATEGORIES_JSON = stringPreferencesKey("catalog_categories_json")
+        val CATALOG_BLENDS_JSON = stringPreferencesKey("catalog_blends_json")
+        val CATALOG_LAST_SYNC_AT = longPreferencesKey("catalog_last_sync_at")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -120,6 +141,16 @@ class PreferencesRepository(private val context: Context) {
     }
 
     companion object {
+        /**
+         * أقصى عمر مسموح لكاش الموسوعة المحلي قبل اعتباره "قديماً" ووجوب
+         * مزامنته من Firestore مجدداً - راجع [loadCachedCatalog] وAppViewModel.init.
+         * القيمة الحالية: ٢٤ ساعة. طالما لم تمر هذه المدة على آخر مزامنة
+         * ناجحة لهذا الجهاز تحديداً، يُعرض الكاش المحلي مباشرة بلا أي اتصال
+         * شبكي - بصرف النظر عن عدد المستخدمين الآخرين الذين يفتحون التطبيق
+         * بنفس اللحظة، لأن كلاً منهم يقرأ من تخزينه المحلي الخاص فقط.
+         */
+        const val CATALOG_MAX_AGE_MS: Long = 24L * 60 * 60 * 1000
+
         /**
          * قراءة متزامنة صريحة (وليست عبر Flow) للغة المحفوظة — تُستدعى فقط من
          * [android.app.Activity.attachBaseContext] (انظر MainActivity)، وهي
@@ -261,5 +292,140 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setAiAutoLearnEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.AI_AUTO_LEARN_ENABLED] = enabled }
+    }
+
+    // ── كاش الموسوعة المحلي (أعشاب/تصنيفات/خلطات) ───────────────────────
+    // هذا مستقل عن كاش Firestore الداخلي في HerbRepository (الذي يخزّن
+    // مستندات خام لتفعيل العمل بلا إنترنت وإعادة الاستخدام بين المستمعين).
+    // الهدف هنا مختلف: تفادي أي *اتصال* بـ Firestore عند بدء التطبيق طالما
+    // آخر مزامنة كانت أحدث من [CATALOG_MAX_AGE_MS] - فحتى مع كاش Firestore
+    // الداخلي، كل تسجيل جديد لمستمع (addSnapshotListener) أو طلب get() كان
+    // يعني اتصالاً فعلياً يُحتسب على حصة القراءات المجانية اليومية. القوائم
+    // هنا تُخزَّن كنص JSON خام (عبر org.json، المستخدمة أصلاً في restoreBackup)
+    // بدل إضافة اعتمادية جديدة (Room/kotlinx.serialization) لتغيير صغير كهذا.
+
+    /** يعيد آخر نسخة محفوظة محلياً، أو null إن لم تتم أي مزامنة بعد أو تلف الكاش. */
+    suspend fun loadCachedCatalog(): CatalogSnapshot? {
+        val prefs = context.dataStore.data.first()
+        val herbsJson = prefs[Keys.CATALOG_HERBS_JSON] ?: return null
+        val categoriesJson = prefs[Keys.CATALOG_CATEGORIES_JSON] ?: return null
+        val blendsJson = prefs[Keys.CATALOG_BLENDS_JSON] ?: return null
+        val lastSyncAt = prefs[Keys.CATALOG_LAST_SYNC_AT] ?: return null
+        return runCatching {
+            CatalogSnapshot(
+                herbs = decodeHerbs(herbsJson),
+                categories = decodeCategories(categoriesJson),
+                blends = decodeBlends(blendsJson),
+                lastSyncAt = lastSyncAt
+            )
+        }.getOrNull() // كاش تالف (مثلاً بعد تغيير شكل البيانات مستقبلاً) يُعامَل كغياب كاش، لا كخطأ يوقف التطبيق.
+    }
+
+    /** يستبدل الكاش المحلي بالكامل بأحدث نسخة، ويسجّل وقت هذه المزامنة كـ"الآن". */
+    suspend fun saveCatalogCache(herbs: List<Herb>, categories: List<Category>, blends: List<Blend>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CATALOG_HERBS_JSON] = encodeHerbs(herbs)
+            prefs[Keys.CATALOG_CATEGORIES_JSON] = encodeCategories(categories)
+            prefs[Keys.CATALOG_BLENDS_JSON] = encodeBlends(blends)
+            prefs[Keys.CATALOG_LAST_SYNC_AT] = System.currentTimeMillis()
+        }
+    }
+
+    private fun encodeHerbs(herbs: List<Herb>): String {
+        val array = JSONArray()
+        herbs.forEach { herb ->
+            array.put(
+                JSONObject()
+                    .put("id", herb.id)
+                    .put("name", herb.name)
+                    .put("category_id", herb.categoryId)
+                    .put("benefits", herb.benefits)
+                    .put("warnings", herb.warnings)
+                    .put("harms", herb.harms)
+                    .put("usage", herb.usage)
+                    .put("notes", herb.notes)
+                    .put("image_url", herb.imageUrl)
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decodeHerbs(json: String): List<Herb> {
+        val array = JSONArray(json)
+        return (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            Herb(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                categoryId = o.optString("category_id").ifBlank { null },
+                benefits = o.optString("benefits"),
+                warnings = o.optString("warnings"),
+                harms = o.optString("harms"),
+                usage = o.optString("usage"),
+                notes = o.optString("notes"),
+                imageUrl = o.optString("image_url").ifBlank { null }
+            )
+        }
+    }
+
+    private fun encodeCategories(categories: List<Category>): String {
+        val array = JSONArray()
+        categories.forEach { category ->
+            array.put(
+                JSONObject()
+                    .put("id", category.id)
+                    .put("name", category.name)
+                    .put("icon", category.icon)
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decodeCategories(json: String): List<Category> {
+        val array = JSONArray(json)
+        return (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            Category(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                icon = o.optString("icon").ifBlank { null }
+            )
+        }
+    }
+
+    private fun encodeBlends(blends: List<Blend>): String {
+        val array = JSONArray()
+        blends.forEach { blend ->
+            array.put(
+                JSONObject()
+                    .put("id", blend.id)
+                    .put("name", blend.name)
+                    .put("herb_ids", JSONArray(blend.herbIds))
+                    .put("benefits", blend.benefits)
+                    .put("usage", blend.usage)
+                    .put("warnings", blend.warnings)
+                    .put("notes", blend.notes)
+                    .put("image_url", blend.imageUrl)
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decodeBlends(json: String): List<Blend> {
+        val array = JSONArray(json)
+        return (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            val herbIdsArray = o.optJSONArray("herb_ids") ?: JSONArray()
+            Blend(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                herbIds = (0 until herbIdsArray.length()).map { j -> herbIdsArray.getString(j) },
+                benefits = o.optString("benefits"),
+                usage = o.optString("usage"),
+                warnings = o.optString("warnings"),
+                notes = o.optString("notes"),
+                imageUrl = o.optString("image_url").ifBlank { null }
+            )
+        }
     }
 }
