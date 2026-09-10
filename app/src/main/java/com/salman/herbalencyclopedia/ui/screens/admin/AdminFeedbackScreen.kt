@@ -6,8 +6,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.material3.*
@@ -41,9 +43,16 @@ fun AdminFeedbackScreen(
     isLoading: Boolean,
     error: String?,
     onBack: () -> Unit,
-    onDelete: (Feedback) -> Unit
+    onDelete: (Feedback) -> Unit,
+    // ── حظر مُرسِل مسيء أو متلاعب: يمنعه فقط من إرسال ملاحظات جديدة (لا يحذف
+    // ما أرسله سابقاً، ذلك قرار منفصل عبر onDelete أعلاه). blockedUserIds تأتي
+    // حيّة من AppViewModel.blockedUserIds لتلوين زر الحظر/فك الحظر فوراً. ──
+    blockedUserIds: Set<String> = emptySet(),
+    onBlock: (Feedback) -> Unit = {},
+    onUnblock: (Feedback) -> Unit = {}
 ) {
     var pendingDelete by remember { mutableStateOf<Feedback?>(null) }
+    var pendingBlock by remember { mutableStateOf<Feedback?>(null) }
     val dateFormat = remember { SimpleDateFormat("d MMM yyyy، HH:mm", Locale("ar")) }
 
     Scaffold(
@@ -98,6 +107,20 @@ fun AdminFeedbackScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                                val isBlocked = !item.senderUid.isNullOrBlank() && item.senderUid in blockedUserIds
+                                // ملاحظات قديمة أُرسِلت قبل إضافة sender_uid لا تحمل هوية جهاز يمكن حظرها.
+                                if (!item.senderUid.isNullOrBlank()) {
+                                    GlassIconButton(
+                                        onClick = { if (isBlocked) onUnblock(item) else pendingBlock = item },
+                                        size = 36.dp
+                                    ) {
+                                        Icon(
+                                            if (isBlocked) Icons.Filled.LockOpen else Icons.Filled.Block,
+                                            contentDescription = tr(if (isBlocked) "فك الحظر" else "حظر هذا المُرسِل"),
+                                            tint = if (isBlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
                                 GlassIconButton(onClick = { pendingDelete = item }, size = 36.dp) {
                                     Icon(Icons.Filled.Delete, contentDescription = tr("حذف"), tint = MaterialTheme.colorScheme.error)
                                 }
@@ -118,6 +141,14 @@ fun AdminFeedbackScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (!item.senderUid.isNullOrBlank() && item.senderUid in blockedUserIds) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        tr("• محظور"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                                 item.createdAt?.toDate()?.let { date ->
                                     Spacer(Modifier.weight(1f))
                                     Text(
@@ -148,6 +179,25 @@ fun AdminFeedbackScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) { Text(tr("إلغاء")) }
+            }
+        )
+    }
+
+    pendingBlock?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingBlock = null },
+            title = { Text(tr("حظر هذا المُرسِل؟")) },
+            text = {
+                Text(tr("لن يتمكّن هذا الجهاز من إرسال ملاحظات جديدة بعد الآن. يمكن فك الحظر لاحقاً في أي وقت، ولن يؤثّر هذا على ملاحظاته السابقة."))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onBlock(item)
+                    pendingBlock = null
+                }) { Text(tr("حظر"), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingBlock = null }) { Text(tr("إلغاء")) }
             }
         )
     }
