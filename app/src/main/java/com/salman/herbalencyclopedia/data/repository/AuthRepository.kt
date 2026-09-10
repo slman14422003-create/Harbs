@@ -59,4 +59,25 @@ class AuthRepository(
     fun logout() {
         auth.signOut()
     }
+
+    /**
+     * يضمن وجود جلسة Firestore Auth مجهولة (Anonymous Auth) قبل أي عملية
+     * يحتاج فيها التطبيق لهوية ثابتة للجهاز — حالياً فقط عند إرسال ملاحظة
+     * (انظر submitFeedback في AppViewModel). بلا هذه الهوية لا توجد أي طريقة
+     * لتمييز "من أرسل هذه الملاحظة" لاحقاً، وبالتالي لا طريقة لحظر مُرسِل
+     * مسيء عن الإرسال مجدداً (راجع قاعدة blocked_users في firestore.rules).
+     *
+     * إن كان هناك بالفعل مستخدم مسجَّل دخوله (المسؤول أو جلسة مجهولة سابقة)
+     * تُستخدَم هويته كما هي بلا استبدال. تُعيد null فقط عند فشل الاتصال، وعندها
+     * تُرسَل الملاحظة بلا "sender_uid" (يرفضها Firestore حسب القاعدة الجديدة،
+     * فيظهر للمُرسِل خطأ اتصال بدل فشل صامت).
+     */
+    suspend fun ensureAnonymousUid(): String? {
+        auth.currentUser?.uid?.let { return it }
+        return try {
+            auth.signInAnonymously().await().user?.uid
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

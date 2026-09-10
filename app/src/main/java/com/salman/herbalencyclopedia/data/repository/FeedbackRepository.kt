@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.data.repository
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.salman.herbalencyclopedia.data.model.BlockedUser
 import com.salman.herbalencyclopedia.data.model.Feedback
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -26,7 +27,8 @@ class FeedbackRepository(
         targetId: String,
         targetName: String,
         message: String,
-        senderName: String?
+        senderName: String?,
+        senderUid: String?
     ) {
         val data: HashMap<String, Any?> = hashMapOf(
             "target_type" to targetType,
@@ -34,6 +36,11 @@ class FeedbackRepository(
             "target_name" to targetName,
             "message" to message.trim(),
             "sender_name" to senderName?.trim()?.ifBlank { null },
+            // هوية الجهاز المجهولة — راجع AuthRepository.ensureAnonymousUid
+            // وتعليق Feedback.senderUid. firestore.rules يرفض أي مستند بلا
+            // هذا الحقل (أو بقيمة لا تطابق request.auth.uid)، فهذا هو أساس
+            // آلية الحظر بأكملها.
+            "sender_uid" to senderUid,
             "created_at" to FieldValue.serverTimestamp()
         )
         db.collection("feedback").add(data).await()
@@ -67,5 +74,44 @@ class FeedbackRepository(
 
     suspend fun deleteFeedback(id: String) {
         db.collection("feedback").document(id).delete().await()
+    }
+
+    // ---------------------------------------------------------------------
+    // حظر مُرسِلي الملاحظات — انظر توثيق BlockedUser وقاعدة blocked_users في
+    // firestore.rules. وجود مستند في "blocked_users" بمعرّف يساوي
+    // Feedback.senderUid هو وحده ما يمنع ذلك الجهاز من إرسال ملاحظات جديدة؛
+    // لا يحذف أو يُخفي أي ملاحظات سابقة (يبقى ذلك قراراً يدوياً منفصلاً
+    // للأدمن عبر onDelete الحالي في AdminFeedbackScreen).
+    // ---------------------------------------------------------------------
+
+    suspend fun blockUser(uid: String, senderName: String?) {
+        val data: HashMap<String, Any?> = hashMapOf(
+            "sender_name" to senderName?.trim()?.ifBlank { null },
+            "blocked_at" to FieldValue.serverTimestamp()
+        )
+        db.collection("blocked_users").document(uid).set(data).await()
+    }
+
+    suspend fun unblockUser(uid: String) {
+        db.collection("blocked_users").document(uid).delete().await()
+    }
+
+    /** Live listener, admin-only per firestore.rules. */
+    fun observeBlockedUsers(): Flow<List<BlockedUser>> = callbackFlow {
+        val registration = db.collection("blocked_users")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    trySend(snapshot.toObjects(BlockedUser::class.java))
+                }
+            }
+        awaitClose { registration.remove() }
+    }.retryWhen { _, attempt ->
+        val delayMs = (1000L shl attempt.toInt().coerceAtMost(5)).coerceAtMost(30_000L)
+        delay(delayMs)
+        true
     }
 }
