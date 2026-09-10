@@ -36,22 +36,19 @@ import kotlinx.coroutines.tasks.await
  *   documents once the cache grows past the cap instead of retaining every
  *   historical snapshot forever. An unlimited cache was the main reason the
  *   app's on-disk footprint kept climbing well past the actual catalog size
- *   the longer the app stayed installed and synced.
+ *   the longer the app stayed installed and synced. This setting is applied
+ *   once in [com.salman.herbalencyclopedia.HerbalApp.onCreate] - *not* here -
+ *   because Firestore rejects any settings change after the shared
+ *   FirebaseFirestore instance has already been touched by anything else
+ *   (e.g. SemoLearningRepository, which uses the same instance with no
+ *   custom settings); doing it in Application.onCreate guarantees it always
+ *   runs first, regardless of which repository happens to be used first.
  * - [observeCollection] auto-retries with exponential backoff on listener
  *   errors instead of permanently ending the live sync (see its retryWhen).
  */
 class HerbRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
-    init {
-        db.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
-            .setLocalCacheSettings(
-                com.google.firebase.firestore.PersistentCacheSettings.newBuilder()
-                    .setSizeBytes(PERSISTENT_CACHE_BYTES)
-                    .build()
-            )
-            .build()
-    }
 
     // ---------------------------------------------------------------------
     // Live (real-time) sync
@@ -239,17 +236,20 @@ class HerbRepository(
 
     companion object {
         /**
-         * سقف كاش Firestore المحلي (٤٠ ميجابايت). كانت القيمة السابقة
-         * CACHE_SIZE_UNLIMITED تعني عدم وجود أي سقف إطلاقاً، فيستمر الكاش
-         * بالتضخم بلا حدود مع كل مزامنة أو تحديث حتى لصور/مستندات لم تعد
-         * تُعرض فعلياً — وهذا هو السبب الرئيسي لكون حجم التطبيق بعد التثبيت
-         * والاستخدام أكبر بكثير من حجم بيانات الموسوعة الفعلي. بسقف محدود،
-         * Firestore يشغّل تنظيفاً تلقائياً (LRU garbage collection) يحذف أقدم
-         * المستندات غير المستخدمة عند تجاوز هذا الحد، مع إبقاء العمل بلا
-         * إنترنت يعمل بشكل طبيعي تماماً (الموسوعة كاملة أصغر من هذا السقف
-         * بمراحل، فتبقى كل البيانات الفعلية محفوظة محلياً دوماً).
+         * سقف كاش Firestore المحلي (٤٠ ميجابايت) - القيمة الفعلية تُطبَّق من
+         * [com.salman.herbalencyclopedia.HerbalApp.onCreate]، راجع تعليقها
+         * هناك لسبب نقل نقطة التطبيق الفعلية إلى مستوى Application بدل
+         * init{} هذه الفئة. كانت القيمة السابقة CACHE_SIZE_UNLIMITED تعني
+         * عدم وجود أي سقف إطلاقاً، فيستمر الكاش بالتضخم بلا حدود مع كل
+         * مزامنة أو تحديث حتى لصور/مستندات لم تعد تُعرض فعلياً — وهذا هو
+         * السبب الرئيسي لكون حجم التطبيق بعد التثبيت والاستخدام أكبر بكثير
+         * من حجم بيانات الموسوعة الفعلي. بسقف محدود، Firestore يشغّل تنظيفاً
+         * تلقائياً (LRU garbage collection) يحذف أقدم المستندات غير
+         * المستخدمة عند تجاوز هذا الحد، مع إبقاء العمل بلا إنترنت يعمل بشكل
+         * طبيعي تماماً (الموسوعة كاملة أصغر من هذا السقف بمراحل، فتبقى كل
+         * البيانات الفعلية محفوظة محلياً دوماً).
          */
-        private const val PERSISTENT_CACHE_BYTES: Long = 40L * 1024 * 1024
+        const val PERSISTENT_CACHE_BYTES: Long = 40L * 1024 * 1024
 
         /** Turns a Firestore/network exception into a short, user-facing Arabic message. */
         fun describeError(e: Throwable): String {
