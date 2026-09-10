@@ -9,7 +9,7 @@ import com.salman.herbalencyclopedia.data.translate.TranslationRepository
  */
 class AppContainer(context: Context) {
     val herbRepository: HerbRepository by lazy { HerbRepository() }
-    val authRepository: AuthRepository by lazy { AuthRepository() }
+    val authRepository: AuthRepository by lazy { AuthRepository(context.applicationContext) }
     val preferencesRepository: PreferencesRepository by lazy {
         PreferencesRepository(context.applicationContext)
     }

@@ -1,7 +1,9 @@
 package com.salman.herbalencyclopedia.data.repository
 
+import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
 import com.salman.herbalencyclopedia.HerbalApp
+import com.salman.herbalencyclopedia.SecurityUtils
 import kotlinx.coroutines.tasks.await
 
 data class AuthResult(
@@ -11,6 +13,7 @@ data class AuthResult(
 )
 
 class AuthRepository(
+    private val appContext: Context,
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
     val currentUser get() = auth.currentUser
@@ -20,6 +23,16 @@ class AuthRepository(
         get() = auth.currentUser?.uid == HerbalApp.ADMIN_UID
 
     suspend fun login(email: String, password: String): AuthResult {
+        // طبقة الدفاع المحلية الإضافية (انظر توثيق SecurityUtils.kt الكامل):
+        // نسخة أُعيد توقيعها بمفتاح غير رسمي لا تصل حتى إلى محاولة تسجيل
+        // الدخول - يُرفض الطلب محلياً قبل أي اتصال بـFirebase Auth أصلاً،
+        // بصرف النظر عن صحة بيانات الاعتماد المُدخَلة.
+        if (SecurityUtils.isTampered(appContext)) {
+            return AuthResult(
+                success = false,
+                message = "تعذّر تسجيل الدخول من هذه النسخة من التطبيق."
+            )
+        }
         return try {
             val result = auth.signInWithEmailAndPassword(email.trim(), password).await()
             val user = result.user
