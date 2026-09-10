@@ -30,6 +30,7 @@ import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.applyPreferredRefreshRate
 import com.salman.herbalencyclopedia.ui.theme.currentRefreshRateHz
 import com.salman.herbalencyclopedia.ui.theme.nearestRefreshRateTier
+import com.salman.herbalencyclopedia.ui.theme.rememberEffectivePerformanceMode
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import com.salman.herbalencyclopedia.ui.util.LocalAppLanguage
 import com.salman.herbalencyclopedia.ui.util.LocaleManager
@@ -71,14 +72,23 @@ class MainActivity : ComponentActivity() {
             )
             val useDark = darkModePref ?: isSystemInDarkTheme()
 
+            // النسخة "الفعلية" من وضع الأداء: تطابق اختيار المستخدم عادةً،
+            // لكنها تتراجع تلقائياً ومؤقتاً لوضع "اقتصادي" إن فعّل النظام
+            // توفير الطاقة أو دخل الجهاز حالة تحكّم حراري — راجع
+            // RuntimePerformanceSignals.kt للتفاصيل. اختيار المستخدم
+            // الخام (performanceMode) يبقى كما هو في الإعدادات ولا يتأثر.
+            val effectivePerformanceMode = rememberEffectivePerformanceMode(performanceMode)
+
             // معدل تحديث الشاشة الفعلي الحالي (مُقرَّب لأقرب طبقة من
             // 20/40/60/90/120 — راجع RefreshRate.kt)، يُعاد حسابه في كل
-            // مرة يتغيّر فيها وضع الأداء المختار (تبديله من الإعدادات
-            // يُعيد تشغيل SideEffect التالي، الذي يطلب من النظام وضع عرض
-            // جديد أولاً ثم يقرأ المعدل الفعلي الناتج).
+            // مرة يتغيّر فيها وضع الأداء *الفعلي* (تبديله من الإعدادات، أو
+            // تراجعه التلقائي بسبب توفير الطاقة/الحرارة، يُعيد تشغيل
+            // SideEffect التالي، الذي يطلب من النظام وضع عرض جديد أولاً ثم
+            // يقرأ المعدل الفعلي الناتج) — فتخفيض معدل التحديث نفسه يصبح
+            // جزءاً من نفس التراجع التلقائي، لا الحركات داخل Compose فقط.
             var refreshRateTier by remember { mutableIntStateOf(60) }
             SideEffect {
-                applyPreferredRefreshRate(this@MainActivity, performanceMode)
+                applyPreferredRefreshRate(this@MainActivity, effectivePerformanceMode)
                 refreshRateTier = nearestRefreshRateTier(currentRefreshRateHz())
             }
 
@@ -113,7 +123,7 @@ class MainActivity : ComponentActivity() {
                     // تقرأ دائماً القيمة الافتراضية HIGH_QUALITY بغض النظر عن
                     // اختيار المستخدم — هذا هو إصلاح "الزر الاقتصادي".
                     CompositionLocalProvider(
-                        LocalPerformanceMode provides performanceMode,
+                        LocalPerformanceMode provides effectivePerformanceMode,
                         LocalRefreshRateTier provides refreshRateTier
                     ) {
                         HerbalNavGraph(
