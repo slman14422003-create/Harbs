@@ -20,13 +20,14 @@ import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
+import com.salman.herbalencyclopedia.data.update.UpdateDownloadService
+import com.salman.herbalencyclopedia.data.update.UpdateDownloadState
+import com.salman.herbalencyclopedia.data.update.UpdateDownloadStatus
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,10 +40,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 data class UiState(
     val herbs: List<Herb> = emptyList(),
@@ -59,14 +56,6 @@ sealed class UpdateCheckState {
     data object UpToDate : UpdateCheckState()
     data class Available(val info: AppUpdateInfo) : UpdateCheckState()
     data class Error(val message: String) : UpdateCheckState()
-}
-
-/** State of the direct-APK-download update hand-off (see [AppViewModel.downloadUpdate]). */
-sealed class UpdateDownloadState {
-    data object Idle : UpdateDownloadState()
-    data class Downloading(val progress: Int) : UpdateDownloadState()
-    data object ReadyToInstall : UpdateDownloadState()
-    data class Failed(val message: String) : UpdateDownloadState()
 }
 
 class AppViewModel(private val container: AppContainer) : ViewModel() {
@@ -97,8 +86,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private val _updateState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
     val updateState: StateFlow<UpdateCheckState> = _updateState.asStateFlow()
 
-    private val _downloadState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
-    val downloadState: StateFlow<UpdateDownloadState> = _downloadState.asStateFlow()
+    // التحميل الفعلي الآن يتم بخدمة أمامية حقيقية (UpdateDownloadService)
+    // تعمل بالخلفية حتى لو أُغلقت شاشة التطبيق — راجع توثيق
+    // UpdateDownloadStatus لماذا هذا التغيير ضروري. الحالة هنا مجرد
+    // انعكاس مباشر لما تكتبه الخدمة، بلا أي تغيير بمنطق الواجهة.
+    val downloadState: StateFlow<UpdateDownloadState> = UpdateDownloadStatus.state
 
     private val _updateConfig = MutableStateFlow(AppUpdateConfig())
     val updateConfigState: StateFlow<AppUpdateConfig> = _updateConfig.asStateFlow()
@@ -126,229 +118,46 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    // Remembers the last update info so installUpdate() (which isn't passed the
-    // info again from the UI) can re-open the same download link, e.g. on retry.
+    // Remembers the last update info so downloadUpdate()/installUpdate() (which
+    // aren't passed the info again from the UI on every call) can re-use it,
+    // e.g. on retry or when there's no direct .apk asset to download.
     private var lastUpdateInfo: AppUpdateInfo? = null
 
-    // The .apk file downloadUpdate() saved into the app's private cache dir,
-    // used by installUpdate() to hand off to the system package installer.
-    private var lastDownloadedApk: File? = null
-
-    // The coroutine actually streaming the .apk, so cancelDownload() (the "إلغاء"
-    // button next to the progress bar) has something real to stop.
-    private var downloadJob: Job? = null
-
-    // The connection currently being read from. Cancelling the coroutine alone
-    // does NOT interrupt a blocking InputStream.read() call already in flight,
-    // so cancelDownload() disconnects this directly to unblock the read loop
-    // immediately instead of waiting for it to time out on its own.
-    @Volatile private var activeDownloadConnection: HttpURLConnection? = null
-
-    // Set right before cancelling, so the coroutine's own completion handler
-    // knows not to overwrite the Idle state cancelDownload() already set with
-    // a stale Failed/ReadyToInstall result from the connection it just killed.
-    @Volatile private var downloadCancelledByUser = false
-
     /**
-     * Downloads the .apk asset in-app (into the private cache dir), reporting progress via
-     * [downloadState] so the settings screen can show the usual progress bar — instead of
-     * sending the user out to the browser to download it themselves.
+     * يبدأ تحميل ملف التحديث (.apk) بالخلفية عبر [UpdateDownloadService] — خدمة
+     * أمامية حقيقية تستمر حتى لو أغلق المستخدم شاشة التطبيق أو خرج منه تماماً،
+     * وتُظهر إشعار تقدّم بهوية التطبيق. الحالة (نسبة التحميل، الجاهزية،
+     * الفشل) تصل تلقائياً عبر [downloadState] (المرتبط بـ [UpdateDownloadStatus]
+     * المشتركة)، فلا حاجة لانتظار نتيجة من هنا مباشرة.
      *
-     * If this release has no .apk asset attached (only a release page), there's nothing to
-     * download in-app, so we fall back to opening that page in the browser as before.
-     *
-     * Tries [info.apkUrl] directly first, then — since the release-asset CDN and the
-     * metadata API are independent GitHub domains — falls back through the same proxy
-     * mirrors used for the update check, in case only the asset download needs them.
+     * إن لم يكن لهذا الإصدار ملف .apk مرفق (صفحة إصدار فقط)، لا شيء نحمّله
+     * داخل التطبيق، فنفتح صفحة الإصدار بالمتصفح مباشرة بدلاً من ذلك، كما كان
+     * سابقاً.
      */
     fun downloadUpdate(context: Context, info: AppUpdateInfo) {
         lastUpdateInfo = info
         val apkUrl = info.apkUrl
         if (apkUrl == null) {
             val opened = openInBrowser(context, info.releasePageUrl)
-            _downloadState.value = if (opened) {
-                UpdateDownloadState.ReadyToInstall
-            } else {
-                UpdateDownloadState.Failed("تعذّر فتح رابط التحميل")
-            }
+            UpdateDownloadStatus.update(
+                if (opened) UpdateDownloadState.ReadyToInstall
+                else UpdateDownloadState.Failed("تعذّر فتح رابط التحميل")
+            )
             return
         }
 
         val candidates = container.updateRepository.downloadCandidates(
             apkUrl, info.useProxyFallback, info.customProxyBaseUrl
         )
-        val appContext = context.applicationContext
-        downloadCancelledByUser = false
-        _downloadState.value = UpdateDownloadState.Downloading(0)
-        downloadJob = viewModelScope.launch {
-            val result = downloadApkToCache(appContext, candidates, info.versionName)
-            if (downloadCancelledByUser) {
-                // cancelDownload() already reset the UI state; don't clobber it
-                // with this now-irrelevant result.
-                downloadCancelledByUser = false
-                return@launch
-            }
-            _downloadState.value = result.fold(
-                onSuccess = { file ->
-                    lastDownloadedApk = file
-                    UpdateDownloadState.ReadyToInstall
-                },
-                onFailure = { e -> UpdateDownloadState.Failed(e.localizedMessage ?: "فشل تحميل التحديث") }
-            )
-        }
+        UpdateDownloadService.start(context, candidates, info.versionName)
     }
 
     /**
-     * Stops an in-progress in-app update download (the "إلغاء" button shown next to the
-     * progress bar). Previously there was no way to cancel a download once started, and
-     * even calling [resetUpdateFlow] (which was itself never wired to any button in the
-     * UI) only reset the state flows — the blocking network read loop kept running
-     * regardless and would silently overwrite that reset a moment later once it finished.
-     * This actually closes the live connection so the read loop unblocks immediately,
-     * cancels the coroutine, deletes the partial .apk, and leaves the UI at Idle.
+     * يوقف تحميل التحديث الجاري (زر "إلغاء" بشاشة الإعدادات) — يُنهي الخدمة
+     * الأمامية، يقطع الاتصال الجاري فوراً، ويحذف الملف الجزئي المُنزَّل.
      */
-    fun cancelDownload() {
-        val job = downloadJob ?: return
-        downloadCancelledByUser = true
-        activeDownloadConnection?.disconnect()
-        job.cancel()
-        downloadJob = null
-        lastDownloadedApk = null
-        _downloadState.value = UpdateDownloadState.Idle
-    }
-
-    /**
-     * Streams the .apk to context.cacheDir/updates, publishing percent progress to
-     * [downloadState].
-     *
-     * [candidates] (direct link + proxy mirrors) are first probed all at once with a
-     * quick, cheap request (see [probeReachable]) instead of downloading the full file
-     * from each one in turn until something works. On a network that blocks GitHub
-     * outright, that old one-at-a-time approach meant sitting through a full download
-     * timeout on the direct link, then again on every mirror, before ever reaching the
-     * one that would have worked — and it risked pulling the same multi-megabyte .apk
-     * more than once. Racing a tiny probe first finds the one reachable path in a few
-     * seconds, and the actual .apk is then streamed from that single URL only.
-     */
-    private suspend fun downloadApkToCache(context: Context, candidates: List<String>, versionName: String): Result<File> {
-        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-        // Drop any previous downloaded update(s) so the cache doesn't grow unbounded.
-        dir.listFiles()?.forEach { it.delete() }
-        val destFile = File(dir, "update-$versionName.apk")
-
-        val reachable = raceFirstReachable(candidates)
-        // ordered so the reachable one (if any) is tried first, falling back through
-        // the rest only if it turns out to fail on the real download for some reason
-        // (e.g. it answered the quick probe but then dropped the connection).
-        val orderedCandidates = if (reachable != null) {
-            listOf(reachable) + candidates.filter { it != reachable }
-        } else candidates
-
-        var lastError: Throwable? = null
-        for (url in orderedCandidates) {
-            val attempt = withContext(Dispatchers.IO) { runCatching { downloadOneUrl(url, destFile) } }
-            if (attempt.isSuccess) return Result.success(destFile)
-            destFile.delete()
-            val error = attempt.exceptionOrNull()
-            // A user-triggered cancel should stop retrying immediately instead of
-            // ploughing through every remaining mirror first.
-            if (error is CancellationException) throw error
-            lastError = error
-        }
-        return Result.failure(lastError ?: IllegalStateException("فشل تحميل التحديث"))
-    }
-
-    /**
-     * Probes every URL in [candidates] at once with a cheap request (HEAD, or a
-     * 1-byte ranged GET if a mirror doesn't support HEAD) and returns the first one
-     * that answers successfully, or null if none do within a few seconds. This is
-     * what lets [downloadApkToCache] skip straight to the one working path instead
-     * of discovering it through a slow, sequential full-download attempt on each URL.
-     */
-    private suspend fun raceFirstReachable(candidates: List<String>): String? = coroutineScope {
-        if (candidates.isEmpty()) return@coroutineScope null
-        val results = Channel<String?>(candidates.size)
-        val jobs = candidates.map { url ->
-            launch(Dispatchers.IO) {
-                val ok = runCatching { probeReachable(url) }.getOrDefault(false)
-                results.trySend(if (ok) url else null)
-            }
-        }
-        var winner: String? = null
-        repeat(candidates.size) {
-            if (winner == null) {
-                val value = results.receive()
-                if (value != null) winner = value
-            }
-        }
-        jobs.forEach { it.cancel() }
-        winner
-    }
-
-    /** Cheap reachability check for a single URL: HEAD first, falling back to a 1-byte ranged GET. */
-    private fun probeReachable(url: String): Boolean {
-        fun attempt(method: String): Boolean {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                requestMethod = method
-                connectTimeout = 6000
-                readTimeout = 6000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Harbs-App-Update-Downloader")
-                if (method == "GET") setRequestProperty("Range", "bytes=0-0")
-            }
-            return try {
-                val code = conn.responseCode
-                code in 200..299 || code == 206
-            } catch (e: Exception) {
-                false
-            } finally {
-                conn.disconnect()
-            }
-        }
-        return runCatching { attempt("HEAD") }.getOrDefault(false) || runCatching { attempt("GET") }.getOrDefault(false)
-    }
-
-    /** Streams a single URL to [destFile], throwing on any failure (caller decides whether to retry). */
-    private fun downloadOneUrl(url: String, destFile: File) {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 15000
-            readTimeout = 20000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "Harbs-App-Update-Downloader")
-        }
-        activeDownloadConnection = conn
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                error("فشل الاتصال بالخادم (رمز $code)")
-            }
-
-            val totalSize = conn.contentLength
-            var lastReportedPercent = -1
-            conn.inputStream.use { input ->
-                FileOutputStream(destFile).use { output ->
-                    val buffer = ByteArray(8 * 1024)
-                    var totalRead = 0L
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        totalRead += read
-                        if (totalSize > 0) {
-                            val percent = ((totalRead * 100) / totalSize).toInt().coerceIn(0, 100)
-                            if (percent != lastReportedPercent) {
-                                lastReportedPercent = percent
-                                _downloadState.value = UpdateDownloadState.Downloading(percent)
-                            }
-                        }
-                    }
-                }
-            }
-        } finally {
-            activeDownloadConnection = null
-            conn.disconnect()
-        }
+    fun cancelDownload(context: Context) {
+        UpdateDownloadService.cancel(context)
     }
 
     /**
@@ -356,9 +165,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      * content:// Uri. On Android 8+ this also makes sure "install unknown apps" is allowed for
      * this app first — if not, it opens that settings screen and the user just taps the
      * install button again once they've granted it.
+     *
+     * الملف نفسه أصبح يأتي من [UpdateDownloadStatus] المشتركة بدل متغيّر محلي،
+     * لأن التحميل الفعلي صار يتم بخدمة منفصلة (UpdateDownloadService) قد تكون
+     * أنهت التحميل بينما كانت شاشة الإعدادات مغلقة.
      */
     fun installUpdate(context: Context) {
-        val file = lastDownloadedApk
+        val file = UpdateDownloadStatus.downloadedApk
         if (file == null || !file.exists()) {
             // Nothing was downloaded in-app (e.g. the release had no .apk asset) - fall back
             // to whatever link we have.
@@ -379,7 +192,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         runCatching { context.startActivity(intent) }
-            .onFailure { _downloadState.value = UpdateDownloadState.Failed("تعذّر فتح مثبّت التطبيقات") }
+            .onFailure { UpdateDownloadStatus.update(UpdateDownloadState.Failed("تعذّر فتح مثبّت التطبيقات")) }
     }
 
     /** Opens a URL (the GitHub release page, when there's no .apk asset to download in-app) in the browser. */
@@ -392,10 +205,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Resets the update flow back to its initial state (e.g. after a dismissal). */
-    fun resetUpdateFlow() {
-        cancelDownload()
+    fun resetUpdateFlow(context: Context) {
+        cancelDownload(context)
         _updateState.value = UpdateCheckState.Idle
-        _downloadState.value = UpdateDownloadState.Idle
+        UpdateDownloadStatus.reset()
     }
 
     /** Loads the current admin-editable update settings, for [AdminUpdateScreen]. */
