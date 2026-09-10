@@ -128,14 +128,26 @@ class UpdateDownloadService : Service() {
     // ------------------------------------------------------------------
 
     private suspend fun downloadApk(candidates: List<String>, versionName: String): File {
+        // تحقّق صريح على مستوى التطبيق (بمعزل عن NetworkSecurityConfig الذي
+        // يمنع أصلاً أي اتصال cleartext على مستوى النظام): نرفض أي رابط
+        // ليس https:// قبل محاولة أي اتصال به إطلاقاً، بدل الاعتماد فقط على
+        // فشل الاتصال لاحقاً. هذا يمنع أيضاً أي محاولة تنزيل عبر أي مخطط
+        // (scheme) غير متوقع (file://، content://...) قد يصل ضمن قائمة
+        // الروابط الاحتياطية من مصدر بيانات بعيد (UpdateRepository) بأي خطأ
+        // أو تلاعب لاحق في تلك القائمة.
+        val secureCandidates = candidates.filter { it.startsWith("https://", ignoreCase = true) }
+        if (secureCandidates.isEmpty()) {
+            throw SecurityException("لا توجد روابط تحديث آمنة (HTTPS) صالحة")
+        }
+
         val dir = File(cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
         val destFile = File(dir, "update-$versionName.apk")
 
-        val reachable = raceFirstReachable(candidates)
+        val reachable = raceFirstReachable(secureCandidates)
         val ordered = if (reachable != null) {
-            listOf(reachable) + candidates.filter { it != reachable }
-        } else candidates
+            listOf(reachable) + secureCandidates.filter { it != reachable }
+        } else secureCandidates
 
         var lastError: Throwable? = null
         for (url in ordered) {
