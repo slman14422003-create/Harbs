@@ -20,6 +20,7 @@ import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.repository.AppContainer
 import com.salman.herbalencyclopedia.data.repository.HerbRepository
+import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.data.update.UpdateDownloadService
 import com.salman.herbalencyclopedia.data.update.UpdateDownloadState
 import com.salman.herbalencyclopedia.data.update.UpdateDownloadStatus
@@ -62,6 +63,18 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    // القوائم الخام (قبل الترجمة) لآخر نسخة معروفة من الموسوعة - إما من
+    // الكاش المحلي (PreferencesRepository) أو من مزامنة شبكية. تُبقى منفصلة
+    // عن uiState لأن uiState يحمل النسخة *المترجَمة*، وتغيّر اللغة وحده يجب
+    // أن يعيد ترجمة هذه القوائم دون طلب شبكي جديد - راجع الـ combine في init.
+    private val _rawCategories = MutableStateFlow<List<Category>>(emptyList())
+    private val _rawHerbs = MutableStateFlow<List<Herb>>(emptyList())
+    private val _rawBlends = MutableStateFlow<List<Blend>>(emptyList())
+
+    // المزامنة الحيّة (addSnapshotListener) صارت محصورة بجلسة الأدمن فقط -
+    // راجع startAdminLiveSync/stopAdminLiveSync وتعليق init أدناه لسبب ذلك.
+    private var adminSyncJob: Job? = null
 
     val favoriteIds: StateFlow<Set<String>> = container.preferencesRepository.favoriteIds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
@@ -272,14 +285,15 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     init {
-        // Live sync: stay subscribed to Firestore for as long as the app is alive, so
-        // any change - made here, from another device, or from the web admin panel -
-        // is reflected immediately without needing a manual refresh.
+        // ── ترجمة تفاعلية: تعيد ترجمة القوائم الخام كلما تغيّرت هي أو اللغة ──
+        // منفصلة عمداً عن isLoading/error (تُداران أدناه من مصدر البيانات
+        // نفسه: الكاش المحلي أو المزامنة الشبكية) حتى لا يمسح تغيّر اللغة
+        // حالة التحميل أو الخطأ الحاليين بالخطأ.
         viewModelScope.launch {
             combine(
-                container.herbRepository.observeCategories(),
-                container.herbRepository.observeHerbs(),
-                container.herbRepository.observeBlends(),
+                _rawCategories,
+                _rawHerbs,
+                _rawBlends,
                 container.preferencesRepository.appLanguage
             ) { categories, herbs, blends, language ->
                 // عند اختيار الإنجليزية، تُترجَم بيانات الأعشاب/التصنيفات/
@@ -288,24 +302,49 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 // الأعشاب، البحث، المفضلة، التصنيفات، التفاصيل، الخلطات...)
                 // دون أي تعديل إضافي في تلك الشاشات. راجع translateHerbs/
                 // translateCategories/translateBlends أدناه.
-                UiState(
-                    herbs = translateHerbs(herbs, language),
-                    categories = translateCategories(categories, language),
-                    blends = translateBlends(blends, language),
-                    isLoading = false,
-                    error = null
+                Triple(
+                    translateCategories(categories, language),
+                    translateHerbs(herbs, language),
+                    translateBlends(blends, language)
+                )
+            }.collect { (categories, herbs, blends) ->
+                _uiState.value = _uiState.value.copy(
+                    categories = categories,
+                    herbs = herbs,
+                    blends = blends
                 )
             }
-                .catch { e ->
-                    // Keep whatever data is already on screen (e.g. from the offline
-                    // cache) and only surface the error, instead of wiping the list.
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = HerbRepository.describeError(e)
-                    )
-                }
-                .collect { state -> _uiState.value = state }
         }
+
+        // ── مصدر البيانات: كاش محلي فوراً، ثم مزامنة شبكية مرة كل ٢٤ ساعة فقط ──
+        // كان التطبيق يفتح مستمع Firestore حيّ (addSnapshotListener) في كل مرة
+        // يُشغَّل فيها، لكل مستخدم - أي قراءة مدفوعة لكل وثيقة من كل تثبيت مع
+        // كل فتح للتطبيق. بحصة القراءات المجانية اليومية المحدودة، فتح ٥٠
+        // مستخدماً للتطبيق بنفس الوقت (خصوصاً أول مرة كل واحد منهم) يستهلك
+        // الحصة كاملة بسرعة. الآن: نعرض آخر نسخة محفوظة محلياً (DataStore -
+        // راجع PreferencesRepository.loadCachedCatalog) فوراً بلا أي اتصال
+        // شبكي، ولا نتصل بـ Firestore فعلياً (get() لمرة واحدة، وليس مستمعاً
+        // حياً) إلا إذا مرّ أكثر من CATALOG_MAX_AGE_MS (٢٤ ساعة) منذ آخر
+        // مزامنة ناجحة لهذا الجهاز تحديداً - أول تشغيل، أو يوم جديد.
+        viewModelScope.launch {
+            val cached = runCatching { container.preferencesRepository.loadCachedCatalog() }.getOrNull()
+            if (cached != null) {
+                _rawCategories.value = cached.categories
+                _rawHerbs.value = cached.herbs
+                _rawBlends.value = cached.blends
+                _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+            }
+            val isStale = cached == null ||
+                System.currentTimeMillis() - cached.lastSyncAt > PreferencesRepository.CATALOG_MAX_AGE_MS
+            if (isStale) {
+                syncCatalogFromServer(showLoading = cached == null)
+            }
+        }
+
+        // المزامنة الحيّة (لحظية عبر الأجهزة) تبقى فقط أثناء جلسة الأدمن، لأنه
+        // الوحيد الذي يحتاج فعلاً يرى تعديلاته وتعديلات مشرفين آخرين لحظياً
+        // أثناء العمل على المحتوى - راجع startAdminLiveSync ولوغن/لوغ آوت أدناه.
+        if (isAdmin) startAdminLiveSync()
 
         // عند تغيير لغة التطبيق (وليس أول قراءة عند بدء التشغيل، لذا drop(1))،
         // نظهر مؤشر تحميل صغير فوراً (نفس مؤشر "سحب للتحديث" — راجع
@@ -343,6 +382,69 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     }
                 }
         }
+    }
+
+    /**
+     * قراءة واحدة (get()) لكل من التصنيفات/الأعشاب/الخلطات - بدل مستمع حيّ -
+     * ثم تحديث الكاش المحلي بتوقيت هذه المزامنة. يُستدعى من init عند انتهاء
+     * صلاحية الكاش المحلي (٢٤ ساعة)، ومن [refresh] عند طلب المستخدم تحديثاً
+     * يدوياً (fromServer = true هناك لإجبار اتصال حقيقي بالسيرفر بدل
+     * الاكتفاء بكاش Firestore الداخلي - نفس الغرض من معامل fromServer
+     * السابق في fetchHerbs/fetchCategories/fetchBlends).
+     */
+    private suspend fun syncCatalogFromServer(showLoading: Boolean, fromServer: Boolean = false) {
+        if (showLoading) _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        try {
+            val categories = container.herbRepository.fetchCategories(fromServer)
+            val herbs = container.herbRepository.fetchHerbs(fromServer)
+            val blends = container.herbRepository.fetchBlends(fromServer)
+            _rawCategories.value = categories
+            _rawHerbs.value = herbs
+            _rawBlends.value = blends
+            container.preferencesRepository.saveCatalogCache(herbs, categories, blends)
+            _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+        } catch (e: Exception) {
+            // نبقي أي بيانات معروضة حالياً (من الكاش المحلي مثلاً) ونكتفي
+            // بإظهار الخطأ، بدل مسح القائمة بالكامل عند فشل الشبكة.
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = HerbRepository.describeError(e)
+            )
+        }
+    }
+
+    /**
+     * يفتح مستمعات Firestore الحيّة (addSnapshotListener) طوال جلسة الأدمن،
+     * فيرى أي تعديل - من هذا الجهاز أو جهاز/متصفح آخر لنفس الأدمن - لحظياً
+     * أثناء العمل على المحتوى، بدل انتظار دورة الـ٢٤ ساعة العادية. كل نسخة
+     * تصل من المستمع تُحفَظ أيضاً بالكاش المحلي فوراً (saveCatalogCache)
+     * فيستفيد المستخدم العادي من أحدث بيانات فور خروج الأدمن دون انتظار.
+     */
+    private fun startAdminLiveSync() {
+        if (adminSyncJob?.isActive == true) return
+        adminSyncJob = viewModelScope.launch {
+            combine(
+                container.herbRepository.observeCategories(),
+                container.herbRepository.observeHerbs(),
+                container.herbRepository.observeBlends()
+            ) { categories, herbs, blends -> Triple(categories, herbs, blends) }
+                .catch { e ->
+                    _uiState.value = _uiState.value.copy(error = HerbRepository.describeError(e))
+                }
+                .collect { (categories, herbs, blends) ->
+                    _rawCategories.value = categories
+                    _rawHerbs.value = herbs
+                    _rawBlends.value = blends
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+                    container.preferencesRepository.saveCatalogCache(herbs, categories, blends)
+                }
+        }
+    }
+
+    /** يُستدعى عند تسجيل خروج الأدمن، حتى لا يبقى مستمع حيّ مفتوحاً بلا داعٍ. */
+    private fun stopAdminLiveSync() {
+        adminSyncJob?.cancel()
+        adminSyncJob = null
     }
 
     /**
@@ -419,25 +521,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.semoLearningRepository.demote(question) }
     }
 
-    /** Manual retry: forces a real server round-trip to confirm connectivity and clear any error. */
+    /**
+     * Manual retry/refresh (e.g. "سحب للتحديث"): forces a real server round-trip
+     * (fromServer = true) and updates uiState + the local catalog cache directly -
+     * this is now the only path that talks to Firestore for a non-admin session
+     * outside the once-per-24h automatic sync in init.
+     */
     fun refresh() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            try {
-                container.herbRepository.fetchCategories(fromServer = true)
-                container.herbRepository.fetchHerbs(fromServer = true)
-                container.herbRepository.fetchBlends(fromServer = true)
-                // The live listeners above already keep uiState in sync with these
-                // results; this call's job is just to confirm connectivity and
-                // surface a clear error if it fails.
-                _uiState.value = _uiState.value.copy(isLoading = false)
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = HerbRepository.describeError(e)
-                )
-            }
-        }
+        viewModelScope.launch { syncCatalogFromServer(showLoading = true, fromServer = true) }
     }
 
     fun toggleFavorite(herbId: String) {
@@ -449,6 +540,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             val result = container.authRepository.login(email, password)
             isLoggedIn = result.success
             isAdmin = result.isAdmin
+            if (result.isAdmin) startAdminLiveSync()
             onResult(result.success, result.message)
         }
     }
@@ -458,10 +550,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         container.authRepository.logout()
         isLoggedIn = false
         isAdmin = false
+        stopAdminLiveSync()
     }
 
-    // Writes below don't call refresh(): the live Firestore listeners in init{}
-    // pick up every change automatically (instantly from the local cache, then
+    // Writes below don't call refresh(): the live Firestore listener started by
+    // startAdminLiveSync() (active for the whole admin session - see init{}/login())
+    // picks up every change automatically (instantly from the local cache, then
     // reconciled with the server), so an extra manual fetch would just be a
     // redundant round-trip and could momentarily race with the listener.
 
