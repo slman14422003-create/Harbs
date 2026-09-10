@@ -25,6 +25,14 @@ fun recommendedPerformanceMode(context: Context): PerformanceMode {
     // أنظمة التشغيل والتطبيقات الكبيرة لتقرير إيقاف الرسوم الثقيلة.
     if (activityManager.isLowRamDevice) return PerformanceMode.ECO
 
+    // لو كان المستخدم قد فعّل "توفير الطاقة" أصلاً وقت أول تشغيل للتطبيق،
+    // فهذا اختيار واعٍ منه لتقليل استهلاك الجهاز عموماً — من غير المنطقي
+    // أن يبدأ التطبيق افتراضياً بأثقل وضع رسوميات ممكن رغم ذلك. القيمة
+    // المحفوظة تبقى قابلة للتغيير يدوياً من الإعدادات لاحقاً كأي توصية
+    // أولى أخرى هنا؛ وبعد أول تشغيل يتولى rememberEffectivePerformanceMode
+    // (راجع RuntimePerformanceSignals.kt) التكيّف اللحظي مع نفس الإشارة.
+    if (isBatterySaverOn(context)) return PerformanceMode.ECO
+
     val memoryInfo = ActivityManager.MemoryInfo()
     return try {
         activityManager.getMemoryInfo(memoryInfo)
