@@ -37,9 +37,19 @@ import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.Manifest
+import android.os.Build
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
+import com.salman.herbalencyclopedia.data.update.UpdateDownloadState
 import com.salman.herbalencyclopedia.ui.UpdateCheckState
-import com.salman.herbalencyclopedia.ui.UpdateDownloadState
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
@@ -60,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -108,7 +119,7 @@ fun SettingsScreen(
     onCheckForUpdate: (android.content.Context) -> Unit,
     onDownloadUpdate: (android.content.Context, AppUpdateInfo) -> Unit,
     onInstallUpdate: (android.content.Context) -> Unit,
-    onCancelDownload: () -> Unit = {}
+    onCancelDownload: (android.content.Context) -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentVersionName = remember {
@@ -214,7 +225,7 @@ fun SettingsScreen(
                         onCheckForUpdate = { onCheckForUpdate(context) },
                         onDownloadUpdate = { info -> onDownloadUpdate(context, info) },
                         onInstallUpdate = { onInstallUpdate(context) },
-                        onCancelDownload = onCancelDownload
+                        onCancelDownload = { onCancelDownload(context) }
                     )
                 }
             }
@@ -756,12 +767,58 @@ private fun UpdateRow(
     onInstallUpdate: () -> Unit,
     onCancelDownload: () -> Unit = {}
 ) {
-    Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+    // أندرويد 13+ يتطلّب إذناً صريحاً قبل إظهار أي إشعار — بما فيها إشعار
+    // تقدّم تحميل التحديث بالخلفية. التحميل نفسه يعمل حتى بدون هذا الإذن،
+    // فقط الإشعار لن يظهر، لذا لا نمنع التحميل إن رُفض — فقط نطلبه مرة
+    // بشكل استباقي عند أول ضغطة على "تحميل التحديث".
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* النتيجة لا تغيّر أي شيء هنا — راجع التعليق أعلاه. */ }
+    val context = LocalContext.current
+    fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                    )
+                )
+            )
+            .border(
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                RoundedCornerShape(20.dp)
+            )
+            .padding(18.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(icon = Icons.Filled.SystemUpdate, tint = Color(0xFF1565C0))
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+            }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(tr("تحديث التطبيق"), fontWeight = FontWeight.SemiBold)
+                Text(tr("تحديث التطبيق"), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                 Text(
                     tr("الإصدار الحالي: $currentVersionName"),
                     style = MaterialTheme.typography.bodySmall,
@@ -778,116 +835,205 @@ private fun UpdateRow(
                 )
             }
         }
-        Spacer(Modifier.height(12.dp))
-        when (updateState) {
-            is UpdateCheckState.Idle -> {
-                OutlinedButton(onClick = onCheckForUpdate, modifier = Modifier.fillMaxWidth()) {
-                    Text(tr("التحقق من التحديثات"))
+        Spacer(Modifier.height(14.dp))
+
+        AnimatedContent(
+            targetState = updateState,
+            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
+            label = "updateCheckState"
+        ) { state ->
+            when (state) {
+                is UpdateCheckState.Idle -> {
+                    OutlinedButton(
+                        onClick = onCheckForUpdate,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Filled.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("التحقق من التحديثات"))
+                    }
                 }
-            }
-            is UpdateCheckState.Checking -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text(tr("جارٍ التحقق من وجود تحديث..."), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            is UpdateCheckState.UpToDate -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(tr("التطبيق محدّث لأحدث إصدار"), style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onCheckForUpdate) { Text(tr("إعادة التحقق")) }
-                }
-            }
-            is UpdateCheckState.Error -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(updateState.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onCheckForUpdate) { Text(tr("إعادة المحاولة")) }
-                }
-            }
-            is UpdateCheckState.Available -> {
-                val info = updateState.info
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-                        .padding(14.dp)
-                ) {
+                is UpdateCheckState.Checking -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            tr("يتوفر تحديث جديد: v${info.versionName}"),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (info.mandatory) {
-                            Text(
-                                tr("إجباري"),
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(tr("جارٍ التحقق من وجود تحديث..."), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                is UpdateCheckState.UpToDate -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("التطبيق محدّث لأحدث إصدار"), style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = onCheckForUpdate) { Text(tr("إعادة التحقق")) }
+                    }
+                }
+                is UpdateCheckState.Error -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(state.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        TextButton(onClick = onCheckForUpdate) { Text(tr("إعادة المحاولة")) }
+                    }
+                }
+                is UpdateCheckState.Available -> {
+                    val info = state.info
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+                            .border(
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                                RoundedCornerShape(16.dp)
                             )
-                        }
-                    }
-                    if (info.releaseNotes.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            info.releaseNotes,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    when (downloadState) {
-                        is UpdateDownloadState.Idle -> {
-                            Button(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
-                                Text(tr("تحميل التحديث"))
-                            }
-                        }
-                        is UpdateDownloadState.Downloading -> {
-                            Column {
-                                LinearProgressIndicator(
-                                    progress = { downloadState.progress / 100f },
-                                    modifier = Modifier.fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    "v${info.versionName}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                Spacer(Modifier.height(6.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                tr("يتوفر تحديث جديد"),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (info.mandatory) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(MaterialTheme.colorScheme.errorContainer)
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
                                     Text(
-                                        tr("جارٍ التنزيل... ${downloadState.progress}%"),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.weight(1f)
+                                        tr("إجباري"),
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                    TextButton(onClick = onCancelDownload) { Text(tr("إلغاء")) }
                                 }
                             }
                         }
-                        is UpdateDownloadState.ReadyToInstall -> {
-                            Button(
-                                onClick = onInstallUpdate,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                            ) {
-                                Icon(Icons.Filled.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(tr("فتح ملف التحديث"))
-                            }
+                        if (info.releaseNotes.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                info.releaseNotes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                        is UpdateDownloadState.Failed -> {
-                            Column {
-                                Text(
-                                    downloadState.message,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedButton(onClick = { onDownloadUpdate(info) }, modifier = Modifier.fillMaxWidth()) {
-                                    Text(tr("إعادة المحاولة"))
+                        Spacer(Modifier.height(12.dp))
+                        AnimatedContent(
+                            targetState = downloadState,
+                            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
+                            label = "updateDownloadState"
+                        ) { dState ->
+                            when (dState) {
+                                is UpdateDownloadState.Idle -> {
+                                    Button(
+                                        onClick = {
+                                            requestNotificationPermissionIfNeeded()
+                                            onDownloadUpdate(info)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text(tr("تحميل التحديث"))
+                                    }
+                                }
+                                is UpdateDownloadState.Downloading -> {
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                CircularProgressIndicator(
+                                                    progress = { dState.progress / 100f },
+                                                    modifier = Modifier.size(36.dp),
+                                                    strokeWidth = 3.dp
+                                                )
+                                                Text(
+                                                    "${dState.progress}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    tr("جارٍ التحميل بالخلفية..."),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                                Text(
+                                                    tr("يمكنك إغلاق هذه الشاشة — سيصلك إشعار عند الانتهاء"),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            TextButton(onClick = onCancelDownload) { Text(tr("إلغاء")) }
+                                        }
+                                    }
+                                }
+                                is UpdateDownloadState.ReadyToInstall -> {
+                                    Column {
+                                        Button(
+                                            onClick = onInstallUpdate,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                                        ) {
+                                            Icon(Icons.Filled.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(tr("تثبيت الآن"))
+                                        }
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            tr("التحديث جاهز — يمكنك أيضاً الضغط على الإشعار للتثبيت"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                is UpdateDownloadState.Failed -> {
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Filled.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                dState.message,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        OutlinedButton(
+                                            onClick = { onDownloadUpdate(info) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Text(tr("إعادة المحاولة"))
+                                        }
+                                    }
                                 }
                             }
                         }
