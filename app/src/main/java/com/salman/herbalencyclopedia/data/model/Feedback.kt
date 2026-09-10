@@ -37,6 +37,18 @@ data class Feedback @JvmOverloads constructor(
     @set:PropertyName("sender_name")
     var senderName: String? = null,
 
+    /**
+     * هوية Firebase Auth المجهولة (Anonymous Auth) الخاصة بالجهاز المُرسِل —
+     * تختلف عن [senderName] (اسم اختياري يكتبه المستخدم بنفسه ولا يُوثَّق).
+     * هذا الحقل هو ما يسمح للأدمن بحظر مُرسِل مسيء لاحقاً (انظر
+     * AdminFeedbackScreen وFeedbackRepository.blockUser)، لأنه ثابت لكل جهاز
+     * بصرف النظر عمّا يكتبه في خانة الاسم. قد يكون فارغاً في ملاحظات قديمة
+     * أُرسِلت قبل إضافة هذه الميزة.
+     */
+    @get:PropertyName("sender_uid")
+    @set:PropertyName("sender_uid")
+    var senderUid: String? = null,
+
     @get:PropertyName("created_at")
     @set:PropertyName("created_at")
     var createdAt: Timestamp? = null
