@@ -687,7 +687,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     private var feedbackJob: Job? = null
 
-    /** Sending is open to everyone — no admin/login check here on purpose. */
+    /**
+     * Sending is open to everyone — no admin/login check here on purpose.
+     * لكنها تحتاج هوية جهاز مجهولة (Anonymous Auth) قبل الإرسال الفعلي، وإلا
+     * رفضتها firestore.rules؛ راجع AuthRepository.ensureAnonymousUid وتوثيق
+     * blockUser أدناه لسبب وجود هذه الخطوة.
+     */
     fun submitFeedback(
         targetType: String,
         targetId: String,
@@ -698,7 +703,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     ) {
         viewModelScope.launch {
             try {
-                container.feedbackRepository.submitFeedback(targetType, targetId, targetName, message, senderName)
+                val senderUid = container.authRepository.ensureAnonymousUid()
+                container.feedbackRepository.submitFeedback(targetType, targetId, targetName, message, senderName, senderUid)
                 onDone(true, null)
             } catch (e: Exception) {
                 onDone(false, HerbRepository.describeError(e))
@@ -728,6 +734,49 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             try {
                 container.feedbackRepository.deleteFeedback(id)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // حظر مُرسِلين مسيئين ("هذا الشخص يسيء أو يتلاعب") — يمنعهم من إرسال
+    // ملاحظات جديدة دون التأثير على أي ملاحظة سابقة أُرسِلت. انظر
+    // FeedbackRepository وfirestore.rules (مجموعة blocked_users) للآلية الكاملة.
+    // ---------------------------------------------------------------------
+
+    private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
+    val blockedUserIds: StateFlow<Set<String>> = _blockedUserIds.asStateFlow()
+
+    private var blockedUsersJob: Job? = null
+
+    /** Starts (once) the admin-only live listener backing [blockedUserIds]. Safe to call every time the screen opens. */
+    fun loadBlockedUsers() {
+        if (blockedUsersJob?.isActive == true) return
+        blockedUsersJob = viewModelScope.launch {
+            container.feedbackRepository.observeBlockedUsers()
+                .catch { /* القائمة تبقى كما هي عند أي انقطاع؛ لا حاجة لإظهار خطأ هنا */ }
+                .collect { list -> _blockedUserIds.value = list.map { it.uid }.toSet() }
+        }
+    }
+
+    fun blockUser(uid: String, senderName: String?, onDone: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            try {
+                container.feedbackRepository.blockUser(uid, senderName)
+                onDone(true, null)
+            } catch (e: Exception) {
+                onDone(false, HerbRepository.describeError(e))
+            }
+        }
+    }
+
+    fun unblockUser(uid: String, onDone: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            try {
+                container.feedbackRepository.unblockUser(uid)
                 onDone(true, null)
             } catch (e: Exception) {
                 onDone(false, HerbRepository.describeError(e))
