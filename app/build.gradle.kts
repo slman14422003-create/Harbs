@@ -29,6 +29,19 @@ val hasEnvSigning = !releaseStoreFile.isNullOrBlank() &&
     !releaseKeyPassword.isNullOrBlank()
 val hasLocalSigning = keystorePropertiesFile.exists()
 
+// SHA-256 (hex, no colons) of the *release* signing certificate, used by
+// SecurityUtils.kt at runtime to detect a repackaged/re-signed APK (a common
+// result of apktool decompile → edit → resign → reinstall). Read from a CI
+// env var first, then from keystore.properties for local builds, so nothing
+// sensitive needs to be hardcoded in source. Get this value once with:
+//   keytool -list -v -keystore <your.keystore> -alias <alias> | grep "SHA256:"
+// (strip the colons). Leave it unset/blank and the check is skipped entirely
+// - it only activates once you provide the real value.
+val releaseSignatureSha256: String =
+    (System.getenv("RELEASE_SIGNATURE_SHA256")
+        ?: keystoreProperties["signatureSha256"] as String?
+        ?: "").replace(":", "").uppercase()
+
 android {
     namespace = "com.salman.herbalencyclopedia"
     compileSdk = 36
@@ -41,6 +54,8 @@ android {
         versionName = System.getenv("APP_VERSION_NAME") ?: "1.0"
 
         vectorDrawables.useSupportLibrary = true
+
+        buildConfigField("String", "EXPECTED_SIGNATURE_SHA256", "\"$releaseSignatureSha256\"")
     }
 
     signingConfigs {
@@ -86,6 +101,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // قاعدة بيانات القاموس المحلي (assets/lexicon/ar_synonyms.db) تُستثنى من
