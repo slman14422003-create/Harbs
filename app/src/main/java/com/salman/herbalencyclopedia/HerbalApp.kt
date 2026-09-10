@@ -9,9 +9,13 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.PersistentCacheSettings
 import com.salman.herbalencyclopedia.data.ai.DictionaryLexicon
 import com.salman.herbalencyclopedia.data.image.DataUriFetcher
 import com.salman.herbalencyclopedia.data.repository.AppContainer
+import com.salman.herbalencyclopedia.data.repository.HerbRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +63,29 @@ class HerbalApp : Application(), ImageLoaderFactory {
         // subsequent Firestore/Auth request can carry an attestation token. Release
         // builds use Play Integrity; debug builds use Firebase's debug provider.
         if (firebaseApp != null) FirebaseSecurity.install()
+
+        // إعدادات كاش Firestore المحلي تُضبط هنا - مرة واحدة فقط عند بدء
+        // التطبيق، قبل أي Activity أو ViewModel أو Repository (مثل
+        // HerbRepository أو SemoLearningRepository، وكلاهما يستخدمان نفس
+        // كائن FirebaseFirestore.getInstance() المشترك) يلمس Firestore بأي
+        // شكل. Firestore يرفض تغيير الإعدادات بعد أول استخدام فعلي للكائن
+        // برسالة "FirebaseFirestore has already been started..." - كانت
+        // هذه الإعدادات مضبوطة سابقاً داخل init{} الخاص بـ HerbRepository
+        // نفسها، وكان هذا يعمل فقط بالصدفة لأنها كانت أول من يُستخدم؛ أي
+        // إعادة ترتيب لاحقة لتسلسل استدعاءات AppViewModel (كإضافة قراءة
+        // كاش محلي أو مزامنة مؤجّلة) قد تجعل مستودعاً آخر يلمس Firestore
+        // أولاً بلا قصد، فيفشل ضبط الإعدادات هنا. وضعها في Application.onCreate
+        // يضمن الترتيب دائماً بحكم دورة حياة التطبيق نفسها، بصرف النظر عن أي
+        // تعديل مستقبلي بترتيب كود الشاشات أو الـViewModel.
+        if (firebaseApp != null) {
+            FirebaseFirestore.getInstance().firestoreSettings = FirebaseFirestoreSettings.Builder()
+                .setLocalCacheSettings(
+                    PersistentCacheSettings.newBuilder()
+                        .setSizeBytes(HerbRepository.PERSISTENT_CACHE_BYTES)
+                        .build()
+                )
+                .build()
+        }
 
         // ينسخ قاعدة بيانات القاموس المحلي (SQLite، مُدمَجة كجزء أساسي من
         // التطبيق) مرة واحدة إلى تخزين التطبيق الداخلي ثم يفتحها — انظر توثيق
