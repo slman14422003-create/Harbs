@@ -64,8 +64,22 @@ sealed class UpdateCheckState {
 class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     companion object {
-        /** أقصى مدة انتظار لمزامنة الموسوعة من Firestore قبل اعتبارها فاشلة - راجع [syncCatalogFromServer]. */
+        /** أقصى مدة انتظار لكل محاولة مزامنة من Firestore قبل اعتبارها فاشلة - راجع [syncCatalogFromServer]. */
         private const val CATALOG_SYNC_TIMEOUT_MS = 20_000L
+
+        /**
+         * عدد محاولات المزامنة التلقائية الداخلية قبل إظهار رسالة الخطأ
+         * للمستخدم - راجع [syncCatalogFromServer]. كانت هناك محاولة واحدة
+         * فقط، فيضطر المستخدم (خصوصاً عند أول تشغيل بلا أي كاش Firestore
+         * داخلي بعد، على اتصال ضعيف) للضغط يدوياً على "حاول مرة أخرى" عدة
+         * مرات حتى تصادف إحدى المحاولات نجاحاً. الآن التطبيق نفسه يكرر
+         * المحاولة داخلياً (بمهلة قصيرة متزايدة بين كل محاولة) قبل أن يعرض
+         * أي خطأ للمستخدم.
+         */
+        private const val MAX_CATALOG_SYNC_ATTEMPTS = 4
+
+        /** المهلة بين محاولات المزامنة الداخلية المتتالية - راجع [syncCatalogFromServer]. */
+        private const val CATALOG_SYNC_RETRY_DELAY_MS = 1_500L
     }
 
     private val _uiState = MutableStateFlow(UiState())
@@ -409,48 +423,71 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      * الاكتفاء بكاش Firestore الداخلي - نفس الغرض من معامل fromServer
      * السابق في fetchHerbs/fetchCategories/fetchBlends).
      *
-     * مُغلَّفة بمهلة زمنية [CATALOG_SYNC_TIMEOUT_MS]: مستمع Firestore الحيّ
-     * القديم (addSnapshotListener) كان "يفشل بلطف" تلقائياً عند سوء الاتصال
-     * (يعرض الكاش الداخلي فوراً إن وُجد، أو يُبقي الحالة معلّقة بانتظار
-     * محاولات retryWhen). لكن get() عبر Task.await() هنا قد يعلق بلا نهاية
-     * على اتصال ضعيف/متقطع (خصوصاً أول مستخدم جديد بلا أي كاش Firestore
-     * داخلي بعد) دون أن يرمي استثناءً أو ينجح - فتبقى شاشة التحميل معلّقة
-     * للأبد (isLoading لا يعود false أبداً). withTimeoutOrNull هنا يضمن
-     * دائماً أن تنتهي هذه الدالة خلال مدة معقولة، إما بنجاح أو بخطأ واضح مع
-     * زر "إعادة المحاولة" - بدل تعليق غير محدود.
+     * مُغلَّفة بمهلة زمنية [CATALOG_SYNC_TIMEOUT_MS] لكل محاولة: مستمع
+     * Firestore الحيّ القديم (addSnapshotListener) كان "يفشل بلطف" تلقائياً
+     * عند سوء الاتصال (يعرض الكاش الداخلي فوراً إن وُجد، أو يُبقي الحالة
+     * معلّقة بانتظار محاولات retryWhen). لكن get() عبر Task.await() هنا قد
+     * يعلق بلا نهاية على اتصال ضعيف/متقطع (خصوصاً أول مستخدم جديد بلا أي
+     * كاش Firestore داخلي بعد) دون أن يرمي استثناءً أو ينجح - فتبقى شاشة
+     * التحميل معلّقة للأبد (isLoading لا يعود false أبداً). withTimeoutOrNull
+     * هنا يضمن دائماً أن تنتهي كل محاولة خلال مدة معقولة.
+     *
+     * وبما أن المهلة (خصوصاً على اتصال ضعيف) قد تُستهلَك دون أي رد فعلي من
+     * الخادم - لا نجاح ولا استثناء واضح - فإن محاولة واحدة فقط كانت تعرض
+     * رسالة الخطأ للمستخدم فوراً وتتركه يضغط "حاول مرة أخرى" يدوياً عدة
+     * مرات حتى تصادف إحدى المحاولات نجاحاً. الآن تُكرَّر المحاولة داخلياً
+     * حتى [MAX_CATALOG_SYNC_ATTEMPTS] مرات (بمهلة قصيرة بين كل محاولة) قبل
+     * إظهار أي خطأ - فيغطّي هذا التكرار الداخلي نفس حالات الاتصال الضعيف
+     * التي كانت تحتاج ضغطات متكررة يدوية، دون أن يشعر المستخدم بها سوى
+     * كتحميل أطول قليلاً عند أول تشغيل.
      */
     private suspend fun syncCatalogFromServer(showLoading: Boolean, fromServer: Boolean = false) {
         if (showLoading) _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        val result = withTimeoutOrNull(CATALOG_SYNC_TIMEOUT_MS) {
-            runCatching {
-                val categories = container.herbRepository.fetchCategories(fromServer)
-                val herbs = container.herbRepository.fetchHerbs(fromServer)
-                val blends = container.herbRepository.fetchBlends(fromServer)
-                Triple(categories, herbs, blends)
+
+        var lastResult: Result<Triple<List<Category>, List<Herb>, List<Blend>>>? = null
+        for (attempt in 1..MAX_CATALOG_SYNC_ATTEMPTS) {
+            val result = withTimeoutOrNull(CATALOG_SYNC_TIMEOUT_MS) {
+                runCatching {
+                    val categories = container.herbRepository.fetchCategories(fromServer)
+                    val herbs = container.herbRepository.fetchHerbs(fromServer)
+                    val blends = container.herbRepository.fetchBlends(fromServer)
+                    Triple(categories, herbs, blends)
+                }
             }
-        }
-        when {
-            result == null -> {
-                // انتهت المهلة قبل أي رد من Firestore (لا نجاح ولا استثناء) - غالباً اتصال ضعيف/متقطع.
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "تعذّر الاتصال بالخادم خلال مدة معقولة. تحقق من اتصال الإنترنت وحاول مرة أخرى."
-                )
-            }
-            result.isSuccess -> {
+
+            if (result != null && result.isSuccess) {
                 val (categories, herbs, blends) = result.getOrThrow()
                 _rawCategories.value = categories
                 _rawHerbs.value = herbs
                 _rawBlends.value = blends
                 container.preferencesRepository.saveCatalogCache(herbs, categories, blends)
                 _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+                return
+            }
+
+            lastResult = result
+            // لا فائدة من إعادة محاولة أخطاء ليست متعلقة بضعف/انقطاع الاتصال
+            // (كصلاحيات مرفوضة مثلاً) - نخرج فوراً بنفس رسالة الخطأ المعتادة.
+            val exception = result?.exceptionOrNull()
+            if (exception != null && !HerbRepository.isTransientError(exception)) break
+
+            if (attempt < MAX_CATALOG_SYNC_ATTEMPTS) delay(CATALOG_SYNC_RETRY_DELAY_MS)
+        }
+
+        when {
+            lastResult == null -> {
+                // انتهت كل المحاولات دون أي رد من Firestore (لا نجاح ولا استثناء) - غالباً اتصال ضعيف/متقطع.
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "تعذّر الاتصال بالخادم خلال مدة معقولة. تحقق من اتصال الإنترنت وحاول مرة أخرى."
+                )
             }
             else -> {
                 // نبقي أي بيانات معروضة حالياً (من الكاش المحلي مثلاً) ونكتفي
                 // بإظهار الخطأ، بدل مسح القائمة بالكامل عند فشل الشبكة.
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = HerbRepository.describeError(result.exceptionOrNull()!!)
+                    error = HerbRepository.describeError(lastResult.exceptionOrNull()!!)
                 )
             }
         }
