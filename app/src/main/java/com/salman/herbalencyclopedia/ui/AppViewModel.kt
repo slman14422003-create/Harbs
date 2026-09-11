@@ -15,6 +15,7 @@ import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.data.model.Blend
+import com.salman.herbalencyclopedia.data.model.BlockedUser
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.data.model.Herb
@@ -704,6 +705,20 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             try {
                 val senderUid = container.authRepository.ensureAnonymousUid()
+                if (senderUid == null) {
+                    // بلا هوية جهاز، سترفض قاعدة firestore.rules الكتابة حتماً
+                    // (data.sender_uid == request.auth.uid). لو أرسلنا رغم ذلك
+                    // مع كاش Firestore المحلي المفعَّل، فستُقبَل محلياً كـ"نجاح"
+                    // فورياً وتبقى في طابور الانتظار، ثم تُرفَض بصمت لاحقاً عند
+                    // عودة الاتصال — فيظن المستخدم أن ملاحظته وصلت وهي لم تصل
+                    // إطلاقاً. الأسلم إخباره الآن بوضوح بدل هذا الفشل الصامت
+                    // المؤجَّل. يحدث هذا فقط في أول محاولة إرسال من هذا الجهاز
+                    // إطلاقاً بلا اتصال إنترنت (Anonymous Auth يحتاج اتصالاً
+                    // لمرة واحدة فقط لإنشاء الهوية؛ بعدها تُستخدَم من الكاش
+                    // المحلي حتى بلا إنترنت).
+                    onDone(false, "يحتاج إرسال أول ملاحظة من هذا الجهاز اتصالاً بالإنترنت. تحقق من الاتصال وحاول مجدداً.")
+                    return@launch
+                }
                 container.feedbackRepository.submitFeedback(targetType, targetId, targetName, message, senderName, senderUid)
                 onDone(true, null)
             } catch (e: Exception) {
@@ -747,18 +762,24 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     // FeedbackRepository وfirestore.rules (مجموعة blocked_users) للآلية الكاملة.
     // ---------------------------------------------------------------------
 
-    private val _blockedUserIds = MutableStateFlow<Set<String>>(emptySet())
-    val blockedUserIds: StateFlow<Set<String>> = _blockedUserIds.asStateFlow()
+    private val _blockedUsers = MutableStateFlow<List<BlockedUser>>(emptyList())
+    /**
+     * القائمة الكاملة (لا مجرّد المعرّفات) عمداً — تُستخدَم في AdminFeedbackScreen
+     * لعرض "المحظورون" كقائمة مستقلة يمكن فكّ الحظر منها حتى بعد حذف كل
+     * ملاحظات الشخص المحظور (وإلا يضيع أي أثر له فيصبح الحظر دائماً بلا رجعة
+     * عملياً). استخرج المعرّفات فقط عبر `.map { it.uid }.toSet()` عند الحاجة.
+     */
+    val blockedUsers: StateFlow<List<BlockedUser>> = _blockedUsers.asStateFlow()
 
     private var blockedUsersJob: Job? = null
 
-    /** Starts (once) the admin-only live listener backing [blockedUserIds]. Safe to call every time the screen opens. */
+    /** Starts (once) the admin-only live listener backing [blockedUsers]. Safe to call every time the screen opens. */
     fun loadBlockedUsers() {
         if (blockedUsersJob?.isActive == true) return
         blockedUsersJob = viewModelScope.launch {
             container.feedbackRepository.observeBlockedUsers()
                 .catch { /* القائمة تبقى كما هي عند أي انقطاع؛ لا حاجة لإظهار خطأ هنا */ }
-                .collect { list -> _blockedUserIds.value = list.map { it.uid }.toSet() }
+                .collect { list -> _blockedUsers.value = list }
         }
     }
 
