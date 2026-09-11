@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.salman.herbalencyclopedia.data.model.BlockedUser
 import com.salman.herbalencyclopedia.data.model.Feedback
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
@@ -45,14 +46,19 @@ fun AdminFeedbackScreen(
     onBack: () -> Unit,
     onDelete: (Feedback) -> Unit,
     // ── حظر مُرسِل مسيء أو متلاعب: يمنعه فقط من إرسال ملاحظات جديدة (لا يحذف
-    // ما أرسله سابقاً، ذلك قرار منفصل عبر onDelete أعلاه). blockedUserIds تأتي
-    // حيّة من AppViewModel.blockedUserIds لتلوين زر الحظر/فك الحظر فوراً. ──
-    blockedUserIds: Set<String> = emptySet(),
-    onBlock: (Feedback) -> Unit = {},
-    onUnblock: (Feedback) -> Unit = {}
+    // ما أرسله سابقاً، ذلك قرار منفصل عبر onDelete أعلاه). blockedUsers تأتي
+    // حيّة من AppViewModel.blockedUsers، وهي القائمة الكاملة (لا مجرّد
+    // المعرّفات) عمداً: لو حذف الأدمن كل ملاحظات شخص محظور، تبقى هذه القائمة
+    // — عبر زر "المحظورون" بالأعلى — الطريقة الوحيدة لرؤيته وفكّ حظره لاحقاً،
+    // إذ لن يظهر له أي أثر آخر في هذه الشاشة بعد حذف ملاحظاته. ──
+    blockedUsers: List<BlockedUser> = emptyList(),
+    onBlock: (uid: String, senderName: String?) -> Unit = { _, _ -> },
+    onUnblock: (uid: String) -> Unit = {}
 ) {
     var pendingDelete by remember { mutableStateOf<Feedback?>(null) }
     var pendingBlock by remember { mutableStateOf<Feedback?>(null) }
+    var showBlockedList by remember { mutableStateOf(false) }
+    val blockedIds = remember(blockedUsers) { blockedUsers.map { it.uid }.toSet() }
     val dateFormat = remember { SimpleDateFormat("d MMM yyyy، HH:mm", Locale("ar")) }
 
     Scaffold(
@@ -71,6 +77,13 @@ fun AdminFeedbackScreen(
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("رجوع"))
+                    }
+                },
+                actions = {
+                    if (blockedUsers.isNotEmpty()) {
+                        GlassIconButton(onClick = { showBlockedList = true }) {
+                            Icon(Icons.Filled.Block, contentDescription = tr("المحظورون (${blockedUsers.size})"))
+                        }
                     }
                 }
             )
@@ -107,11 +120,11 @@ fun AdminFeedbackScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                val isBlocked = !item.senderUid.isNullOrBlank() && item.senderUid in blockedUserIds
+                                val isBlocked = !item.senderUid.isNullOrBlank() && item.senderUid in blockedIds
                                 // ملاحظات قديمة أُرسِلت قبل إضافة sender_uid لا تحمل هوية جهاز يمكن حظرها.
                                 if (!item.senderUid.isNullOrBlank()) {
                                     GlassIconButton(
-                                        onClick = { if (isBlocked) onUnblock(item) else pendingBlock = item },
+                                        onClick = { if (isBlocked) onUnblock(item.senderUid!!) else pendingBlock = item },
                                         size = 36.dp
                                     ) {
                                         Icon(
@@ -141,7 +154,7 @@ fun AdminFeedbackScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (!item.senderUid.isNullOrBlank() && item.senderUid in blockedUserIds) {
+                                if (!item.senderUid.isNullOrBlank() && item.senderUid in blockedIds) {
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         tr("• محظور"),
@@ -192,12 +205,52 @@ fun AdminFeedbackScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    onBlock(item)
+                    item.senderUid?.let { onBlock(it, item.senderName) }
                     pendingBlock = null
                 }) { Text(tr("حظر"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { pendingBlock = null }) { Text(tr("إلغاء")) }
+            }
+        )
+    }
+
+    if (showBlockedList) {
+        AlertDialog(
+            onDismissRequest = { showBlockedList = false },
+            title = { Text(tr("المحظورون (${blockedUsers.size})")) },
+            text = {
+                if (blockedUsers.isEmpty()) {
+                    Text(tr("لا يوجد أحد محظور حالياً."))
+                } else {
+                    // قائمة مستقلة تماماً عن Feedback المعروضة أعلاه عمداً — تبقى
+                    // متاحة حتى لو حذف الأدمن كل ملاحظات هذا الشخص لاحقاً، فهي
+                    // الطريقة الوحيدة عندها لفكّ حظره مجدداً.
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(blockedUsers, key = { it.uid }) { user ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        user.senderName?.ifBlank { null } ?: tr("مرسل مجهول"),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        user.blockedAt?.toDate()?.let { dateFormat.format(it) } ?: user.uid.take(10),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                TextButton(onClick = { onUnblock(user.uid) }) { Text(tr("فك الحظر")) }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBlockedList = false }) { Text(tr("إغلاق")) }
             }
         )
     }
