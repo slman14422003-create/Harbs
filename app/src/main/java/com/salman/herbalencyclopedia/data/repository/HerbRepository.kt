@@ -251,6 +251,23 @@ class HerbRepository(
          */
         const val PERSISTENT_CACHE_BYTES: Long = 40L * 1024 * 1024
 
+        /**
+         * صحيح إذا كان الاستثناء غالباً مؤقتاً بسبب ضعف/انقطاع الاتصال
+         * (فيستحق إعادة محاولة تلقائية داخلية - راجع
+         * [com.salman.herbalencyclopedia.ui.AppViewModel.syncCatalogFromServer])
+         * لا أخطاء دائمة كرفض الصلاحيات أو عدم تسجيل الدخول، التي لن تتغير
+         * بإعادة المحاولة.
+         */
+        fun isTransientError(e: Throwable): Boolean {
+            val code = (e as? FirebaseFirestoreException)?.code
+            return code == null ||
+                code == FirebaseFirestoreException.Code.UNAVAILABLE ||
+                code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ||
+                code == FirebaseFirestoreException.Code.ABORTED ||
+                code == FirebaseFirestoreException.Code.CANCELLED ||
+                code == FirebaseFirestoreException.Code.UNKNOWN
+        }
+
         /** Turns a Firestore/network exception into a short, user-facing Arabic message. */
         fun describeError(e: Throwable): String {
             val code = (e as? FirebaseFirestoreException)?.code
