@@ -43,8 +43,24 @@ private val staticDictionary: Map<String, String> = mapOf(
 
     // الرئيسية
     "موسوعة الأعشاب الطبية" to "Herbal Encyclopedia",
+    // تحية الشريط العلوي — راجع greetingForNow في HomeScreen.kt لسبب وجود
+    // عدة صيغ لكل فترة يومية بدل جملتين ثابتتين فقط.
     "أهلاً بك، صباح الخير" to "Welcome, good morning",
+    "صباح الخير، يومك مليء بالنشاط" to "Good morning, have an energetic day",
+    "صباح النور، أهلاً بعودتك" to "Good morning, welcome back",
+    "أهلاً بك، بداية موفّقة ليومك" to "Welcome, here's to a great start to your day",
+    "أهلاً بك، نهارك سعيد" to "Welcome, have a great day",
+    "طاب نهارك، أهلاً بعودتك" to "Good day, welcome back",
+    "أهلاً بك، وقت رائع لاستكشاف الأعشاب" to "Welcome, a great time to explore herbs",
+    "نهارك مليء بالصحة والعافية" to "Wishing you a healthy, wonderful day",
     "أهلاً بك، مساء الخير" to "Welcome, good evening",
+    "مساء النور، أهلاً بعودتك" to "Good evening, welcome back",
+    "أهلاً بك، أمسية طيبة" to "Welcome, have a pleasant evening",
+    "مساء الخير، وقت هادئ لتصفّح الموسوعة" to "Good evening, a calm time to browse the encyclopedia",
+    "أهلاً بك، ليلة سعيدة" to "Welcome, good night",
+    "طابت ليلتك، أهلاً بعودتك" to "Good night, welcome back",
+    "أهلاً بك، سهرة هادئة معك" to "Welcome, wishing you a calm evening",
+    "ليلتك طيبة، أهلاً بك من جديد" to "Good night, welcome back again",
     "لوحة التحكم" to "Admin Panel",
 
     // شاشة تفاصيل العشبة
