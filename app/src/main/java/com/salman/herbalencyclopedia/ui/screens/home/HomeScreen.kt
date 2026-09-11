@@ -33,14 +33,44 @@ import com.salman.herbalencyclopedia.ui.theme.staggeredEntrance
 import java.util.Calendar
 
 /**
- * قبل هذا التعديل كان الشريط العلوي يعرض جملة تعريفية ثابتة لا تتغيّر أبداً
- * ("معرفة موثوقة • تجربة هادئة • تصميم حديث"). هذه الدالة تستبدلها بتحية
- * فعلية مبنية على وقت الجهاز، كي يشعر الشريط العلوي بأنه "حي" ومخصص لكل
- * زيارة بدل شعار تسويقي جامد.
+ * تحية الشريط العلوي — كانت فترتين فقط (صباح/مساء) بجملة واحدة ثابتة لكل
+ * فترة، فتتكرر حرفياً بلا أي تنوّع طوال نصف اليوم. الآن أربع فترات يومية
+ * (صباح، ظهر/عصر، مساء، ليل) وبعدة صيغ لكل فترة تُختار عشوائياً — تُحسَب
+ * مرة واحدة فقط لكل دخول للشاشة الرئيسية (انظر `remember` عند نقطة
+ * الاستخدام بالأسفل) كي لا تتغيّر الجملة أثناء إعادة تركيب الواجهة نفسها
+ * (كتبديل الثيم مثلاً) وتبدو وكأنها تُعاد عشوائياً بلا سبب. تحل هذه الدالة
+ * محل الجملة التعريفية الثابتة القديمة ("معرفة موثوقة • تجربة هادئة •
+ * تصميم حديث") التي كانت لا تتغيّر أبداً.
  */
 private fun greetingForNow(): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return if (hour in 5..11) "أهلاً بك، صباح الخير" else "أهلاً بك، مساء الخير"
+    val options = when (hour) {
+        in 4..9 -> listOf(
+            "أهلاً بك، صباح الخير",
+            "صباح الخير، يومك مليء بالنشاط",
+            "صباح النور، أهلاً بعودتك",
+            "أهلاً بك، بداية موفّقة ليومك"
+        )
+        in 10..16 -> listOf(
+            "أهلاً بك، نهارك سعيد",
+            "طاب نهارك، أهلاً بعودتك",
+            "أهلاً بك، وقت رائع لاستكشاف الأعشاب",
+            "نهارك مليء بالصحة والعافية"
+        )
+        in 17..20 -> listOf(
+            "أهلاً بك، مساء الخير",
+            "مساء النور، أهلاً بعودتك",
+            "أهلاً بك، أمسية طيبة",
+            "مساء الخير، وقت هادئ لتصفّح الموسوعة"
+        )
+        else -> listOf(
+            "أهلاً بك، ليلة سعيدة",
+            "طابت ليلتك، أهلاً بعودتك",
+            "أهلاً بك، سهرة هادئة معك",
+            "ليلتك طيبة، أهلاً بك من جديد"
+        )
+    }
+    return options.random()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,6 +91,8 @@ fun HomeScreen(
     onBlendsClick: () -> Unit,
     onSupportClick: () -> Unit = {}
 ) {
+    // مرة واحدة فقط لكل دخول للشاشة — راجع تعليق greetingForNow أعلاه.
+    val greeting = remember { greetingForNow() }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         // هذه الشاشة تظهر دائماً فوق OneUiFloatingNavBar (شاشة جذر ضمن
@@ -115,7 +147,7 @@ fun HomeScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                com.salman.herbalencyclopedia.ui.util.tr(greetingForNow()),
+                                com.salman.herbalencyclopedia.ui.util.tr(greeting),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
