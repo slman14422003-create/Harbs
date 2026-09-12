@@ -12,6 +12,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
+import com.salman.herbalencyclopedia.data.ai.HerbCategoryLookup
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.data.model.Blend
@@ -338,6 +339,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     translateBlends(blends, language)
                 )
             }.collect { (categories, herbs, blends) ->
+                // يُحدَّث إدراك سيمو لأسماء الفئات هنا في نفس نقطة وصول
+                // البيانات المركزية (بدل كل شاشة على حدة)، فيبقى متزامناً
+                // دوماً مع آخر نسخة من الفئات بصرف النظر عن مصدرها (كاش
+                // محلي أو مزامنة شبكية) — انظر توثيق [HerbCategoryLookup].
+                HerbCategoryLookup.categoryNames = categories.associate { it.id to it.name }
                 _uiState.value = _uiState.value.copy(
                     categories = categories,
                     herbs = herbs,
