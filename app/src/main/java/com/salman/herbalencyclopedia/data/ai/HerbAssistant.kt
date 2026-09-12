@@ -79,6 +79,22 @@ object AiConfig {
     }
 }
 
+/**
+ * قدرة جديدة: "إدراك" سيمو لتصنيفات الموسوعة (Category). حتى الآن كان سيمو
+ * يقرأ فقط حقول العشبة النصية الستة (الاسم/الفوائد/الاستخدام/التحذيرات/
+ * الأضرار/الملاحظات) ولا يعرف بوجود فئات إطلاقاً رغم أنها جزء أصيل من بنية
+ * الموسوعة (تُعرض لها شاشتها الخاصة CategoryHerbsScreen تماماً كالأعشاب).
+ * بنفس نمط [AiConfig] (كائن مركزي حي يُحدَّث من خارج هذا الملف دون تغيير
+ * توقيع أي دالة أو شاشة) تُحدِّث [com.salman.herbalencyclopedia.ui.AppViewModel]
+ * هذه الخريطة (معرّف الفئة ← اسمها) كلما وصلت فئات جديدة من Firestore، فيصبح
+ * اسم فئة العشبة جزءاً فعلياً من نصوص العشبة القابلة للبحث والفهرسة أدناه
+ * (انظر [HerbAssistant.searchableFields] و[HerbAssistant.corpusIndexFor])
+ * بلا أي حاجة لتمرير قائمة فئات عبر كل دالة/شاشة تستخدم سيمو.
+ */
+object HerbCategoryLookup {
+    var categoryNames: Map<String, String> = emptyMap()
+}
+
 /** حالة تدريب واحدة: سؤال نموذجي والرد المخصّص الذي يجب أن يعطيه سيمو له. */
 data class TrainedExample(val pattern: String, val response: String)
 
@@ -166,7 +182,15 @@ object HerbAssistant {
             "بينفع" to "يفيد", "ينفع" to "يفيد", "نافع" to "مفيد",
             "مضر" to "ضار", "بيضر" to "يضر", "ضرر" to "ضار",
             "حبة" to "حبوب", "دقة" to "مسحوق", "مطحون" to "مسحوق",
-            "بيسمن" to "يزيد الوزن", "بينحف" to "ينقص الوزن"
+            "بيسمن" to "يزيد الوزن", "بينحف" to "ينقص الوزن",
+            // توسيع "فهم مصطلحات الفائدة": قدرة جديدة تغطي صياغات إضافية
+            // شائعة لنفس معنى "فائدة/يفيد" لم تكن مغطاة سابقاً (فصحى أو
+            // عامية)، فيفهمها سيمو حتى لو لم يذكر السائل كلمة "فائدة" أو
+            // "فوائد" حرفياً — انظر أيضاً [benefitsIntentWords] أدناه حيث
+            // تُستخدم صيغتها القياسية بعد هذا التطبيع.
+            "يشفي" to "يفيد", "بيشفي" to "يفيد", "شافي" to "مفيد", "شافية" to "مفيدة",
+            "خواص" to "فوائد", "خاصية" to "فائدة", "منافع" to "فوائد", "منفعة" to "فائدة",
+            "تنفع" to "يفيد", "عالج" to "علاج"
         )
         private val map: Map<String, String> by lazy {
             rawMap.mapKeys { normalize(it.key) }.mapValues { normalize(it.value) }
@@ -712,29 +736,50 @@ object HerbAssistant {
         }
     }
 
-    // ذاكرة تخزين مؤقت بسيطة: يُعاد بناء الفهرس فقط عند تغيّر مرجع قائمة
-    // الأعشاب أو الخلطات (تُنشئ شاشات التطبيق قائمة جديدة عند أي تحديث فعلي
-    // للبيانات).
-    private var cachedIndex: CorpusIndex? = null
-    private var cachedForHerbs: List<Herb>? = null
-    private var cachedForBlends: List<Blend>? = null
+    /** اسم فئة العشبة (إن وُجدت) عبر [HerbCategoryLookup] — نص فارغ إن لم تُحمَّل الفئات بعد أو لم يكن للعشبة معرّف فئة. */
+    private fun categoryOf(herb: Herb): String = herb.categoryId?.let { HerbCategoryLookup.categoryNames[it] } ?: ""
+
+    /**
+     * ذاكرة تخزين مؤقت لآخر فهرسين مبنيَّين (بدل فهرس واحد فقط سابقاً): سيمو
+     * يُستدعى فعلياً بنمطين مختلفين من نفس قائمة الأعشاب الكاملة ضمن نفس
+     * جلسة الدردشة — أحياناً بلا خلطات ([buildSuggestionAnswer]) وأحياناً
+     * معها ([buildGeneralSearchAnswer]) — وبخانة واحدة فقط كان كل تبديل بين
+     * النمطين عبر رسالتين متتاليتين يُلغي الفهرس المبني للتو ويعيد بناءه من
+     * الصفر (كل نصوص كل الأعشاب) حتى لو لم تتغيّر بيانات الموسوعة إطلاقاً —
+     * إهدار حقيقي للمعالجة والذاكرة المؤقتة (Garbage) على كل رسالة. خانتان
+     * (LRU بسيط) تكفيان لتغطية النمطين معاً فيبقى كلاهما جاهزاً دون إعادة
+     * بناء متكررة، بذاكرة إضافية محدودة جداً (فهرس واحد إضافي فقط، لا أكثر).
+     */
+    private const val corpusIndexCacheCapacity = 2
+    private val corpusIndexCache = object : LinkedHashMap<Pair<List<Herb>, List<Blend>>, CorpusIndex>(
+        corpusIndexCacheCapacity, 0.75f, true
+    ) {
+        override fun removeEldestEntry(eldest: Map.Entry<Pair<List<Herb>, List<Blend>>, CorpusIndex>): Boolean =
+            size > corpusIndexCacheCapacity
+    }
 
     /**
      * [blends] اختيارية (افتراضياً فارغة) حتى تبقى بقية الاستخدامات الحالية
      * (المقارنة بين أعشاب محدَّدة، اقتراح عشبة) كما هي بلا أي تغيير — فهرس
      * مبني من الأعشاب فقط، وهو السياق الصحيح لها. يُمرَّر [blends] فقط من
      * البحث الحر العام ([buildGeneralSearchAnswer]) حيث "كل الموسوعة" تشمل
-     * الخلطات أيضاً.
+     * الخلطات أيضاً. المطابقة بمرجع القائمة (لا محتواها) مقصودة: شاشات
+     * التطبيق تُنشئ قائمة جديدة فقط عند تحديث فعلي للبيانات، فمرجع واحد
+     * لنفس القائمة يعني بيانات لم تتغيّر إطلاقاً — نفس منطق الكاش السابق
+     * قبل هذا التعديل، لكن الآن بخانتين بدل خانة واحدة.
      */
     private fun corpusIndexFor(herbs: List<Herb>, blends: List<Blend> = emptyList()): CorpusIndex {
-        val current = cachedIndex
-        if (current != null && cachedForHerbs === herbs && cachedForBlends === blends) return current
-        val herbTexts = herbs.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.harms, it.notes) }
+        val key = herbs to blends
+        corpusIndexCache.entries.forEach { (k, v) ->
+            if (k.first === herbs && k.second === blends) return v
+        }
+        // فئة العشبة (اسمها عبر [categoryOf]) تُضاف الآن لنصوص الفهرسة، فيتوسّع
+        // "إدراك" سيمو للموسوعة ليشمل تصنيفاتها لا الحقول الستة فقط — انظر
+        // توثيق [HerbCategoryLookup].
+        val herbTexts = herbs.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.harms, it.notes, categoryOf(it)) }
         val blendTexts = blends.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.notes) }
         val built = CorpusIndex(herbTexts + blendTexts)
-        cachedIndex = built
-        cachedForHerbs = herbs
-        cachedForBlends = blends
+        corpusIndexCache[key] = built
         return built
     }
 
@@ -1451,7 +1496,15 @@ object HerbAssistant {
     private val safetyIntentWords = listOf("خطر", "اضرار", "أضرار", "تحذير", "حامل", "حمل", "رضاعة", "رضاعه", "طفل", "اطفال", "أطفال", "امان", "أمان", "اثار جانبية", "آثار جانبية")
     private val usageIntentWords = listOf("استخدام", "استعمال", "طريقة", "طريقه", "كيف استخدم", "جرعة", "جرعه", "مقدار")
     private val compareIntentWords = listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")
-    private val benefitsIntentWords = listOf("فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد")
+    // توسيع فهم "نية الفائدة": أُضيفت صيغ فصحى وعامية إضافية (خواص/منافع/
+    // يشفي/شافي...) بجانب الكلمات الأصلية، فتُحتسَب أسئلة مثل "ما خواص
+    // الزنجبيل؟" أو "ايش بيشفي فيه البابونج؟" كنية فائدة أيضاً، لا فقط
+    // صياغة "ما فوائد X؟" الحرفية. راجع أيضاً [DialectNormalizer.rawMap]
+    // حيث تُطبَّع هذه الصيغ العامية إلى مرادفها الفصيح أولاً.
+    private val benefitsIntentWords = listOf(
+        "فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد",
+        "خواص", "خاصية", "منافع", "منفعة", "يشفي", "شافي", "شافية", "علاجي", "علاجية"
+    )
     private val planIntentWords = listOf(
         "خطة", "خطه", "روتين", "برنامج", "جدول", "كيف ابدا", "كيف أبدأ",
         "خطة استخدام", "برنامج استخدام", "طريقة يومية", "طريقه يوميه"
@@ -1786,7 +1839,10 @@ object HerbAssistant {
         "الاستخدام" to { it.usage },
         "التحذيرات" to { it.warnings },
         "الأضرار" to { it.harms },
-        "ملاحظات" to { it.notes }
+        "ملاحظات" to { it.notes },
+        // إدراك الفئة: انظر توثيق [HerbCategoryLookup] — يسمح لسيمو الآن بأن
+        // يعرض/يطابق اسم فئة العشبة كنقطة بحث فعلية، لا فقط حقولها الستة.
+        "الفئة" to { categoryOf(it) }
     )
 
     // ── دعم الخلطات ("الخلطات" — Blend) في البحث الحر العام ─────────────
