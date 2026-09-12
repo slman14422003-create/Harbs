@@ -26,6 +26,7 @@ import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
 import com.salman.herbalencyclopedia.data.update.UpdateDownloadService
 import com.salman.herbalencyclopedia.data.update.UpdateDownloadState
 import com.salman.herbalencyclopedia.data.update.UpdateDownloadStatus
+import com.salman.herbalencyclopedia.data.update.UpdateNotifier
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -150,6 +151,52 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 onSuccess = { info -> if (info != null) UpdateCheckState.Available(info) else UpdateCheckState.UpToDate },
                 onFailure = { e -> UpdateCheckState.Error(e.localizedMessage ?: "تعذّر التحقق من التحديثات") }
             )
+        }
+    }
+
+    /**
+     * قدرة جديدة: تحقّق تلقائي وصامت من توفّر تحديث، يُستدعى مرة واحدة من
+     * [init] أدناه — أي في كل مرة يُفتح فيها التطبيق فعلياً، بخلاف
+     * [checkForUpdate] أعلاه الذي يبقى مقصوراً على ضغطة زر يدوية بشاشة
+     * الإعدادات. الفرق عن الفحص اليدوي:
+     * 1) لا يُشعل [UpdateCheckState.Checking] بادئ الأمر (فلا تظهر أي دائرة
+     *    تحميل لمستخدم لم يطلب شيئاً)، لكنه يحدّث [_updateState] بالنتيجة
+     *    النهائية إن وُجد تحديث فعلاً — فتعرضه شاشة الإعدادات فوراً لو فتحها
+     *    المستخدم لاحقاً بلا حاجة لضغط "تحقق" يدوياً من جديد.
+     * 2) عند العثور على تحديث، يُرسَل إشعار نظام واحد فقط لكل رقم إصدار
+     *    (عبر [UpdateNotifier] و[PreferencesRepository.getLastNotifiedUpdateVersion])
+     *    بدل إشعار متكرر في كل فتحة للتطبيق طالما لم يصدر إصدار أحدث بعد —
+     *    نفس إصدار سبق الإعلان عنه لا يُعاد إزعاج المستخدم به.
+     * 3) يستخدم [AppContainer.appContext] بدل Context من الشاشة (غير متاح
+     *    هنا أصلاً، فـ[init] لا يُستدعى من أي واجهة مستخدم مباشرة).
+     * أي فشل بالاتصال (لا إنترنت، خطأ خادم...) يُتجاهل بصمت هنا فقط — بلا
+     * حالة [UpdateCheckState.Error] مزعجة لمستخدم لم يطلب هذا التحقق أصلاً؛
+     * الفحص اليدوي يبقى يُظهر الخطأ كما كان.
+     */
+    private fun checkForUpdateSilently() {
+        viewModelScope.launch {
+            val context = container.appContext
+            val pkgInfo = runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }.getOrNull()
+            val versionName = pkgInfo?.versionName ?: "0.0.0"
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                (pkgInfo?.longVersionCode ?: 0L).toInt()
+            } else {
+                @Suppress("DEPRECATION") (pkgInfo?.versionCode ?: 0)
+            }
+            val info = runCatching { container.updateRepository.checkForUpdate(versionCode, versionName) }
+                .getOrNull() ?: return@launch
+
+            if (_updateState.value !is UpdateCheckState.Checking) {
+                _updateState.value = UpdateCheckState.Available(info)
+            }
+
+            val lastNotified = runCatching { container.preferencesRepository.getLastNotifiedUpdateVersion() }.getOrNull()
+            if (lastNotified != info.versionName) {
+                UpdateNotifier.notifyUpdateAvailable(context, info)
+                runCatching { container.preferencesRepository.setLastNotifiedUpdateVersion(info.versionName) }
+            }
         }
     }
 
@@ -307,6 +354,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     init {
+        // قدرة جديدة: تحقّق تلقائي من توفّر تحديث في كل مرة يُفتح فيها
+        // التطبيق (init{} هنا يُنفَّذ مرة واحدة فعلياً لكل فتحة، انظر توثيق
+        // checkForUpdateSilently أعلاه) — بلا أي زر أو إجراء من المستخدم،
+        // ومع إشعار نظام عند العثور على تحديث فعلي. يُستدعى أولاً وقبل أي
+        // شيء آخر هنا لأنه مستقل تماماً عن بقية init{} (بيانات الموسوعة)
+        // ولا داعي لانتظارها.
+        checkForUpdateSilently()
+
         // ── ترجمة تفاعلية: تعيد ترجمة القوائم الخام كلما تغيّرت هي أو اللغة ──
         // *** إصلاح: دائرة تحميل عالقة للأبد (السبب الفعلي المُبلَّغ عنه) ***
         // كان التعليق هنا يدّعي أن isLoading "يُطفأ تلقائياً" من وصول الحالة
