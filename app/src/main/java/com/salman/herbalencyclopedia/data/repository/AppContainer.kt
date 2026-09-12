@@ -8,6 +8,12 @@ import com.salman.herbalencyclopedia.data.translate.TranslationRepository
  * to avoid extra annotation-processing build complexity for this project size.
  */
 class AppContainer(context: Context) {
+    // مرجع التطبيق العام (Application Context) — يُستخدم في AppViewModel
+    // لاستدعاءات تحتاج Context خارج سياق واجهة مستخدم مباشرة (مثل التحقق
+    // التلقائي الصامت من التحديثات عند بدء التطبيق، راجع
+    // AppViewModel.checkForUpdateSilently)، بعكس بقية استدعاءات فحص/تحميل
+    // التحديث اليدوية التي تستلم Context من الشاشة نفسها (LocalContext.current).
+    val appContext: Context = context.applicationContext
     val herbRepository: HerbRepository by lazy { HerbRepository() }
     val authRepository: AuthRepository by lazy { AuthRepository(context.applicationContext) }
     val preferencesRepository: PreferencesRepository by lazy {

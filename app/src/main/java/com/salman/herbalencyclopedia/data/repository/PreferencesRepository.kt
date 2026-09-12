@@ -83,6 +83,11 @@ class PreferencesRepository(private val context: Context) {
         val CATALOG_CATEGORIES_JSON = stringPreferencesKey("catalog_categories_json")
         val CATALOG_BLENDS_JSON = stringPreferencesKey("catalog_blends_json")
         val CATALOG_LAST_SYNC_AT = longPreferencesKey("catalog_last_sync_at")
+        // آخر رقم إصدار تحديث أظهر له التطبيق إشعار نظام بالفعل (راجع
+        // AppViewModel.checkForUpdateSilently) — يمنع إعادة إظهار نفس إشعار
+        // "تحديث متوفر" في كل مرة يُفتح فيها التطبيق طالما لم يصدر إصدار أحدث
+        // منه بعد، مع بقاء التحقق التلقائي نفسه يعمل في كل مرة كما هو مطلوب.
+        val LAST_NOTIFIED_UPDATE_VERSION = stringPreferencesKey("last_notified_update_version")
     }
 
     val favoriteIds: Flow<Set<String>> = context.dataStore.data.map {
@@ -329,6 +334,15 @@ class PreferencesRepository(private val context: Context) {
             prefs[Keys.CATALOG_BLENDS_JSON] = encodeBlends(blends)
             prefs[Keys.CATALOG_LAST_SYNC_AT] = System.currentTimeMillis()
         }
+    }
+
+    /** آخر رقم إصدار أظهر له التطبيق إشعار "تحديث متوفر" فعلياً، أو null إن لم يُظهر أي إشعار بعد. */
+    suspend fun getLastNotifiedUpdateVersion(): String? =
+        context.dataStore.data.first()[Keys.LAST_NOTIFIED_UPDATE_VERSION]
+
+    /** يسجّل أن إشعار "تحديث متوفر" لهذا الإصدار بالذات أُظهر بالفعل، فلا يتكرر في الفتحات التالية للتطبيق. */
+    suspend fun setLastNotifiedUpdateVersion(version: String) {
+        context.dataStore.edit { it[Keys.LAST_NOTIFIED_UPDATE_VERSION] = version }
     }
 
     private fun encodeHerbs(herbs: List<Herb>): String {
