@@ -1,18 +1,27 @@
 package com.salman.herbalencyclopedia.ui.screens.allherbs
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
 import com.salman.herbalencyclopedia.ui.components.TopBarBrandTitle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.search.HerbSearch
@@ -69,6 +78,33 @@ fun AllHerbsScreen(
                         title = tr("كل الأعشاب"),
                         subtitle = tr("${herbs.size} عشبة في الموسوعة")
                     )
+                },
+                // زر تحديث صريح بجانب السحب-للتحديث: بعض المستخدمين لا
+                // يكتشفون إيماءة السحب، فهذا الزر يمنحهم طريقة واضحة ومرئية
+                // لجلب أحدث بيانات الأعشاب من Firestore. أثناء التحديث يدور
+                // الأيقونة وتُعطَّل الضغطات المتكررة (isRefreshing) بنفس
+                // منطق PullToRefreshBox أعلاه.
+                actions = {
+                    val infiniteTransition = rememberInfiniteTransition(label = "refreshRotation")
+                    val rotation by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "refreshRotationValue"
+                    )
+                    GlassIconButton(
+                        onClick = onRefresh,
+                        enabled = !isRefreshing
+                    ) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = tr("تحديث الأعشاب"),
+                            modifier = if (isRefreshing) Modifier.rotate(rotation) else Modifier
+                        )
+                    }
                 }
             )
         }
