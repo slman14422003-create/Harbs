@@ -82,6 +82,7 @@ class PreferencesRepository(private val context: Context) {
         val AI_ONLINE_ENABLED = booleanPreferencesKey("ai_online_enabled")
         val AI_ONLINE_API_KEY = stringPreferencesKey("ai_online_api_key")
         val AI_ONLINE_MODEL = stringPreferencesKey("ai_online_model")
+        val AI_ONLINE_BASE_URL = stringPreferencesKey("ai_online_base_url")
         // كاش كامل لمحتوى الموسوعة (راجع توثيق loadCachedCatalog/saveCatalogCache
         // أسفل الملف لسبب وجود هذا الكاش المنفصل عن كاش Firestore الداخلي).
         val CATALOG_HERBS_JSON = stringPreferencesKey("catalog_herbs_json")
@@ -312,6 +313,9 @@ class PreferencesRepository(private val context: Context) {
     val aiOnlineApiKey: Flow<String> = context.dataStore.data.map {
         it[Keys.AI_ONLINE_API_KEY] ?: ""
     }
+    val aiOnlineBaseUrl: Flow<String> = context.dataStore.data.map {
+        it[Keys.AI_ONLINE_BASE_URL] ?: AiConfig.defaultOnlineBaseUrl
+    }
     val aiOnlineModel: Flow<String> = context.dataStore.data.map {
         it[Keys.AI_ONLINE_MODEL] ?: AiConfig.defaultOnlineModel
     }
@@ -325,10 +329,14 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setAiOnlineModel(model: String) {
         context.dataStore.edit { it[Keys.AI_ONLINE_MODEL] = model.ifBlank { AiConfig.defaultOnlineModel } }
     }
+    suspend fun setAiOnlineBaseUrl(baseUrl: String) {
+        context.dataStore.edit { it[Keys.AI_ONLINE_BASE_URL] = baseUrl.trim() }
+    }
     suspend fun resetAiOnlineSettings() {
         context.dataStore.edit { prefs ->
             prefs.remove(Keys.AI_ONLINE_ENABLED)
             prefs.remove(Keys.AI_ONLINE_API_KEY)
+            prefs.remove(Keys.AI_ONLINE_BASE_URL)
             prefs.remove(Keys.AI_ONLINE_MODEL)
         }
     }
