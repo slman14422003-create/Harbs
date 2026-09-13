@@ -39,11 +39,13 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.HerbalEncyclopedia.Splash"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
@@ -59,6 +61,15 @@
             android:name=".data.update.UpdateDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- يبدأ تحميل التحديث مباشرة من زر "تحميل" داخل إشعار "تحديث
+             متوفر" نفسه (لوحة الإشعارات)، بلا فتح أي واجهة — راجع
+             UpdateNotifier وUpdateDownloadActionReceiver. غير مُصدَّر
+             (exported=false): يُستقبل فقط من نيّة صريحة (PendingIntent)
+             ينشئها التطبيق نفسه، لا من أي تطبيق آخر على الجهاز. -->
+        <receiver
+            android:name=".data.update.UpdateDownloadActionReceiver"
+            android:exported="false" />
 
         <!-- Exposes the .apk file we download in-app (in the private cache dir) to the
              system package installer via a content:// Uri, as required from API 24+
