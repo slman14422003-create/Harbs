@@ -62,10 +62,41 @@ object AiConfig {
     /** تفعيل/تعطيل التعلّم الذاتي من تقييمات المستخدمين (👍/👎) في شاشة الدردشة. */
     var autoLearnEnabled: Boolean = true
 
+    /**
+     * الوضع الذكي عبر الإنترنت (جديد): سيمو يبقى محلياً بالكامل كما كان
+     * تماماً بلا أي تغيير في السلوك عند تعطيل هذا الخيار أو عند انعدام
+     * اتصال الإنترنت فعلياً (راجع [OnlineAssistant] وSemoAssistantScreen —
+     * الفحص يحدث *قبل* أي محاولة اتصال، فلا يوجد أي فرق محسوس محلياً سواء
+     * كان هذا الخيار مفعَّلاً أم لا حين لا تتوفر شبكة). عند تفعيله وتوفر
+     * مفتاح Gemini API صالح ووجود اتصال إنترنت فعلي، تُرسَل الأسئلة التي
+     * تحتاج بحثاً فعلياً (لا الترحيب/الشكر/الحالات المدرَّبة، تلك تبقى فورية
+     * محلياً دوماً) إلى نموذج Gemini المجاني من Google — وهو مجاني ومتاح
+     * فعلياً من سوريا مباشرة دون VPN (رُفع الحظر عنه في سبتمبر 2026) خلافاً
+     * لخدمات أخرى (ChatGPT) لا تزال محجوبة، وهذا سبب اختياره تحديداً. أي
+     * فشل في الاتصال (انقطاع، انتهاء مهلة، مفتاح غير صالح) يعود تلقائياً
+     * للبحث المحلي المعتاد دون أي رسالة خطأ للمستخدم — راجع
+     * [OnlineAssistant.answer].
+     */
+    var onlineEnabled: Boolean = false
+
+    /** مفتاح Gemini API (من Google AI Studio، مجاني). يُدخله المطوّر من أدوات المطور. */
+    var onlineApiKey: String = ""
+
+    /**
+     * مُعرِّف نموذج Gemini المُستخدَم. الافتراضي "gemini-flash-latest" هو
+     * اسم مستعار (alias) من Google يشير دوماً لأحدث نموذج Flash مجاني
+     * موصى به، فيبقى يعمل تلقائياً حتى بعد إيقاف Google لإصدارات محدَّدة
+     * (كما حدث سابقاً مع gemini-2.0-flash وgemini-2.5-flash) دون حاجة
+     * لتحديث التطبيق. قابل للتغيير من أدوات المطور لاسم نموذج محدَّد إن لزم.
+     */
+    var onlineModel: String = "gemini-flash-latest"
+
     val defaultSimilarityThreshold = 0.34
     val defaultSearchThreshold = 0.12
     val defaultTrainedThreshold = 0.45
     val defaultAutoLearnEnabled = true
+    val defaultOnlineEnabled = false
+    val defaultOnlineModel = "gemini-flash-latest"
 
     fun resetToDefaults() {
         similarityThreshold = defaultSimilarityThreshold
@@ -76,6 +107,11 @@ object AiConfig {
         trainedMatchThreshold = defaultTrainedThreshold
         autoLearnedExamples = emptyList()
         autoLearnEnabled = defaultAutoLearnEnabled
+        // لا يُصفَّر مفتاح/تفعيل الوضع الذكي عبر الإنترنت هنا عمداً: هذا
+        // "إعادة ضبط" لعتبات المطابقة المحلية تحديداً (كما كان قبل هذه
+        // الإضافة)، بينما إعدادات الاتصال بالإنترنت لها مفتاح تصفير مستقل
+        // (AdminToolsScreen) حتى لا يفقد المطوّر مفتاحه بالخطأ عند إعادة
+        // ضبط عتبات غير متعلقة إطلاقاً بالاتصال بالإنترنت.
     }
 }
 
