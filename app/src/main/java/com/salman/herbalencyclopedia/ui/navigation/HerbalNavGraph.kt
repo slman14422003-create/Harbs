@@ -123,10 +123,13 @@ fun HerbalNavGraph(
     val aiOnlineModel by preferencesRepository.aiOnlineModel.collectAsState(
         initial = AiConfig.defaultOnlineModel
     )
+    val aiOnlineBaseUrl by preferencesRepository.aiOnlineBaseUrl.collectAsState(
+        initial = AiConfig.defaultOnlineBaseUrl
+    )
     LaunchedEffect(
         aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, aiSynonyms,
         aiTrainedExamples, aiTrainedThreshold, aiAutoLearnedExamples, aiAutoLearnEnabled,
-        aiOnlineEnabled, aiOnlineApiKey, aiOnlineModel
+        aiOnlineEnabled, aiOnlineApiKey, aiOnlineModel, aiOnlineBaseUrl
     ) {
         AiConfig.similarityThreshold = aiSimilarityThreshold.toDouble()
         AiConfig.searchThreshold = aiSearchThreshold.toDouble()
@@ -139,6 +142,7 @@ fun HerbalNavGraph(
         AiConfig.onlineEnabled = aiOnlineEnabled
         AiConfig.onlineApiKey = aiOnlineApiKey
         AiConfig.onlineModel = aiOnlineModel
+        AiConfig.onlineBaseUrl = aiOnlineBaseUrl
     }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
@@ -416,9 +420,11 @@ fun HerbalNavGraph(
                         aiOnlineEnabled = aiOnlineEnabled,
                         aiOnlineApiKey = aiOnlineApiKey,
                         aiOnlineModel = aiOnlineModel,
+                        aiOnlineBaseUrl = aiOnlineBaseUrl,
                         onSetAiOnlineEnabled = { v -> scope.launch { preferencesRepository.setAiOnlineEnabled(v) } },
                         onSetAiOnlineApiKey = { v -> scope.launch { preferencesRepository.setAiOnlineApiKey(v) } },
                         onSetAiOnlineModel = { v -> scope.launch { preferencesRepository.setAiOnlineModel(v) } },
+                        onSetAiOnlineBaseUrl = { v -> scope.launch { preferencesRepository.setAiOnlineBaseUrl(v) } },
                         onResetAiOnlineSettings = { scope.launch { preferencesRepository.resetAiOnlineSettings() } }
                     )
                 }
