@@ -793,6 +793,20 @@ private fun AiOnlineDevTools(
                 },
                 placeholder = { Text("https://my-proxy.example.workers.dev") },
                 singleLine = true,
+                // ═══ إصلاح خلل حقيقي أُبلغ عنه: الرابط يظهر محفوظاً بالحقل لكن
+                // الطلب لا يصل الخادم أبداً (سجلات Cloudflare خالية تماماً) ═══
+                // السبب الأرجح: هذا الحقل لم يكن يعطّل التصحيح/الاقتراح
+                // التلقائي للوحة مفاتيح أندرويد، فقد تُغيَّر أحرف بالرابط
+                // (خصوصاً نطاق مثل "workers.dev") بصمت أثناء الكتابة أو حتى
+                // بعد اللصق، فينتج رابط تالف يفشل تحليله محلياً (URL غير
+                // صالح) قبل أي محاولة شبكة فعلية — يطابق تماماً "لا شيء يصل
+                // السجل إطلاقاً". تعطيل autoCorrect/الاقتراح والأحرف الكبيرة
+                // التلقائية هنا يمنع تكرار المشكلة مستقبلاً.
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                    autoCorrectEnabled = false,
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -823,15 +837,10 @@ private fun AiOnlineDevTools(
                     AiConfig.onlineModel = modelText.trim().ifBlank { AiConfig.defaultOnlineModel }
                     AiConfig.onlineBaseUrl = baseUrlText.trim()
                     scope.launch {
-                        val reply = com.salman.herbalencyclopedia.data.ai.OnlineAssistant.testConnection()
+                        val (success, message) = com.salman.herbalencyclopedia.data.ai.OnlineAssistant.testConnectionVerbose()
                         testing = false
-                        if (reply != null) {
-                            testResult = reply
-                            testFailed = false
-                        } else {
-                            testResult = "تعذّر الاتصال — تحقق من المفتاح، اسم النموذج، أو اتصال الإنترنت."
-                            testFailed = true
-                        }
+                        testResult = message
+                        testFailed = !success
                     }
                 }
             ) {
