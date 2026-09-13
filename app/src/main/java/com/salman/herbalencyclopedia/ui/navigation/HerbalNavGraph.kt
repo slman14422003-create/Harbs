@@ -415,6 +415,7 @@ fun HerbalNavGraph(
                         aiAutoLearnedExamples = aiAutoLearnedExamples,
                         aiAutoLearnEnabled = aiAutoLearnEnabled,
                         onSetAiAutoLearnedExamples = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
+                        onDemoteLearnedExample = { question -> appViewModel.demoteSemoLearning(question) },
                         onSetAiAutoLearnEnabled = { v -> scope.launch { preferencesRepository.setAiAutoLearnEnabled(v) } },
                         onSetAiTrainedThreshold = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } },
                         aiOnlineEnabled = aiOnlineEnabled,
