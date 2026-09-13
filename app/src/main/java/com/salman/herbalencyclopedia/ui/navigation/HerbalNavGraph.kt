@@ -114,9 +114,19 @@ fun HerbalNavGraph(
     val aiAutoLearnEnabled by preferencesRepository.aiAutoLearnEnabled.collectAsState(
         initial = AiConfig.defaultAutoLearnEnabled
     )
+    // الوضع الذكي عبر الإنترنت (Gemini المجاني) — نفس آلية العيش/التطبيق
+    // الفوري أعلاه، راجع توثيق AiConfig.onlineEnabled في HerbAssistant.kt.
+    val aiOnlineEnabled by preferencesRepository.aiOnlineEnabled.collectAsState(
+        initial = AiConfig.defaultOnlineEnabled
+    )
+    val aiOnlineApiKey by preferencesRepository.aiOnlineApiKey.collectAsState(initial = "")
+    val aiOnlineModel by preferencesRepository.aiOnlineModel.collectAsState(
+        initial = AiConfig.defaultOnlineModel
+    )
     LaunchedEffect(
         aiSimilarityThreshold, aiSearchThreshold, aiExtraStopWords, aiSynonyms,
-        aiTrainedExamples, aiTrainedThreshold, aiAutoLearnedExamples, aiAutoLearnEnabled
+        aiTrainedExamples, aiTrainedThreshold, aiAutoLearnedExamples, aiAutoLearnEnabled,
+        aiOnlineEnabled, aiOnlineApiKey, aiOnlineModel
     ) {
         AiConfig.similarityThreshold = aiSimilarityThreshold.toDouble()
         AiConfig.searchThreshold = aiSearchThreshold.toDouble()
@@ -126,6 +136,9 @@ fun HerbalNavGraph(
         AiConfig.trainedMatchThreshold = aiTrainedThreshold.toDouble()
         AiConfig.autoLearnedExamples = aiAutoLearnedExamples
         AiConfig.autoLearnEnabled = aiAutoLearnEnabled
+        AiConfig.onlineEnabled = aiOnlineEnabled
+        AiConfig.onlineApiKey = aiOnlineApiKey
+        AiConfig.onlineModel = aiOnlineModel
     }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
@@ -311,6 +324,13 @@ fun HerbalNavGraph(
                                 if (helpful) appViewModel.contributeSemoLearning(question, answer)
                                 else appViewModel.demoteSemoLearning(question)
                             }
+                            // ملاحظة: لا حاجة لتمرير إعدادات الوضع الذكي عبر
+                            // الإنترنت (aiOnlineEnabled/aiOnlineApiKey) هنا
+                            // صراحة — SemoAssistantScreen يقرأها مباشرة من
+                            // AiConfig الحي (نفس الكائن المُحدَّث أعلاه في
+                            // LaunchedEffect)، تماماً كبقية إعدادات AiConfig
+                            // الأخرى التي لا تُمرَّر كمعاملات صريحة (العتبات
+                            // المحلية، المرادفات...).
                         )
                     }
                 }
@@ -392,7 +412,14 @@ fun HerbalNavGraph(
                         aiAutoLearnEnabled = aiAutoLearnEnabled,
                         onSetAiAutoLearnedExamples = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
                         onSetAiAutoLearnEnabled = { v -> scope.launch { preferencesRepository.setAiAutoLearnEnabled(v) } },
-                        onSetAiTrainedThreshold = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } }
+                        onSetAiTrainedThreshold = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } },
+                        aiOnlineEnabled = aiOnlineEnabled,
+                        aiOnlineApiKey = aiOnlineApiKey,
+                        aiOnlineModel = aiOnlineModel,
+                        onSetAiOnlineEnabled = { v -> scope.launch { preferencesRepository.setAiOnlineEnabled(v) } },
+                        onSetAiOnlineApiKey = { v -> scope.launch { preferencesRepository.setAiOnlineApiKey(v) } },
+                        onSetAiOnlineModel = { v -> scope.launch { preferencesRepository.setAiOnlineModel(v) } },
+                        onResetAiOnlineSettings = { scope.launch { preferencesRepository.resetAiOnlineSettings() } }
                     )
                 }
                 composable(Screen.AdminUpdate.route) {
