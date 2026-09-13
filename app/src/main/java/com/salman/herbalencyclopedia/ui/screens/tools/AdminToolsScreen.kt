@@ -57,35 +57,15 @@ fun AdminToolsScreen(
     onSetAiSearchThreshold: (Float) -> Unit = {},
     onSetAiExtraStopWords: (Set<String>) -> Unit = {},
     onResetAiSettings: () -> Unit = {},
-    // ── تدريب سيمو المخصّص: مرادفات وحالات (سؤال ← رد) يعلّمها المطوّر ──
-    aiSynonyms: Map<String, String> = emptyMap(),
-    aiTrainedExamples: List<TrainedExample> = emptyList(),
-    aiTrainedThreshold: Float = AiConfig.defaultTrainedThreshold.toFloat(),
-    onSetAiSynonyms: (Map<String, String>) -> Unit = {},
-    onSetAiTrainedExamples: (List<TrainedExample>) -> Unit = {},
-    onSetAiTrainedThreshold: (Float) -> Unit = {},
-    // ── تعلّم سيمو الذاتي: حالات جمعها التطبيق تلقائياً من تقييمات
-    // المستخدمين (👍/👎) في شاشة الدردشة — قابلة للمراجعة والحذف أو
-    // "الترقية" لتدريب يدوي دائم من هنا مباشرة. ──
-    aiAutoLearnedExamples: List<TrainedExample> = emptyList(),
-    aiAutoLearnEnabled: Boolean = AiConfig.defaultAutoLearnEnabled,
-    onSetAiAutoLearnedExamples: (List<TrainedExample>) -> Unit = {},
-    // ═══ إصلاح خلل حقيقي أُبلغ عنه: زر "مسح الكل" (وزر "حذف" الفردي) في
-    // الحالات المتعلَّمة لا يعمل فعلياً — الحالات ترجع تظهر من جديد بعد
-    // لحظات من مسحها ═══
-    // السبب: قائمة الحالات المتعلَّمة تُزامَن بين كل أجهزة المستخدمين عبر
-    // Firestore (راجع توثيق SemoLearningRepository/mergeLearnedExamples في
-    // AppViewModel). "مسح الكل" و"حذف" هنا كانا يعدّلان النسخة *المحلية*
-    // فقط على هذا الجهاز، بينما تبقى النسخة *المشتركة* على Firestore دون
-    // تغيير — فيأتي مستمع المزامنة الحيّ (الذي يعمل طوال حياة التطبيق) ويدمج
-    // القائمة المحلية الفارغة مع القائمة المشتركة غير الفارغة، فتُعاد كل
-    // الحالات المحذوفة خلال لحظات، وكأن الزر لم يفعل شيئاً. الإصلاح: أي حذف
-    // من هنا يجب أن "يُنزِّل" (demote) نفس الحالة من الطرف المشترك أيضاً —
-    // نفس الآلية المستخدمة فعلياً عند تقييم إجابة بـ 👎 بالدردشة (راجع
-    // AppViewModel.demoteSemoLearning)، ممرَّرة هنا كي تُستدعى لكل حالة تُحذف
-    // من لوحة الإدارة أيضاً، لا من الدردشة فقط.
-    onDemoteLearnedExample: (String) -> Unit = {},
-    onSetAiAutoLearnEnabled: (Boolean) -> Unit = {},
+    // ═══ فصل "الحالات المدرَّبة" و"تعلّم سيمو الذاتي" في شاشتين مستقلتين ═══
+    // كانتا بطاقتين ضخمتين مدمجتين ضمن قائمة "أدوات الإدارة" الطويلة نفسها
+    // (راجع AiTrainingDevTools/AiSelfLearningDevTools أدناه — ما زالتا هنا
+    // وتُستخدمان الآن داخل SemoTrainedCasesScreen/SemoSelfLearningScreen)،
+    // فتتيه القائمة الرئيسية بينهما وبين بقية الأدوات القصيرة. الآن كل
+    // واحدة زر مستقل بنفس مبدأ "إعدادات التحديثات" (AdminUpdate) — يفتح
+    // شاشة كاملة خاصة بها بدل الظهور دوماً مدموجتين هنا.
+    onOpenTrainedCases: () -> Unit = {},
+    onOpenSemoLearning: () -> Unit = {},
     // ── الوضع الذكي عبر الإنترنت (Gemini المجاني من Google، متاح فعلياً من
     // سوريا دون VPN) — راجع توثيق AiConfig.onlineEnabled في HerbAssistant.kt
     // وOnlineAssistant.kt لتفاصيل الآلية والسبب. ──
@@ -208,31 +188,8 @@ fun AdminToolsScreen(
                     onReset = { onResetAiSettings(); notify(true, msgAiReset) }
                 )
             }
-            item {
-                AiTrainingDevTools(
-                    synonyms = aiSynonyms,
-                    trainedExamples = aiTrainedExamples,
-                    trainedThreshold = aiTrainedThreshold,
-                    onSynonymsChange = onSetAiSynonyms,
-                    onTrainedExamplesChange = onSetAiTrainedExamples,
-                    onTrainedThresholdChange = onSetAiTrainedThreshold
-                )
-            }
-            item {
-                AiSelfLearningDevTools(
-                    autoLearnedExamples = aiAutoLearnedExamples,
-                    autoLearnEnabled = aiAutoLearnEnabled,
-                    trainedExamples = aiTrainedExamples,
-                    onAutoLearnedExamplesChange = onSetAiAutoLearnedExamples,
-                    onAutoLearnEnabledChange = onSetAiAutoLearnEnabled,
-                    onDemoteLearnedExample = onDemoteLearnedExample,
-                    onPromoteToTrained = { example ->
-                        onSetAiTrainedExamples(aiTrainedExamples + example)
-                        onSetAiAutoLearnedExamples(aiAutoLearnedExamples - example)
-                        onDemoteLearnedExample(example.pattern)
-                    }
-                )
-            }
+            item { AdminButton(Icons.Filled.School, "الحالات المدرَّبة", "مرادفات وحالات (سؤال ← رد) يعلّمها المطوّر لسيمو يدوياً", onOpenTrainedCases) }
+            item { AdminButton(Icons.Filled.AutoAwesome, "تعلّم سيمو الذاتي", "مراجعة الحالات التي جمعها سيمو تلقائياً من تقييمات المستخدمين", onOpenSemoLearning) }
             item {
                 AiOnlineDevTools(
                     enabled = aiOnlineEnabled,
@@ -315,6 +272,79 @@ fun AdminToolsScreen(
         )
     }
 }
+/**
+ * شاشة مستقلة لـ"الحالات المدرَّبة" — كانت بطاقة (AiTrainingDevTools) مدمجة
+ * ضمن قائمة "أدوات الإدارة" الطويلة، فتُفتح الآن من زر خاص بها بدل الظهور
+ * دوماً هناك. المحتوى نفسه بلا أي تغيير (نفس AiTrainingDevTools أدناه)،
+ * فقط بشاشة وTopBar خاصين بها.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SemoTrainedCasesScreen(
+    onBack: () -> Unit,
+    synonyms: Map<String, String>,
+    trainedExamples: List<TrainedExample>,
+    trainedThreshold: Float,
+    onSynonymsChange: (Map<String, String>) -> Unit,
+    onTrainedExamplesChange: (List<TrainedExample>) -> Unit,
+    onTrainedThresholdChange: (Float) -> Unit
+) {
+    Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        topBar = { GlassTopBar(title = { Text(tr("الحالات المدرَّبة")) }, navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) } }) }
+    ) { padding ->
+        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                AiTrainingDevTools(
+                    synonyms = synonyms,
+                    trainedExamples = trainedExamples,
+                    trainedThreshold = trainedThreshold,
+                    onSynonymsChange = onSynonymsChange,
+                    onTrainedExamplesChange = onTrainedExamplesChange,
+                    onTrainedThresholdChange = onTrainedThresholdChange
+                )
+            }
+        }
+    }
+}
+
+/**
+ * شاشة مستقلة لـ"تعلّم سيمو الذاتي" — بنفس مبدأ SemoTrainedCasesScreen
+ * أعلاه، تحتوي فقط بطاقة AiSelfLearningDevTools بدل دمجها ضمن قائمة أدوات
+ * الإدارة الطويلة.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SemoSelfLearningScreen(
+    onBack: () -> Unit,
+    autoLearnedExamples: List<TrainedExample>,
+    autoLearnEnabled: Boolean,
+    trainedExamples: List<TrainedExample>,
+    onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit,
+    onAutoLearnEnabledChange: (Boolean) -> Unit,
+    onDemoteLearnedExample: (String) -> Unit,
+    onPromoteToTrained: (TrainedExample) -> Unit
+) {
+    Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        topBar = { GlassTopBar(title = { Text(tr("تعلّم سيمو الذاتي")) }, navigationIcon = { GlassIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("رجوع")) } }) }
+    ) { padding ->
+        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                AiSelfLearningDevTools(
+                    autoLearnedExamples = autoLearnedExamples,
+                    autoLearnEnabled = autoLearnEnabled,
+                    trainedExamples = trainedExamples,
+                    onAutoLearnedExamplesChange = onAutoLearnedExamplesChange,
+                    onAutoLearnEnabledChange = onAutoLearnEnabledChange,
+                    onDemoteLearnedExample = onDemoteLearnedExample,
+                    onPromoteToTrained = onPromoteToTrained
+                )
+            }
+        }
+    }
+}
+
 /**
  * أدوات مطور لضبط "تدريب" سيمو المساعد (HerbAssistant): عتبتا
  * التشابه المستخدمتان في تجميع النقاط والبحث الحر، وكلمات إيقاف إضافية
