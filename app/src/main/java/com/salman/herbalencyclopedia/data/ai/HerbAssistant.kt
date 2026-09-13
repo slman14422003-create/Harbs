@@ -1333,8 +1333,17 @@ object HerbAssistant {
     fun needsThinking(question: String): Boolean {
         val qNorm = normalize(question)
         if (qNorm.isBlank()) return false
+        // قرار صريح من المطوّر: طالما الوضع الذكي عبر الإنترنت متاح فعلياً
+        // (تفعيل + مفتاح + اتصال فعلي)، الأفضل ترك Gemini يحلّل بيانات
+        // الموسوعة ويجيب بنفسه على كل شيء تقريباً — حتى الترحيب والشكر
+        // ونحوها — لا أن تُخطَف هذه محلياً قبل أن تصل لـGemini إطلاقاً.
+        // البقاء محلياً بالكامل (ConversationalSeed/isPureGreeting/الشكر...)
+        // يبقى فقط لحالة عدم توفر الإنترنت أو فشل/تعطيل الوضع الذكي — وهذا
+        // يحدث تلقائياً أصلاً داخل [answerDetailed] كمسار احتياطي، لا حاجة
+        // لتكراره هنا. الاستثناء الوحيد الباقي: تدريب المطوّر اليدوي
+        // ([AiConfig.trainedExamples]/[AiConfig.autoLearnedExamples]) — له
+        // "أولوية مطلقة" بتصميم متعمَّد بغض النظر عن الاتصال، فيبقى وحده هنا.
         if (matchTrainedExample(question) != null) return false
-        if (ConversationalSeed.match(question) != null) return false
         return true
     }
 
