@@ -70,7 +70,17 @@ fun AdminToolsScreen(
     aiAutoLearnedExamples: List<TrainedExample> = emptyList(),
     aiAutoLearnEnabled: Boolean = AiConfig.defaultAutoLearnEnabled,
     onSetAiAutoLearnedExamples: (List<TrainedExample>) -> Unit = {},
-    onSetAiAutoLearnEnabled: (Boolean) -> Unit = {}
+    onSetAiAutoLearnEnabled: (Boolean) -> Unit = {},
+    // ── الوضع الذكي عبر الإنترنت (Gemini المجاني من Google، متاح فعلياً من
+    // سوريا دون VPN) — راجع توثيق AiConfig.onlineEnabled في HerbAssistant.kt
+    // وOnlineAssistant.kt لتفاصيل الآلية والسبب. ──
+    aiOnlineEnabled: Boolean = AiConfig.defaultOnlineEnabled,
+    aiOnlineApiKey: String = "",
+    aiOnlineModel: String = AiConfig.defaultOnlineModel,
+    onSetAiOnlineEnabled: (Boolean) -> Unit = {},
+    onSetAiOnlineApiKey: (String) -> Unit = {},
+    onSetAiOnlineModel: (String) -> Unit = {},
+    onResetAiOnlineSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -202,6 +212,17 @@ fun AdminToolsScreen(
                         onSetAiTrainedExamples(aiTrainedExamples + example)
                         onSetAiAutoLearnedExamples(aiAutoLearnedExamples - example)
                     }
+                )
+            }
+            item {
+                AiOnlineDevTools(
+                    enabled = aiOnlineEnabled,
+                    apiKey = aiOnlineApiKey,
+                    model = aiOnlineModel,
+                    onEnabledChange = onSetAiOnlineEnabled,
+                    onApiKeyChange = onSetAiOnlineApiKey,
+                    onModelChange = onSetAiOnlineModel,
+                    onReset = { onResetAiOnlineSettings(); notify(true, msgAiReset) }
                 )
             }
         }
@@ -664,6 +685,153 @@ private fun AiSelfLearningDevTools(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * أدوات مطور للوضع الذكي عبر الإنترنت: تفعيل/تعطيل، إدخال مفتاح Gemini API
+ * (مجاني من Google AI Studio)، اسم النموذج (افتراضياً "gemini-flash-latest"،
+ * راجع توثيقه في AiConfig)، واختبار اتصال حيّ يعرض رد النموذج فعلياً أو
+ * سبب الفشل. راجع توثيق [AiConfig.onlineEnabled] وOnlineAssistant.kt
+ * للسياق الكامل — لماذا Gemini تحديداً (مجاني ومتاح فعلياً من سوريا دون
+ * VPN منذ سبتمبر 2026) ولماذا يبقى سيمو المحلي كما هو تماماً عند التعطيل
+ * أو عند انعدام الإنترنت.
+ */
+@Composable
+private fun AiOnlineDevTools(
+    enabled: Boolean,
+    apiKey: String,
+    model: String,
+    onEnabledChange: (Boolean) -> Unit,
+    onApiKeyChange: (String) -> Unit,
+    onModelChange: (String) -> Unit,
+    onReset: () -> Unit
+) {
+    var apiKeyText by remember(apiKey) { mutableStateOf(apiKey) }
+    var modelText by remember(model) { mutableStateOf(model) }
+    var showApiKey by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    var testFailed by remember { mutableStateOf(false) }
+
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.CloudQueue, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(tr("الوضع الذكي عبر الإنترنت"), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+            Text(
+                tr("يستخدم نموذج Gemini المجاني من Google — متاح فعلياً من سوريا مباشرة دون أي VPN. عند التفعيل ووجود مفتاح صالح واتصال إنترنت فعلي، تُرسَل الأسئلة التي تحتاج بحثاً فعلياً لهذا النموذج بدل البحث المحلي. بلا إنترنت أو بلا مفتاح، يبقى سيمو يعمل محلياً تماماً كما كان دون أي تغيير."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("تفعيل الوضع الذكي عبر الإنترنت"), style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        tr("يتطلب مفتاح Gemini API صالح أدناه."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+
+            OutlinedTextField(
+                value = apiKeyText,
+                onValueChange = { apiKeyText = it },
+                label = { Text(tr("مفتاح Gemini API")) },
+                supportingText = { Text(tr("مجاني من Google AI Studio (aistudio.google.com)")) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = if (showApiKey) androidx.compose.ui.text.input.VisualTransformation.None
+                    else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showApiKey = !showApiKey }) {
+                        Icon(
+                            if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = null
+                        )
+                    }
+                }
+            )
+            OutlinedTextField(
+                value = modelText,
+                onValueChange = { modelText = it },
+                label = { Text(tr("اسم النموذج")) },
+                supportingText = { Text(tr("الافتراضي يشير دوماً لأحدث نموذج Flash مجاني من Google")) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    onApiKeyChange(apiKeyText.trim())
+                    onModelChange(modelText.trim())
+                }) { Text(tr("حفظ")) }
+                TextButton(onClick = onReset) { Text(tr("إعادة الضبط الافتراضي")) }
+            }
+
+            HorizontalDivider()
+
+            Text(tr("اختبار حيّ"), style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Button(
+                enabled = !testing && apiKeyText.isNotBlank(),
+                onClick = {
+                    testing = true
+                    testResult = null
+                    testFailed = false
+                    // يختبر المفتاح/النموذج المحفوظَين فعلياً في AiConfig
+                    // (وليس النص المكتوب بعد قبل الضغط على "حفظ")، فيُحفَظان
+                    // أولاً لضمان اختبار القيم الفعلية التي ستُستخدم لاحقاً.
+                    onApiKeyChange(apiKeyText.trim())
+                    onModelChange(modelText.trim())
+                    AiConfig.onlineApiKey = apiKeyText.trim()
+                    AiConfig.onlineModel = modelText.trim().ifBlank { AiConfig.defaultOnlineModel }
+                    scope.launch {
+                        val reply = com.salman.herbalencyclopedia.data.ai.OnlineAssistant.testConnection()
+                        testing = false
+                        if (reply != null) {
+                            testResult = reply
+                            testFailed = false
+                        } else {
+                            testResult = "تعذّر الاتصال — تحقق من المفتاح، اسم النموذج، أو اتصال الإنترنت."
+                            testFailed = true
+                        }
+                    }
+                }
+            ) {
+                if (testing) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(tr(if (testing) "جارٍ الاختبار…" else "اختبار الاتصال الآن"))
+            }
+            testResult?.let { result ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (testFailed) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                ) {
+                    Text(
+                        tr(result),
+                        modifier = Modifier.padding(10.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (testFailed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
