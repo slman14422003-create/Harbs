@@ -76,6 +76,26 @@ object OnlineAssistant {
     private const val MAX_CONTEXT_BLENDS = 60
     private const val MAX_FIELD_CHARS = 600
 
+    /**
+     * ═══ إصلاح خلل حقيقي أُبلغ عنه: ردود سيمو عبر الإنترنت تتوقف فجأة
+     * بمنتصف الجملة عندما تكون الإجابة طويلة ═══
+     * السبب: "maxOutputTokens" في [buildRequestBody] كان مضبوطاً على 800
+     * فقط. هذا سقف صارم يفرضه Gemini على طول *الرد نفسه* تحديداً — منفصل
+     * كلياً عن سعة نافذة السياق الهائلة (راجع تعليق [MAX_CONTEXT_HERBS]
+     * أعلاه، فذاك عن حجم ما يُرسَل لا ما يُستقبَل). بمجرد وصول توليد الرد
+     * لهذا العدد يقطعه خادم Gemini فوراً في منتصف كلمة أو جملة ويعيده كما هو
+     * (finishReason="MAX_TOKENS")، بلا أي رمز خطأ يلتقطه try/catch في
+     * [answer] — فيصل النص المقتطَع هذا كإجابة "ناجحة" تماماً من وجهة نظر
+     * الكود، وتعرضه SemoAssistantScreen حرفياً كما وصل. 800 توكن قد يكفي
+     * لسؤال قصير عن عشبة واحدة، لكن أي رد أطول قليلاً (شرح مفصّل بعدة نقاط،
+     * أو مقارنة بين أكثر من عنصر) يتجاوزه بسهولة فيُقصّ فجأة.
+     * الإصلاح: رفع السقف إلى [MAX_OUTPUT_TOKENS] (2048) — هامش واسع لأي رد
+     * واقعي ضمن نطاق هذا التطبيق، دون فتح الباب لتكلفة/زمن استجابة غير
+     * محدودين. يُطبَّق هذا على مسار الدردشة الفعلي [answer] وعلى
+     * [testConnectionVerbose] معاً، فلا يبقى أي مسار يستخدم السقف القديم.
+     */
+    private const val MAX_OUTPUT_TOKENS = 2048
+
     suspend fun answer(
         question: String,
         herbs: List<Herb>,
@@ -231,7 +251,7 @@ object OnlineAssistant {
                 "generationConfig",
                 JSONObject().apply {
                     put("temperature", 0.4)
-                    put("maxOutputTokens", 800)
+                    put("maxOutputTokens", MAX_OUTPUT_TOKENS)
                 }
             )
         }
