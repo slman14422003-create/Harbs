@@ -38,15 +38,26 @@ private fun tone(hue: Color, saturation: Float, value: Float): Color {
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
-private fun lightSchemeFor(palette: ThemePalette): androidx.compose.material3.ColorScheme {
-    val hue = palette.light40
-    val sec = palette.secondary40
-    val ter = palette.tertiary40
+/**
+ * إصلاح: "الألوان الديناميكية" (حسب الخلفية) كانت تتجاهل كل ما سبق تماماً
+ * — تُستدعى dynamicLightColorScheme/dynamicDarkColorScheme من أندرويد
+ * مباشرة وتُستخدم أسطحها كما هي، بينما كل لوحة يدوية تمر عبر tone() أعلاه
+ * لتضمن تشبّعاً وسطوعاً ثابتين ومدروسين لكل دور لوني. أسطح Material You
+ * الافتراضية من أندرويد محايدة جداً عمداً (خلفية شبه بيضاء/سوداء بأثر لوني
+ * خافت جداً)، فكانت النتيجة أن اللون المُستخرج من الخلفية يظهر كأنه "طبقة"
+ * أو لمعة خفيفة فوق تصميم رمادي أصلاً — بينما اللوحات اليدوية تُلوّن كل
+ * سطح فعلياً بنفس الصيغة. الآن lightSchemeFor/darkSchemeFor تقبلان أي ثلاثة
+ * ألوان "هوية" (hue/secondary/tertiary) بدل الاقتصار على [ThemePalette]،
+ * فتُستخرج ألوان primary/secondary/tertiary فقط من نظام أندرويد الديناميكي
+ * (وهي فعلاً "حسب الخلفية") ثم تمرّ عبر نفس خط tone() الموحّد — فتُطبَّق
+ * بنفس القوة والتناسق الكاملين كأي لوحة يدوية، بدل أن تبقى محايدة وتُطبَّق
+ * كلمعة سطحية فوق تصميم غير ملوّن فعلياً.
+ */
+private fun lightSchemeFor(hue: Color, sec: Color, ter: Color, neutral: Boolean): androidx.compose.material3.ColorScheme {
     // خيار "بدون تلوين": تشبّع كل الأدوار اللونية يُصفَّر هنا (بغضّ النظر
     // عمّا تطلبه كل tone() أدناه)، فتنتج نفس درجات السطوع المدروسة تماماً
     // لكن رمادية محضة — الخلفية تصبح أبيض عملياً (سطوع 0.99 بلا تشبّع)
     // بدل أي ميل لوني، وهذا بالضبط ما طلبه المستخدم لهذا الخيار.
-    val neutral = palette == ThemePalette.NONE
     fun t(hueColor: Color, saturation: Float, value: Float) =
         tone(hueColor, if (neutral) 0f else saturation, value)
     return lightColorScheme(
@@ -97,14 +108,10 @@ private fun lightSchemeFor(palette: ThemePalette): androidx.compose.material3.Co
     )
 }
 
-private fun darkSchemeFor(palette: ThemePalette): androidx.compose.material3.ColorScheme {
-    val hue = palette.light40
-    val sec = palette.secondary40
-    val ter = palette.tertiary40
+private fun darkSchemeFor(hue: Color, sec: Color, ter: Color, neutral: Boolean): androidx.compose.material3.ColorScheme {
     // نفس مبدأ lightSchemeFor أعلاه: بلا أي تشبّع لوني لخيار "بدون تلوين"،
     // فتبقى فقط درجات السطوع نفسها المدروسة أصلاً لراحة العين، لكن رمادية
     // محضة — خلفية قريبة من الأسود (سطوع 0.14) بلا أي ميل لوني.
-    val neutral = palette == ThemePalette.NONE
     fun t(hueColor: Color, saturation: Float, value: Float) =
         tone(hueColor, if (neutral) 0f else saturation, value)
     return darkColorScheme(
@@ -209,10 +216,20 @@ fun HerbalEncyclopediaTheme(
 ) {
     val context = LocalContext.current
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        darkTheme -> darkSchemeFor(palette)
-        else -> lightSchemeFor(palette)
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            // نستخرج فقط هوية الألوان (primary/secondary/tertiary) من نظام
+            // أندرويد — وهذا ما يجعلها فعلاً "حسب الخلفية" — ثم نمرّرها عبر
+            // نفس خط tone() المستخدم للوحات اليدوية بدل استخدام أسطح
+            // Material You المحايدة كما هي (راجع التوثيق أعلى lightSchemeFor).
+            val dynamic = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) {
+                darkSchemeFor(dynamic.primary, dynamic.secondary, dynamic.tertiary, neutral = false)
+            } else {
+                lightSchemeFor(dynamic.primary, dynamic.secondary, dynamic.tertiary, neutral = false)
+            }
+        }
+        darkTheme -> darkSchemeFor(palette.light40, palette.secondary40, palette.tertiary40, neutral = palette == ThemePalette.NONE)
+        else -> lightSchemeFor(palette.light40, palette.secondary40, palette.tertiary40, neutral = palette == ThemePalette.NONE)
     }.animated()
 
     MaterialTheme(
