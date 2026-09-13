@@ -181,18 +181,34 @@ fun SettingsScreen(
             item {
                 SettingsSection(title = tr("المظهر")) {
                     ThemeModeSelector(darkMode = darkMode, onDarkModeChange = onDarkModeChange)
+                    // زر "ألوان ديناميكية" (Material You) كان يظهر دوماً حتى على
+                    // أجهزة أقدم من أندرويد 12 (API 31) لا تدعم هذه الميزة على
+                    // مستوى النظام إطلاقاً — Theme.kt نفسه يتحقق من هذا الشرط
+                    // قبل تطبيق الألوان فعلياً (راجع HerbalEncyclopediaTheme)،
+                    // فتفعيل المستخدم للمفتاح على تلك الأجهزة لا يُغيّر شيئاً
+                    // مرئياً إطلاقاً — مفتاح يبدو معطوباً/بلا أثر بدل أن يكون
+                    // مخفياً بذكاء عن الأجهزة التي لا تعنيها الميزة أصلاً.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        SettingsDivider()
+                        SwitchRow(
+                            icon = Icons.Filled.Palette,
+                            iconTint = Color(0xFF7C4DFF),
+                            title = tr("ألوان ديناميكية"),
+                            subtitle = tr("استخدام ألوان الخلفية (Material You)"),
+                            checked = dynamicColor,
+                            onCheckedChange = onDynamicColorChange
+                        )
+                    }
                     SettingsDivider()
-                    SwitchRow(
-                        icon = Icons.Filled.Palette,
-                        iconTint = Color(0xFF7C4DFF),
-                        title = tr("ألوان ديناميكية"),
-                        subtitle = tr("استخدام ألوان الخلفية (Material You)"),
-                        checked = dynamicColor,
-                        onCheckedChange = onDynamicColorChange
-                    )
-                    SettingsDivider()
+                    // على الأجهزة غير الداعمة (أقل من أندرويد 12)، المفتاح
+                    // مخفي أعلاه فلا يستطيع المستخدم أصلاً تغيير dynamicColor
+                    // من الواجهة — لكن لو وصلت قيمة true محفوظة من مصدر آخر
+                    // (نسخة احتياطية من جهاز يدعمها مثلاً)، هذا الشرط يمنع أن
+                    // تبقى لوحة الألوان اليدوية معطّلة بلا أي طريقة لإعادة
+                    // تفعيلها على هذا الجهاز تحديداً.
+                    val dynamicColorEffective = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     PaletteRow(
-                        enabled = !dynamicColor,
+                        enabled = !dynamicColorEffective,
                         selected = themePalette,
                         onSelect = onThemePaletteChange
                     )
