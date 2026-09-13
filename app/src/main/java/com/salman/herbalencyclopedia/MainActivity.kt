@@ -3,7 +3,6 @@ package com.salman.herbalencyclopedia
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -74,8 +73,23 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        // Prevent screenshots/screen-capture of the app, including the admin area.
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // ═══ إصلاح خلل حقيقي أُبلغ عنه: شاشة سوداء + شريط حالة بلون غريب
+        // لثوانٍ عند العودة للتطبيق من مبدّل التطبيقات، وإحساس عام بأن
+        // التطبيق "ناقصه شي" عن التطبيقات العادية ═══
+        // كان هنا سابقاً: window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // يُطبَّق مرة واحدة على *كامل* نافذة التطبيق طوال حياة النشاط، رغم
+        // أن الهدف الفعلي (حسب التعليق الأصلي) كان حماية شاشات الإدارة فقط
+        // من التصوير/التسجيل. أثر FLAG_SECURE يتجاوز منع لقطة شاشة واحدة:
+        // أندرويد يمنع أيضاً أي صورة مصغّرة حقيقية للنافذة في مبدّل
+        // التطبيقات (Recents)، فيستبدلها ببطاقة سوداء فارغة — وبما أنه كان
+        // مفعَّلاً دوماً لكامل التطبيق، كل "تبديل ثم عودة" يفتقد صورة مصغّرة
+        // حقيقية للانتقال منها بسلاسة، فيعيد أندرويد إرفاق سطح الرسم من
+        // الصفر فور العودة، وهذا هو مصدر الوميض الأسود بالضبط.
+        // الإصلاح الآن يعيش في HerbalNavGraph (راجع التعليق هناك): العلَم
+        // يُفعَّل فقط أثناء شاشات الإدارة الفعلية (كل مسار يبدأ بـ"admin")
+        // ويُزال تلقائياً في أي شاشة أخرى، فتسترجع بقية التطبيق سلوك
+        // أندرويد الطبيعي في مبدّل التطبيقات دون أي تراجع عن الحماية
+        // المقصودة أصلاً لشاشات الإدارة نفسها.
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
