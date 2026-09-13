@@ -11,7 +11,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.app.Activity
+import android.view.WindowManager
 import androidx.navigation.*
 import androidx.navigation.compose.*
 import com.salman.herbalencyclopedia.data.ai.AiConfig
@@ -146,6 +149,38 @@ fun HerbalNavGraph(
     }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
+
+    // ═══ إصلاح خلل حقيقي أُبلغ عنه: شاشة سوداء + شريط حالة بلون غريب
+    // لثوانٍ عند العودة للتطبيق من مبدّل التطبيقات، وإحساس عام بأن التطبيق
+    // "ناقصه شي" عن التطبيقات العادية عند التنقّل بينه وبين تطبيقات أخرى ═══
+    // السبب: MainActivity.onCreate كان يضبط WindowManager.LayoutParams.FLAG_SECURE
+    // على *كامل* نافذة التطبيق طوال حياة النشاط بأكملها (راجع التعليق هناك)،
+    // رغم أن الهدف الفعلي هو حماية شاشات الإدارة فقط من التصوير/التسجيل.
+    // أثر FLAG_SECURE لا يقتصر على منع لقطة شاشة يدوية: أندرويد يمنع أيضاً
+    // أخذ أي صورة مصغّرة حقيقية للنافذة في مبدّل التطبيقات (Recents) لأي
+    // نافذة تحمل هذا العلَم، فيستبدلها ببطاقة سوداء فارغة تماماً. وبما أنه
+    // كان مفعَّلاً دوماً لكامل التطبيق، كل عملية "تبديل لتطبيق آخر ثم عودة"
+    // تفتقد صورة مصغّرة حقيقية تُستخدَم للانتقال منها بسلاسة، فيضطر أندرويد
+    // لإعادة إرفاق سطح الرسم (Surface) من الصفر فور العودة — وهذا بالضبط
+    // مصدر وميض الشاشة السوداء وشريط الحالة بلون افتراضي غريب للحظات، وهو
+    // فرق واضح عن أي تطبيق عادي يحتفظ بصورة مصغّرة حقيقية فينتقل فوراً
+    // بلا أي وميض.
+    // الإصلاح: العلَم يُفعَّل الآن فقط أثناء وجود المستخدم فعلياً داخل إحدى
+    // شاشات الإدارة (كل مسار يبدأ بـ"admin" — راجع Screen.kt: Admin،
+    // AdminEdit، AdminTools، AdminUpdate، AdminEditBlend، AdminFeedback)
+    // ويُزال تلقائياً بمجرد الانتقال لأي شاشة عادية أخرى، بدل تفعيله دائماً
+    // لكامل التطبيق. هذا يحافظ على نفس الحماية المقصودة أصلاً لشاشات
+    // الإدارة الحسّاسة، بينما تسترجع بقية التطبيق سلوك أندرويد الطبيعي في
+    // مبدّل التطبيقات.
+    val context = LocalContext.current
+    SideEffect {
+        val window = (context as? Activity)?.window ?: return@SideEffect
+        if (current?.startsWith("admin") == true) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
     // *** إصلاح: الضغط على إشعار "تحديث متوفر" كان يفتح الشاشة الرئيسية فقط
     // بلا أي انتقال فعلي لشاشة الإعدادات. *** يُفعَّل فقط بعد تجاوز شاشتي
     // البداية (Splash/Welcome) — أي بعد قبول الشروط فعلياً وبدء التنقّل
