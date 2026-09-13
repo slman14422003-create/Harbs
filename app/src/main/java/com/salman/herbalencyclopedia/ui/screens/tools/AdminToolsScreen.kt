@@ -780,8 +780,15 @@ private fun AiOnlineDevTools(
                 value = modelText,
                 onValueChange = { modelText = it },
                 label = { Text(tr("اسم النموذج")) },
-                supportingText = { Text(tr("الافتراضي يشير دوماً لأحدث نموذج Flash مجاني من Google")) },
+                supportingText = { Text(tr("الافتراضي يشير دوماً لأحدث نموذج Flash مجاني من Google. اكتب اسم النموذج المجرَّد فقط بلا بادئة (مثال: gemini-flash-latest) — لا تكتب models/ في البداية، فهي مُضافة تلقائياً بالكود.")) },
                 singleLine = true,
+                // نفس إصلاح خانة رابط البروكسي أعلاه: تعطيل auto-correct/الأحرف
+                // الكبيرة التلقائية، لأن هذه الخانة نصية حساسة لأي تعديل صامت.
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                    autoCorrectEnabled = false,
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
