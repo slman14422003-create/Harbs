@@ -1,8 +1,6 @@
 package com.salman.herbalencyclopedia.ui.components
 
-import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -85,7 +83,14 @@ fun ImagePreviewDialog(imageUrl: String, onDismiss: () -> Unit) {
 
         val entranceProgress by animateFloatAsState(
             targetValue = if (visible && !dismissing) 1f else 0f,
-            animationSpec = tween(durationMillis = 300, easing = EaseOutCubic),
+            // كانت مدة/منحنى مستقلّين (300ms، EaseOutCubic) بمعزل عن نظام
+            // الحركة الموحّد للتطبيق (AppMotion في Animations.kt) الذي تعتمد
+            // عليه كل بقية الشاشات — استخدام نفس المنحنى/المدة القياسية هنا
+            // يجعل هذا الانتقال (فتح معاينة صورة) يشعر بنفس "لمسة" أي حركة
+            // أخرى بالتطبيق بدل أن يبدو مختلفاً قليلاً في السرعة والإحساس.
+            animationSpec = com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(
+                com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick
+            ),
             label = "imagePreviewEntrance",
             finishedListener = { value -> if (value == 0f && dismissing) onDismiss() }
         )
