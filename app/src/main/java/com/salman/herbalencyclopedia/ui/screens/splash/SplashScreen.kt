@@ -167,10 +167,19 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
     // ألوان الشاشة كاملة مُشتقّة الآن من ثيم التطبيق الفعلي (راجع التوثيق
     // أعلاه) بدل أخضر ثابت — فتطابق أي لوحة يختارها المستخدم أو الألوان
     // الديناميكية تلقائياً، في الوضعين الليلي والنهاري معاً.
+    //
+    // إصلاح: كان heroTop = scheme.primary مباشرة بلا أي مزج نحو الأسود، فإذا
+    // كان primary فاتحاً (كثير الحدوث تحديداً مع الألوان الديناميكية على
+    // خلفية شاشة رئيسية فاتحة، أو مع بعض اللوحات في الوضع النهاري) كانت
+    // الشاشة كلها تبدو فاتحة بصرف النظر عن هوية أغمق — عكس طابع "شاشة
+    // بداية داكنة" الذي يفترضه التصميم (نص أبيض، أوراق شبه شفافة بيضاء).
+    // الآن الأعلى نفسه يُمزج نحو الأسود بنسبة ثابتة، فتبقى الشاشة داكنة
+    // دوماً (أسود أساساً) مع لون التطبيق كصبغة واضحة فوقه، بدل الاعتماد على
+    // كون primary غامقاً بالصدفة.
     val scheme = MaterialTheme.colorScheme
-    val heroTop = scheme.primary
-    val heroMid = lerp(scheme.primary, scheme.tertiary, 0.5f)
-    val heroBottom = lerp(heroMid, Color.Black, 0.45f)
+    val heroTop = lerp(scheme.primary, Color.Black, 0.35f)
+    val heroMid = lerp(lerp(scheme.primary, scheme.tertiary, 0.5f), Color.Black, 0.55f)
+    val heroBottom = Color.Black
 
     Box(
         modifier = Modifier
