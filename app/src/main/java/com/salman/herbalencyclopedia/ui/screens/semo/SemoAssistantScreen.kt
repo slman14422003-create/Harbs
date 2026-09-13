@@ -269,6 +269,23 @@ fun SemoAssistantScreen(
                 )
             }
             isThinking = false
+
+            // ── تعلّم تلقائي من كل رد ناجح عبر الإنترنت (بلا حاجة لتقييم 👍
+            // يدوي من المستخدم) — بطلب صريح: "من هلا وطالع يتعلم بشكل تلقائي
+            // الأجوبة من اللي يسألونه إذا في نت". يعيد استخدام نفس مسار
+            // [HerbAssistant.recordFeedback] (helpful=true) الذي كان يعمل
+            // فقط بعد 👍 يدوي على رد محلي — فيستفيد تلقائياً من نفس فحص
+            // التكرار الدلالي (jaccard) وسقف العدد الأقصى وخانة تفعيل/تعطيل
+            // التعلّم الذاتي الموجودة أصلاً، دون الحاجة لأي تعليم يدوي. يُرفع
+            // أيضاً لطبقة المزامنة المشتركة عبر onFeedbackRecorded (نفس آلية
+            // التقييم اليدوي بالضبط) كي تستفيد منه بقية الأجهزة أيضاً.
+            if (onlineReply != null && onlineReply.text.isNotBlank()) {
+                val updated = withContext(Dispatchers.Default) {
+                    HerbAssistant.recordFeedback(question, onlineReply.text, true)
+                }
+                onAutoLearnedExamplesChange(updated)
+                onFeedbackRecorded(question, onlineReply.text, true)
+            }
         }
     }
 
