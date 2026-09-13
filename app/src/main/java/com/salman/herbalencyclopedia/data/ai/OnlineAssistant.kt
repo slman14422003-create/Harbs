@@ -67,8 +67,18 @@ object OnlineAssistant {
         if (apiKey.isBlank() || question.isBlank()) return@withContext null
         var connection: HttpURLConnection? = null
         try {
+            // إن ترك المطوّر [AiConfig.onlineBaseUrl] فارغاً: اتصال مباشر بخوادم
+            // Google كما كان دوماً. إن وضع عنوان بروكسي خاص به (مثال: خادم
+            // Cloudflare Worker ينفّذ إعادة توجيه شفافة لنفس المسار)، يُستبدَل
+            // به فقط الجزء الأساسي من الرابط بينما يبقى المسار والباراميترات
+            // (`/v1beta/models/...?key=...`) كما هي تماماً — فيكفي أن يكون
+            // البروكسي "مرآة" بسيطة تُعيد توجيه أي طلب يصلها بنفس المسار إلى
+            // generativelanguage.googleapis.com الحقيقي وتُعيد الرد كما هو.
+            val baseUrl = AiConfig.onlineBaseUrl.trim().trimEnd('/').ifBlank {
+                "https://generativelanguage.googleapis.com"
+            }
             val endpoint = URL(
-                "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+                "$baseUrl/v1beta/models/$model:generateContent?key=$apiKey"
             )
             val body = buildRequestBody(question, herbs, blends, allowCompare)
             connection = (endpoint.openConnection() as HttpURLConnection).apply {

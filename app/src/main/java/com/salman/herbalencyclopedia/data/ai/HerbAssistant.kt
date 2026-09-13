@@ -83,6 +83,18 @@ object AiConfig {
     var onlineApiKey: String = ""
 
     /**
+     * عنوان أساس بديل (بروكسي/مرآة) يُستبدَل به `https://generativelanguage.googleapis.com`
+     * عند الاتصال بـ Gemini — يُترك فارغاً افتراضياً (الاتصال المباشر بخوادم
+     * Google كما كان تماماً). يُستخدم فقط حين يكون الاتصال المباشر محجوباً
+     * فعلياً (كما هو الحال حالياً من سوريا رغم رفع الحظر الرسمي)؛ عندها يضع
+     * المطوّر هنا عنوان خادم بروكسي خاص به (Cloudflare Worker مثلاً) يُعيد
+     * توجيه نفس المسار (`/v1beta/models/...`) لخوادم Google الحقيقية دون أي
+     * تعديل على الجسم أو الرد، فيبقى كل منطق [OnlineAssistant] كما هو. راجع
+     * التعليق أعلى [OnlineAssistant.answer] لتفاصيل بناء الرابط الكامل.
+     */
+    var onlineBaseUrl: String = ""
+
+    /**
      * مُعرِّف نموذج Gemini المُستخدَم. الافتراضي "gemini-flash-latest" هو
      * اسم مستعار (alias) من Google يشير دوماً لأحدث نموذج Flash مجاني
      * موصى به، فيبقى يعمل تلقائياً حتى بعد إيقاف Google لإصدارات محدَّدة
@@ -97,6 +109,7 @@ object AiConfig {
     val defaultAutoLearnEnabled = true
     val defaultOnlineEnabled = false
     val defaultOnlineModel = "gemini-flash-latest"
+    val defaultOnlineBaseUrl = ""
 
     fun resetToDefaults() {
         similarityThreshold = defaultSimilarityThreshold
