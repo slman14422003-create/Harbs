@@ -70,6 +70,21 @@ fun AdminToolsScreen(
     aiAutoLearnedExamples: List<TrainedExample> = emptyList(),
     aiAutoLearnEnabled: Boolean = AiConfig.defaultAutoLearnEnabled,
     onSetAiAutoLearnedExamples: (List<TrainedExample>) -> Unit = {},
+    // ═══ إصلاح خلل حقيقي أُبلغ عنه: زر "مسح الكل" (وزر "حذف" الفردي) في
+    // الحالات المتعلَّمة لا يعمل فعلياً — الحالات ترجع تظهر من جديد بعد
+    // لحظات من مسحها ═══
+    // السبب: قائمة الحالات المتعلَّمة تُزامَن بين كل أجهزة المستخدمين عبر
+    // Firestore (راجع توثيق SemoLearningRepository/mergeLearnedExamples في
+    // AppViewModel). "مسح الكل" و"حذف" هنا كانا يعدّلان النسخة *المحلية*
+    // فقط على هذا الجهاز، بينما تبقى النسخة *المشتركة* على Firestore دون
+    // تغيير — فيأتي مستمع المزامنة الحيّ (الذي يعمل طوال حياة التطبيق) ويدمج
+    // القائمة المحلية الفارغة مع القائمة المشتركة غير الفارغة، فتُعاد كل
+    // الحالات المحذوفة خلال لحظات، وكأن الزر لم يفعل شيئاً. الإصلاح: أي حذف
+    // من هنا يجب أن "يُنزِّل" (demote) نفس الحالة من الطرف المشترك أيضاً —
+    // نفس الآلية المستخدمة فعلياً عند تقييم إجابة بـ 👎 بالدردشة (راجع
+    // AppViewModel.demoteSemoLearning)، ممرَّرة هنا كي تُستدعى لكل حالة تُحذف
+    // من لوحة الإدارة أيضاً، لا من الدردشة فقط.
+    onDemoteLearnedExample: (String) -> Unit = {},
     onSetAiAutoLearnEnabled: (Boolean) -> Unit = {},
     // ── الوضع الذكي عبر الإنترنت (Gemini المجاني من Google، متاح فعلياً من
     // سوريا دون VPN) — راجع توثيق AiConfig.onlineEnabled في HerbAssistant.kt
@@ -210,9 +225,11 @@ fun AdminToolsScreen(
                     trainedExamples = aiTrainedExamples,
                     onAutoLearnedExamplesChange = onSetAiAutoLearnedExamples,
                     onAutoLearnEnabledChange = onSetAiAutoLearnEnabled,
+                    onDemoteLearnedExample = onDemoteLearnedExample,
                     onPromoteToTrained = { example ->
                         onSetAiTrainedExamples(aiTrainedExamples + example)
                         onSetAiAutoLearnedExamples(aiAutoLearnedExamples - example)
+                        onDemoteLearnedExample(example.pattern)
                     }
                 )
             }
@@ -609,6 +626,7 @@ private fun AiSelfLearningDevTools(
     trainedExamples: List<TrainedExample>,
     onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit,
     onAutoLearnEnabledChange: (Boolean) -> Unit,
+    onDemoteLearnedExample: (String) -> Unit,
     onPromoteToTrained: (TrainedExample) -> Unit
 ) {
     Card(
@@ -657,7 +675,10 @@ private fun AiSelfLearningDevTools(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                 )
                 if (autoLearnedExamples.isNotEmpty()) {
-                    TextButton(onClick = { onAutoLearnedExamplesChange(emptyList()) }) { Text(tr("مسح الكل")) }
+                    TextButton(onClick = {
+                        autoLearnedExamples.forEach { onDemoteLearnedExample(it.pattern) }
+                        onAutoLearnedExamplesChange(emptyList())
+                    }) { Text(tr("مسح الكل")) }
                 }
             }
 
@@ -682,7 +703,10 @@ private fun AiSelfLearningDevTools(
                                         enabled = example !in trainedExamples,
                                         onClick = { onPromoteToTrained(example) }
                                     ) { Text(tr("ترقية لتدريب دائم")) }
-                                    TextButton(onClick = { onAutoLearnedExamplesChange(autoLearnedExamples - example) }) {
+                                    TextButton(onClick = {
+                                        onDemoteLearnedExample(example.pattern)
+                                        onAutoLearnedExamplesChange(autoLearnedExamples - example)
+                                    }) {
                                         Text(tr("حذف"), color = MaterialTheme.colorScheme.error)
                                     }
                                 }
