@@ -41,6 +41,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,10 +61,32 @@ private const val SPLASH_MAX_EXTRA_WAIT_MS = 3500L
 
 /**
  * شاشة البداية المخصصة داخل Compose (تظهر بعد شاشة النظام
- * Theme.HerbalEncyclopedia.Splash القصيرة). أُعيد تصميمها لتعطي طابعاً
- * نباتياً هادئاً وفخماً بدل الشاشة السابقة: خلفية متدرّجة بلون الهوية،
- * وميض عضوي خلف الأيقونة، أوراق زخرفية خافتة في الزوايا، وظهور متتابع
- * للعناصر بدل ظهورها دفعة واحدة.
+ * Theme.HerbalEncyclopedia.Splash القصيرة، والتي أصبحت الآن متحركة فعلياً
+ * أيضاً — راجع avd_splash_icon.xml وthemes.xml). أُعيد تصميمها لتعطي طابعاً
+ * نباتياً هادئاً وفخماً: خلفية متدرّجة، وميض عضوي خلف الأيقونة، أوراق
+ * زخرفية خافتة في الزوايا، وظهور متتابع للعناصر بدل ظهورها دفعة واحدة.
+ *
+ * ═══ إصلاح: الألوان لم تكن "حسب ثيم التطبيق" فعلياً ═══
+ * كانت كل ألوان هذه الشاشة (الخلفية، توهّج الشعار، لون الأيقونة) أخضراً
+ * ثابتاً مكتوباً يدوياً بصرف النظر تماماً عن لوحة الألوان التي يختارها
+ * المستخدم فعلياً من الإعدادات (9 لوحات مختلفة في [ThemePalette] — أزرق،
+ * بنفسجي، برتقالي...) أو عن تفعيله "الألوان الديناميكية" (Material You)،
+ * رغم أن هذه الشاشة تقع أصلاً *داخل* HerbalEncyclopediaTheme (راجع
+ * HerbalNavGraph/MainActivity) وتملك وصولاً كاملاً لـMaterialTheme.colorScheme
+ * الصحيح فعلياً — أي أن أول شيء يراه المستخدم عند كل فتح للتطبيق كان
+ * يخالف هويته اللونية التي اختارها بنفسه. الآن كل الألوان مُشتقة من
+ * [MaterialTheme.colorScheme] (primary/tertiary) فتتبدّل تلقائياً مع أي
+ * لوحة، مع الوضع الليلي/النهاري، ومع الألوان الديناميكية أيضاً. التدرّج
+ * يُعتّم تدريجياً نحو الأسود (بدل التلاشي نحو سطح فاتح كما كان سابقاً عبر
+ * colorScheme.surface، الذي يصبح شبه أبيض في الوضع النهاري ويُضعف تباين
+ * النص الأبيض عليه) لضمان تباين كافٍ للنص في كل لوحة ووضع معاً دون استثناء.
+ *
+ * ═══ إضافة: حركة مستمرة بدل ثبات بعد الظهور ═══
+ * سابقاً، بعد انتهاء حركة الدخول (تكبّر + تلاشي)، كانت شارة الشعار والأوراق
+ * الزخرفية تجمد تماماً بلا أي حركة إضافية طوال بقية عرض الشاشة (فقط توهّج
+ * الشفافية والنقاط الثلاث كانتا متحركتين). الآن تطفو الشارة بهدوء لأعلى
+ * وأسفل ([badgeBob]) وتتمايل الأوراق الزخرفية بلطف ([leafSway])، بنفس مبدأ
+ * إيقاف الحركات اللانهائية في الوضع الاقتصادي المتّبع أصلاً في بقية الشاشة.
  *
  * [isDataReady] تحسين لتجربة أول تشغيل بعد التثبيت تحديداً: سابقاً كانت
  * الشاشة تنتقل دوماً بعد مهلة ثابتة (١٫٧٥ ثانية) بغض النظر عن وصول بيانات
@@ -101,6 +125,33 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
         // ملاحظة: نُبقي القيمة كـ State مقروءة أدناه بنفس الاسم.
     } else 0.4f
 
+    // طفوّ خفيف مستمر للشارة (شعار + الزجاج المحيط به معاً) — يمنحها إحساس
+    // "حيّة" بدل التجمّد التام بعد حركة الدخول. سعة الحركة صغيرة عمداً (±5dp)
+    // كي تبقى أنيقة وهادئة لا مشتّتة. تُستبعد بالكامل في الوضع الاقتصادي.
+    val badgeBob = if (highQuality) {
+        val bobTransition = rememberInfiniteTransition(label = "badgeBob")
+        val animated by bobTransition.animateFloat(
+            initialValue = -5f,
+            targetValue = 5f,
+            animationSpec = infiniteRepeatable(tween(1900, easing = AppMotion.Smooth), RepeatMode.Reverse),
+            label = "badgeBobOffset"
+        )
+        animated
+    } else 0f
+
+    // تمايل بسيط جداً لأوراق الزخرفة في الزوايا (±3 درجات حول زاويتها
+    // الأصلية) — نفس مبدأ التوقف في الوضع الاقتصادي أعلاه.
+    val leafSway = if (highQuality) {
+        val swayTransition = rememberInfiniteTransition(label = "leafSway")
+        val animated by swayTransition.animateFloat(
+            initialValue = -3f,
+            targetValue = 3f,
+            animationSpec = infiniteRepeatable(tween(5000, easing = AppMotion.Smooth), RepeatMode.Reverse),
+            label = "leafSwayAngle"
+        )
+        animated
+    } else 0f
+
     LaunchedEffect(Unit) {
         stage = 1
         delay(250)
@@ -113,16 +164,18 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
         onFinished()
     }
 
-    val brandGreen = Color(0xFF1B5E20)
+    // ألوان الشاشة كاملة مُشتقّة الآن من ثيم التطبيق الفعلي (راجع التوثيق
+    // أعلاه) بدل أخضر ثابت — فتطابق أي لوحة يختارها المستخدم أو الألوان
+    // الديناميكية تلقائياً، في الوضعين الليلي والنهاري معاً.
+    val scheme = MaterialTheme.colorScheme
+    val heroTop = scheme.primary
+    val heroMid = lerp(scheme.primary, scheme.tertiary, 0.5f)
+    val heroBottom = lerp(heroMid, Color.Black, 0.45f)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(brandGreen, Color(0xFF2E7D32), MaterialTheme.colorScheme.surface)
-                )
-            ),
+            .background(Brush.verticalGradient(listOf(heroTop, heroMid, heroBottom))),
         contentAlignment = Alignment.Center
     ) {
         // زخرفة أوراق خافتة في الزوايا لإعطاء عمق نباتي بلا إلهاء عن المحتوى.
@@ -134,7 +187,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                 .align(Alignment.TopStart)
                 .offset(x = (-28).dp, y = 36.dp)
                 .size(150.dp)
-                .rotate(-18f)
+                .rotate(-18f + leafSway)
         )
         Icon(
             imageVector = Icons.Filled.Spa,
@@ -144,20 +197,24 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                 .align(Alignment.BottomEnd)
                 .offset(x = 30.dp, y = (-24).dp)
                 .size(190.dp)
-                .rotate(154f)
+                .rotate(154f - leafSway)
         )
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                // وميض عضوي متنفس خلف الشعار.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.graphicsLayer { translationY = badgeBob.dp.toPx() }
+            ) {
+                // وميض عضوي متنفس خلف الشعار، بلون ثانوي/ثالث من الثيم
+                // (inversePrimary مصمَّم أصلاً ليبرز فوق أسطح بلون Primary).
                 Box(
                     modifier = Modifier
                         .size(150.dp)
                         .scale(iconScale)
-                        .background(Color.White.copy(alpha = glowAlpha * 0.25f), CircleShape)
+                        .background(scheme.inversePrimary.copy(alpha = glowAlpha * 0.35f), CircleShape)
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = stage >= 1,
@@ -167,7 +224,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                         shape = CircleShape,
                         modifier = Modifier.size(108.dp),
                         tint = Color.White,
-                        glowColor = Color(0xFF9CCC65),
+                        glowColor = scheme.tertiary,
                         borderAlpha = 0.4f
                     ) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -175,7 +232,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                                 imageVector = Icons.Filled.Spa,
                                 contentDescription = null,
                                 modifier = Modifier.size(54.dp),
-                                tint = brandGreen
+                                tint = scheme.primary
                             )
                         }
                     }
