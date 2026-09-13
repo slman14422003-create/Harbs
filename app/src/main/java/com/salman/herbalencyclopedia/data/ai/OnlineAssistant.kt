@@ -82,9 +82,77 @@ object OnlineAssistant {
         blends: List<Blend>,
         allowCompare: Boolean
     ): HerbAssistant.AssistantReply? = withContext(Dispatchers.IO) {
+        if (question.isBlank()) return@withContext null
+        val rawResponse = try {
+            sendRequest(question, herbs, blends, allowCompare)
+        } catch (e: Exception) {
+            return@withContext null
+        }
+        val text = extractReplyText(rawResponse)?.trim()
+        if (text.isNullOrBlank()) null else HerbAssistant.AssistantReply(text, false)
+    }
+
+    /**
+     * ═══ إصلاح خلل حقيقي أُبلغ عنه: "اختبار الاتصال" في أدوات المطور كان
+     * يعرض دوماً نفس الرسالة العامة "تعذّر الاتصال" مهما كان سبب الفشل
+     * الحقيقي — رابط بروكسي مكتوب غلط (مثال واقعي: لوحة مفاتيح أندرويد
+     * صحّحت/بدّلت حرفاً تلقائياً بحقل الرابط بلا أن ينتبه المطوّر)، مفتاح
+     * غير صالح، خطأ من خادم غوغل نفسه، أو الطلب لم يصل أصلاً لأي خادم. لا
+     * فرق بينها من واجهة "تعذّر الاتصال" وحدها، فيصعب معرفة أين المشكلة
+     * فعلياً (كما حصل: سجلات Cloudflare Worker لم تُظهر وصول أي طلب إطلاقاً
+     * — أي أن الفشل حصل محلياً على الجهاز قبل أي محاولة شبكة حقيقية، غالباً
+     * بسبب رابط بروكسي غير صالح بنيوياً بعد تصحيح تلقائي من لوحة المفاتيح).
+     * الآن يُعاد سبب الفشل الفعلي (نوع الاستثناء ورسالته، أو رمز حالة رد
+     * غوغل) ليظهر مباشرة بواجهة الاختبار، دون أي تغيير على السلوك الصامت
+     * لـ[answer] المستخدَم فعلياً في الدردشة العادية (لا يزال دوماً يُرجع
+     * `null` بصمت عند أي فشل هناك).
+     */
+    suspend fun testConnectionVerbose(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        try {
+            val raw = sendRequest("مرحباً", emptyList(), emptyList(), false)
+            val text = extractReplyText(raw)?.trim()
+            if (text.isNullOrBlank()) false to "وصل رد من الخادم لكن بلا نص إجابة واضح — الرد الخام: ${raw.take(300)}"
+            else true to text
+        } catch (e: Exception) {
+            false to "${e.javaClass.simpleName}: ${e.message ?: "بلا تفاصيل إضافية"}"
+        }
+    }
+
+    /** توافقاً مع الاستدعاءات القديمة (تُبقي نفس السلوك الصامت لـ[answer]). */
+    suspend fun testConnection(): String? = withContext(Dispatchers.IO) {
+        answer("مرحباً", emptyList(), emptyList(), false)?.text
+    }
+
+    /**
+     * تُطبِّع رابط البروكسي/المرآة الذي يدخله المطوّر قبل استخدامه: تحذف أي
+     * مسافات أو أسطر جديدة قد تُقحمها لوحة مفاتيح أندرويد تلقائياً (تصحيح
+     * تلقائي/اقتراح كلمة) دون أن يلاحظ المطوّر، وتضيف "https://" تلقائياً
+     * إن كتب المطوّر اسم النطاق فقط بلا بروتوكول (مثال: "xxx.workers.dev").
+     */
+    private fun normalizedBaseUrl(): String {
+        val cleaned = AiConfig.onlineBaseUrl.replace(Regex("\\s+"), "").trimEnd('/')
+        if (cleaned.isBlank()) return "https://generativelanguage.googleapis.com"
+        return if (cleaned.startsWith("http://", ignoreCase = true) ||
+            cleaned.startsWith("https://", ignoreCase = true)
+        ) cleaned else "https://$cleaned"
+    }
+
+    /**
+     * ينفّذ طلب الاتصال الفعلي بـGemini (مباشرة أو عبر بروكسي المطوّر) ويعيد
+     * نص الرد الخام، أو يرمي استثناءً واضحاً عند أي فشل (رابط غير صالح، رد
+     * غير ناجح من الخادم، انقطاع شبكة...). لا يُستخدم مباشرة من واجهة
+     * الدردشة — [answer] يغلّفه بصمت، و[testConnectionVerbose] يعرض تفاصيل
+     * فشله كما هي لأدوات المطور.
+     */
+    private fun sendRequest(
+        question: String,
+        herbs: List<Herb>,
+        blends: List<Blend>,
+        allowCompare: Boolean
+    ): String {
         val apiKey = AiConfig.onlineApiKey.trim()
         val model = AiConfig.onlineModel.trim().ifBlank { AiConfig.defaultOnlineModel }
-        if (apiKey.isBlank() || question.isBlank()) return@withContext null
+        require(apiKey.isNotBlank()) { "مفتاح Gemini API فارغ" }
         var connection: HttpURLConnection? = null
         try {
             // إن ترك المطوّر [AiConfig.onlineBaseUrl] فارغاً: اتصال مباشر بخوادم
@@ -94,11 +162,8 @@ object OnlineAssistant {
             // (`/v1beta/models/...?key=...`) كما هي تماماً — فيكفي أن يكون
             // البروكسي "مرآة" بسيطة تُعيد توجيه أي طلب يصلها بنفس المسار إلى
             // generativelanguage.googleapis.com الحقيقي وتُعيد الرد كما هو.
-            val baseUrl = AiConfig.onlineBaseUrl.trim().trimEnd('/').ifBlank {
-                "https://generativelanguage.googleapis.com"
-            }
             val endpoint = URL(
-                "$baseUrl/v1beta/models/$model:generateContent?key=$apiKey"
+                "${normalizedBaseUrl()}/v1beta/models/$model:generateContent?key=$apiKey"
             )
             val body = buildRequestBody(question, herbs, blends, allowCompare)
             connection = (endpoint.openConnection() as HttpURLConnection).apply {
@@ -114,24 +179,14 @@ object OnlineAssistant {
             val status = connection.responseCode
             val rawResponse = (if (status in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }
-                ?: return@withContext null
-            if (status !in 200..299) return@withContext null
-            val text = extractReplyText(rawResponse)?.trim()
-            if (text.isNullOrBlank()) null else HerbAssistant.AssistantReply(text, false)
-        } catch (e: Exception) {
-            null
+                ?: throw java.io.IOException("لا يوجد أي رد من الخادم (حالة $status)")
+            if (status !in 200..299) {
+                throw java.io.IOException("رد الخادم بحالة فشل $status: ${rawResponse.take(300)}")
+            }
+            return rawResponse
         } finally {
             connection?.disconnect()
         }
-    }
-
-    /**
-     * اختبار اتصال بسيط (سؤال قصير ثابت) تستخدمه أدوات المطور للتأكد من
-     * صلاحية المفتاح والنموذج قبل الاعتماد عليهما فعلياً في المحادثة —
-     * يعيد نص الرد نفسه عند النجاح، أو `null` عند أي فشل (نفس منطق [answer]).
-     */
-    suspend fun testConnection(): String? = withContext(Dispatchers.IO) {
-        answer("مرحباً", emptyList(), emptyList(), false)?.text
     }
 
     private fun buildRequestBody(
