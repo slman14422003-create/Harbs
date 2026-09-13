@@ -44,10 +44,23 @@ import com.salman.herbalencyclopedia.ui.screens.settings.SettingsScreen
 import com.salman.herbalencyclopedia.ui.screens.splash.SplashScreen
 import com.salman.herbalencyclopedia.ui.screens.terms.TermsScreen
 import com.salman.herbalencyclopedia.ui.screens.tools.AdminToolsScreen
+import com.salman.herbalencyclopedia.ui.theme.rememberSmoothMotionAllowed
 import kotlinx.coroutines.launch
 
 @Composable
 fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: PreferencesRepository, navController: NavHostController = rememberNavController()) {
+    // قدرة جديدة: انتقالات التنقّل بين الشاشات (أدناه في NavHost) كانت
+    // الحركة الوحيدة بالتطبيق التي تتجاهل وضع الأداء ومعدّل التحديث الفعلي
+    // تماماً — بعكس كل حركة أخرى بالتطبيق (staggeredEntrance، entranceFade...
+    // راجع Animations.kt) التي تحترم [rememberSmoothMotionAllowed] بدقة. هذا
+    // بالضبط ما يجعل الحركة تبدو "متقطعة وغير متناسقة بكل الواجهات": حركات
+    // ظهور العناصر داخل الشاشة تتوقف بذكاء على جهاز ضعيف/وضع اقتصادي بينما
+    // الانتقال *بين* الشاشات نفسها يستمر يشغّل fade+slide كاملة فتتصادم
+    // الحركتان بإحساسين مختلفين تماماً في نفس اللحظة. الآن تُستخدم نفس
+    // الإشارة هنا أيضاً: تنتقل الشاشات فوراً بلا أي حركة على جهاز ضعيف أو
+    // معدّل تحديث منخفض حالياً، وتبقى نفس حركة fade+slide السلسة كما هي
+    // على الأجهزة/الحالات التي تتحمّلها فعلاً.
+    val smoothMotionAllowed = rememberSmoothMotionAllowed()
     val uiState by appViewModel.uiState.collectAsState()
     val favoriteIds by appViewModel.favoriteIds.collectAsState()
     val darkMode by preferencesRepository.darkMode.collectAsState(initial = null)
@@ -196,12 +209,14 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                 navController = navController,
                 startDestination = Screen.Splash.route,
                 enterTransition = {
+                    if (!smoothMotionAllowed) androidx.compose.animation.EnterTransition.None else
                     androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
                         androidx.compose.animation.slideInHorizontally(
                             com.salman.herbalencyclopedia.ui.theme.AppMotion.silky()
                         ) { it / 6 }
                 },
                 exitTransition = {
+                    if (!smoothMotionAllowed) androidx.compose.animation.ExitTransition.None else
                     androidx.compose.animation.fadeOut(
                         com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth(
                             com.salman.herbalencyclopedia.ui.theme.AppMotion.Quick
@@ -209,9 +224,11 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
                     )
                 },
                 popEnterTransition = {
+                    if (!smoothMotionAllowed) androidx.compose.animation.EnterTransition.None else
                     androidx.compose.animation.fadeIn(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth())
                 },
                 popExitTransition = {
+                    if (!smoothMotionAllowed) androidx.compose.animation.ExitTransition.None else
                     androidx.compose.animation.fadeOut(com.salman.herbalencyclopedia.ui.theme.AppMotion.smooth()) +
                         androidx.compose.animation.slideOutHorizontally(
                             com.salman.herbalencyclopedia.ui.theme.AppMotion.silky()
