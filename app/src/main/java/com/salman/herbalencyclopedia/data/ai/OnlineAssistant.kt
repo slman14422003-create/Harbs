@@ -152,6 +152,7 @@ object OnlineAssistant {
     ): String {
         val apiKey = AiConfig.onlineApiKey.trim()
         val model = AiConfig.onlineModel.trim().ifBlank { AiConfig.defaultOnlineModel }
+            .removePrefix("models/")
         require(apiKey.isNotBlank()) { "مفتاح Gemini API فارغ" }
         var connection: HttpURLConnection? = null
         try {
