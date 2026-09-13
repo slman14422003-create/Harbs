@@ -39,8 +39,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.salman.herbalencyclopedia.ui.util.tr
+import com.salman.herbalencyclopedia.data.ai.AiConfig
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
+import com.salman.herbalencyclopedia.data.ai.OnlineAssistant
 import com.salman.herbalencyclopedia.data.ai.TrainedExample
+import com.salman.herbalencyclopedia.data.ai.hasActiveInternetConnection
 import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
@@ -221,7 +224,25 @@ fun SemoAssistantScreen(
                 }
             }
 
-            val reply = withContext(Dispatchers.Default) {
+            // ── الوضع الذكي عبر الإنترنت (Gemini المجاني، راجع OnlineAssistant.kt
+            // وتوثيق AiConfig.onlineEnabled) — يُحاوَل فقط للأسئلة التي تحتاج
+            // بحثاً فعلياً أصلاً (showThinkingBubble)؛ الردود الفورية (ترحيب/
+            // شكر/حالة مدرَّبة) تبقى محلية دوماً بلا أي استثناء لأنها أسرع
+            // وأدق من أي استدعاء شبكة لها أصلاً. الفحص هنا (تفعيل + مفتاح +
+            // اتصال إنترنت فعلي عبر hasActiveInternetConnection) يسبق أي
+            // محاولة اتصال، فلا يوجد أي تأخير أو فرق ملحوظ حين تكون هذه
+            // الشروط غير متوفرة — يسقط السؤال مباشرة لنفس المسار المحلي
+            // المعتاد أدناه، تماماً كما كان قبل هذه الإضافة تماماً.
+            val onlineReply = if (showThinkingBubble && AiConfig.onlineEnabled && AiConfig.onlineApiKey.isNotBlank()) {
+                val online = withContext(Dispatchers.IO) {
+                    if (hasActiveInternetConnection(context)) {
+                        OnlineAssistant.answer(question, contextHerbs, contextBlends, allowCompare)
+                    } else null
+                }
+                online
+            } else null
+
+            val reply = onlineReply ?: withContext(Dispatchers.Default) {
                 HerbAssistant.answerDetailed(question, contextHerbs, allowCompare, contextBlends)
             }
 
