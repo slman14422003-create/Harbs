@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -12,6 +13,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -20,6 +22,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.salman.herbalencyclopedia.data.repository.PreferencesRepository
+import com.salman.herbalencyclopedia.data.update.UpdateNotifier
 import com.salman.herbalencyclopedia.ui.AppViewModel
 import com.salman.herbalencyclopedia.ui.AppViewModelFactory
 import com.salman.herbalencyclopedia.ui.navigation.HerbalNavGraph
@@ -37,6 +40,16 @@ import com.salman.herbalencyclopedia.ui.util.LocaleManager
 
 class MainActivity : ComponentActivity() {
 
+    // *** إصلاح: الضغط على إشعار "تحديث متوفر" (راجع UpdateNotifier) كان
+    // يفتح الشاشة الرئيسية فقط بلا أي انتقال فعلي لشاشة الإعدادات. ***
+    // القيمة تُقرأ أولاً من نيّة بدء التشغيل (بدء بارد: التطبيق لم يكن
+    // يعمل)، وتُحدَّث لاحقاً من [onNewIntent] (التطبيق كان يعمل بالفعل
+    // بالخلفية وضُغط على الإشعار). mutableStateOf عادي (لا remember) لأنها
+    // خاصية على الـ Activity نفسها، تعيش خارج أي إعادة تركيب لـ setContent
+    // وتُقرأ داخله كحالة تفاعلية عادية — أي تحديث لها من onNewIntent يُعاد
+    // رسم الواجهة به فوراً حتى لو Activity نفسه لم يُعَد إنشاؤه.
+    private val pendingDeepLink = mutableStateOf<String?>(null)
+
     // يُستدعى قبل onCreate وقبل أي Compose/ViewModel: يغلّف الـ Context
     // بلغة المستخدم المحفوظة (عربي/إنجليزي) حتى تتبع كل موارد Android
     // (بما فيها اتجاه RTL/LTR الافتراضي وأي مورد @string لاحق) تلك اللغة
@@ -46,6 +59,18 @@ class MainActivity : ComponentActivity() {
         super.attachBaseContext(LocaleManager.wrapContext(newBase, languageCode))
     }
 
+    /**
+     * يُستدعى فقط حين يكون التطبيق يعمل بالفعل (بالخلفية أو بالمقدّمة) ويصله
+     * Intent جديد — بفضل android:launchMode="singleTask" بالمانيفست، لا
+     * يُنشئ أندرويد نسخة ثانية من MainActivity فوق الأولى عند الضغط على
+     * الإشعار بينما التطبيق يعمل، بل يعيد استخدام نفس النسخة ويمرّ عبر هنا.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingDeepLink.value = intent.getStringExtra(UpdateNotifier.EXTRA_OPEN_SCREEN)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -53,6 +78,11 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // بدء بارد: نيّة إطلاق التطبيق نفسها قد تحمل نفس علامة الانتقال
+        // (لو المستخدم ضغط على الإشعار والتطبيق مغلق تماماً) — راجع
+        // HerbalNavGraph لكيفية استهلاكها فعلياً بعد جهوزية التنقّل.
+        pendingDeepLink.value = intent?.getStringExtra(UpdateNotifier.EXTRA_OPEN_SCREEN)
 
         val container = (application as HerbalApp).container
 
@@ -71,6 +101,7 @@ class MainActivity : ComponentActivity() {
                 initial = AppLanguage.ARABIC
             )
             val useDark = darkModePref ?: isSystemInDarkTheme()
+            val deepLink by pendingDeepLink
 
             // النسخة "الفعلية" من وضع الأداء: تطابق اختيار المستخدم عادةً،
             // لكنها تتراجع تلقائياً ومؤقتاً لوضع "اقتصادي" إن فعّل النظام
@@ -128,7 +159,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         HerbalNavGraph(
                             appViewModel = appViewModel,
-                            preferencesRepository = container.preferencesRepository
+                            preferencesRepository = container.preferencesRepository,
+                            pendingDeepLink = deepLink,
+                            onDeepLinkHandled = { pendingDeepLink.value = null }
                         )
                     }
                 }
