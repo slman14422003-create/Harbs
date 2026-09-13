@@ -77,6 +77,11 @@ class PreferencesRepository(private val context: Context) {
         // (👍) على إجابات البحث الحر — منفصلة عن حالات المطوّر اليدوية أعلاه.
         val AI_AUTO_LEARNED_EXAMPLES = stringSetPreferencesKey("ai_auto_learned_examples")
         val AI_AUTO_LEARN_ENABLED = booleanPreferencesKey("ai_auto_learn_enabled")
+        // الوضع الذكي عبر الإنترنت (Gemini المجاني من Google) — راجع توثيق
+        // AiConfig.onlineEnabled/onlineApiKey/onlineModel في HerbAssistant.kt.
+        val AI_ONLINE_ENABLED = booleanPreferencesKey("ai_online_enabled")
+        val AI_ONLINE_API_KEY = stringPreferencesKey("ai_online_api_key")
+        val AI_ONLINE_MODEL = stringPreferencesKey("ai_online_model")
         // كاش كامل لمحتوى الموسوعة (راجع توثيق loadCachedCatalog/saveCatalogCache
         // أسفل الملف لسبب وجود هذا الكاش المنفصل عن كاش Firestore الداخلي).
         val CATALOG_HERBS_JSON = stringPreferencesKey("catalog_herbs_json")
@@ -297,6 +302,35 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setAiAutoLearnEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.AI_AUTO_LEARN_ENABLED] = enabled }
+    }
+
+    // ── الوضع الذكي عبر الإنترنت (Gemini المجاني) ────────────────────────
+
+    val aiOnlineEnabled: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.AI_ONLINE_ENABLED] ?: AiConfig.defaultOnlineEnabled
+    }
+    val aiOnlineApiKey: Flow<String> = context.dataStore.data.map {
+        it[Keys.AI_ONLINE_API_KEY] ?: ""
+    }
+    val aiOnlineModel: Flow<String> = context.dataStore.data.map {
+        it[Keys.AI_ONLINE_MODEL] ?: AiConfig.defaultOnlineModel
+    }
+
+    suspend fun setAiOnlineEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AI_ONLINE_ENABLED] = enabled }
+    }
+    suspend fun setAiOnlineApiKey(key: String) {
+        context.dataStore.edit { it[Keys.AI_ONLINE_API_KEY] = key }
+    }
+    suspend fun setAiOnlineModel(model: String) {
+        context.dataStore.edit { it[Keys.AI_ONLINE_MODEL] = model.ifBlank { AiConfig.defaultOnlineModel } }
+    }
+    suspend fun resetAiOnlineSettings() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.AI_ONLINE_ENABLED)
+            prefs.remove(Keys.AI_ONLINE_API_KEY)
+            prefs.remove(Keys.AI_ONLINE_MODEL)
+        }
     }
 
     // ── كاش الموسوعة المحلي (أعشاب/تصنيفات/خلطات) ───────────────────────
