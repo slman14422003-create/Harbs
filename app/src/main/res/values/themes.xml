@@ -11,12 +11,20 @@
 
     <style name="Theme.HerbalEncyclopedia.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_splash_logo</item>
+        <!-- إصلاح: كانت هذه صورة PNG ثابتة (mipmap/ic_splash_logo) رغم أن
+             الخاصية اسمها "AnimatedIcon" — أي لا حركة فعلية إطلاقاً هنا رغم
+             ضبط مدة حركة (windowSplashScreenAnimationDuration) أدناه بلا أي
+             أثر مرئي لها. الآن تشير لـ avd/animated-vector حقيقي (نفس ورقة
+             الشعار، بحركة "تكبّر ناعمة" عند ظهورها) فتتحرك الأيقونة فعلياً
+             في شاشة النظام قبل ظهور شاشة البداية الخاصة بالتطبيق (Compose). -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/avd_splash_icon</item>
         <!-- دائرة بيضاء خلف الأيقونة، لتطابق دائرة الزجاج البيضاء التي
              تحيط بالأيقونة في شاشة البداية داخل التطبيق (Compose)، بدل
              ورقة عائمة مباشرة على الأخضر بلا تباين واضح. -->
         <item name="windowSplashScreenIconBackgroundColor">@android:color/white</item>
         <item name="postSplashScreenTheme">@style/Theme.HerbalEncyclopedia</item>
-        <item name="windowSplashScreenAnimationDuration">350</item>
+        <!-- تُطابق الآن فعلياً مدة حركة avd_splash_icon (420ms) بدل رقم
+             عشوائي بلا علاقة بأي حركة حقيقية كما كان سابقاً. -->
+        <item name="windowSplashScreenAnimationDuration">420</item>
     </style>
 </resources>
