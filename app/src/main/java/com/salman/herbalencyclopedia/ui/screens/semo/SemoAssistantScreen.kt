@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -48,6 +47,8 @@ import com.salman.herbalencyclopedia.data.model.Blend
 import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
+import com.salman.herbalencyclopedia.ui.theme.AppMotion
+import com.salman.herbalencyclopedia.ui.theme.rememberSmoothMotionAllowed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -402,9 +403,15 @@ fun SemoAssistantScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(messages, key = { it.id }) { message ->
-                            ChatBubble(message, onRate = { helpful -> rateMessage(message.id, helpful) })
+                            ChatBubble(
+                                message,
+                                modifier = Modifier.animateItem(),
+                                onRate = { helpful -> rateMessage(message.id, helpful) }
+                            )
                         }
-                        if (isThinking) item(key = "typing") { TypingBubble() }
+                        if (isThinking) {
+                            item(key = "typing") { TypingBubble(modifier = Modifier.animateItem()) }
+                        }
                     }
 
                     // زر "السكرول للأسفل" لم يكن موجوداً أصلاً: عند التمرير
@@ -584,9 +591,9 @@ private fun AttachHerbsDialog(
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage, onRate: (Boolean) -> Unit = {}) {
+private fun ChatBubble(message: ChatMessage, modifier: Modifier = Modifier, onRate: (Boolean) -> Unit = {}) {
     Column(
-        Modifier.fillMaxWidth(),
+        modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
     ) {
         Row(
@@ -664,16 +671,34 @@ private fun ChatBubble(message: ChatMessage, onRate: (Boolean) -> Unit = {}) {
     }
 }
 
+/**
+ * ═══ إصلاح: نبضة "سيمو يكتب…" كانت الحركة المستمرة الوحيدة بالتطبيق التي
+ * تتجاهل وضع الأداء/معدل التحديث الفعلي (قارن بـ[rememberSmoothMotionAllowed]
+ * وطريقة استخدامها في [com.salman.herbalencyclopedia.ui.theme.staggeredEntrance])
+ * — كانت تدور بلا توقف حتى في الوضع الاقتصادي أو على شاشة منخفضة المعدل،
+ * رغم أن كل حركة متصلة أخرى بالتطبيق تحترم هذا الشرط. كما كانت مدتها
+ * ومنحناها رقمين محليين مستقلّين (tween(600) بمنحنى Compose الافتراضي)
+ * بدل الاعتماد على [AppMotion] الموحّد كبقية حركات التطبيق. الآن: تستخدم
+ * نفس منحنى ومدة [AppMotion.smooth]/[AppMotion.Slow] المستخدمة بأماكن
+ * أخرى، وتتوقف كلياً (نص ثابت بلا نبض) حين لا يُسمح بالحركة المتصلة —
+ * تماماً كسلوك [staggeredEntrance] في الحالة نفسها.
+ */
 @Composable
-private fun TypingBubble() {
-    val transition = rememberInfiniteTransition(label = "typing")
-    val alphaValue by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
-        label = "typingAlpha"
-    )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+private fun TypingBubble(modifier: Modifier = Modifier) {
+    val smoothAllowed = rememberSmoothMotionAllowed()
+    val alphaValue = if (smoothAllowed) {
+        val transition = rememberInfiniteTransition(label = "typing")
+        val animated by transition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(AppMotion.smooth(AppMotion.Slow), RepeatMode.Reverse),
+            label = "typingAlpha"
+        )
+        animated
+    } else {
+        1f
+    }
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
         AssistantAvatar(size = 28.dp)
         Spacer(Modifier.width(6.dp))
         Surface(
