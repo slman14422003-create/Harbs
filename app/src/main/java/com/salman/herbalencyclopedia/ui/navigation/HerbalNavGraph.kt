@@ -48,7 +48,14 @@ import com.salman.herbalencyclopedia.ui.theme.rememberSmoothMotionAllowed
 import kotlinx.coroutines.launch
 
 @Composable
-fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: PreferencesRepository, navController: NavHostController = rememberNavController()) {
+fun HerbalNavGraph(
+    appViewModel: AppViewModel,
+    preferencesRepository: PreferencesRepository,
+    navController: NavHostController = rememberNavController(),
+    /** راجع MainActivity.pendingDeepLink — حالياً القيمة الوحيدة المدعومة هي [UpdateNotifier.OPEN_SCREEN_SETTINGS] ("settings")، قادمة من الضغط على إشعار تحديث متوفر. */
+    pendingDeepLink: String? = null,
+    onDeepLinkHandled: () -> Unit = {}
+) {
     // قدرة جديدة: انتقالات التنقّل بين الشاشات (أدناه في NavHost) كانت
     // الحركة الوحيدة بالتطبيق التي تتجاهل وضع الأداء ومعدّل التحديث الفعلي
     // تماماً — بعكس كل حركة أخرى بالتطبيق (staggeredEntrance، entranceFade...
@@ -122,6 +129,21 @@ fun HerbalNavGraph(appViewModel: AppViewModel, preferencesRepository: Preference
     }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
+    // *** إصلاح: الضغط على إشعار "تحديث متوفر" كان يفتح الشاشة الرئيسية فقط
+    // بلا أي انتقال فعلي لشاشة الإعدادات. *** يُفعَّل فقط بعد تجاوز شاشتي
+    // البداية (Splash/Welcome) — أي بعد قبول الشروط فعلياً وبدء التنقّل
+    // الطبيعي — حتى لا يتصادم مع منطق توجيه أول تشغيل (شاشة الترحيب/الشروط
+    // لمستخدم جديد لم يوافق عليها بعد)، ثم يتنقّل لشاشة الإعدادات من أي
+    // شاشة كان المستخدم عليها لحظة الضغط على الإشعار.
+    LaunchedEffect(pendingDeepLink, termsAccepted, current) {
+        if (pendingDeepLink == com.salman.herbalencyclopedia.data.update.UpdateNotifier.OPEN_SCREEN_SETTINGS &&
+            termsAccepted == true &&
+            current != null && current != Screen.Splash.route
+        ) {
+            navController.navigate(Screen.Settings.route)
+            onDeepLinkHandled()
+        }
+    }
     val topRoutes = setOf(Screen.Home.route, Screen.AllHerbs.route, Screen.Favorites.route, Screen.Settings.route)
     val scope = rememberCoroutineScope()
     val bottomNavHomeLabel = com.salman.herbalencyclopedia.ui.util.tr("الرئيسية")
