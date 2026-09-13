@@ -77,9 +77,11 @@ fun AdminToolsScreen(
     aiOnlineEnabled: Boolean = AiConfig.defaultOnlineEnabled,
     aiOnlineApiKey: String = "",
     aiOnlineModel: String = AiConfig.defaultOnlineModel,
+    aiOnlineBaseUrl: String = AiConfig.defaultOnlineBaseUrl,
     onSetAiOnlineEnabled: (Boolean) -> Unit = {},
     onSetAiOnlineApiKey: (String) -> Unit = {},
     onSetAiOnlineModel: (String) -> Unit = {},
+    onSetAiOnlineBaseUrl: (String) -> Unit = {},
     onResetAiOnlineSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -219,9 +221,11 @@ fun AdminToolsScreen(
                     enabled = aiOnlineEnabled,
                     apiKey = aiOnlineApiKey,
                     model = aiOnlineModel,
+                    baseUrl = aiOnlineBaseUrl,
                     onEnabledChange = onSetAiOnlineEnabled,
                     onApiKeyChange = onSetAiOnlineApiKey,
                     onModelChange = onSetAiOnlineModel,
+                    onBaseUrlChange = onSetAiOnlineBaseUrl,
                     onReset = { onResetAiOnlineSettings(); notify(true, msgAiReset) }
                 )
             }
@@ -705,13 +709,16 @@ private fun AiOnlineDevTools(
     enabled: Boolean,
     apiKey: String,
     model: String,
+    baseUrl: String,
     onEnabledChange: (Boolean) -> Unit,
     onApiKeyChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
+    onBaseUrlChange: (String) -> Unit,
     onReset: () -> Unit
 ) {
     var apiKeyText by remember(apiKey) { mutableStateOf(apiKey) }
     var modelText by remember(model) { mutableStateOf(model) }
+    var baseUrlText by remember(baseUrl) { mutableStateOf(baseUrl) }
     var showApiKey by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var testing by remember { mutableStateOf(false) }
@@ -777,10 +784,22 @@ private fun AiOnlineDevTools(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+            OutlinedTextField(
+                value = baseUrlText,
+                onValueChange = { baseUrlText = it },
+                label = { Text(tr("عنوان بروكسي/مرآة (اختياري)")) },
+                supportingText = {
+                    Text(tr("اتركه فارغاً للاتصال المباشر بـ Google. إن كان Gemini محجوباً لديك، ضع هنا عنوان خادم بروكسي خاص بك (مثال: Cloudflare Worker) يُعيد توجيه نفس المسار لخوادم Google الحقيقية."))
+                },
+                placeholder = { Text("https://my-proxy.example.workers.dev") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = {
                     onApiKeyChange(apiKeyText.trim())
                     onModelChange(modelText.trim())
+                    onBaseUrlChange(baseUrlText.trim())
                 }) { Text(tr("حفظ")) }
                 TextButton(onClick = onReset) { Text(tr("إعادة الضبط الافتراضي")) }
             }
@@ -799,8 +818,10 @@ private fun AiOnlineDevTools(
                     // أولاً لضمان اختبار القيم الفعلية التي ستُستخدم لاحقاً.
                     onApiKeyChange(apiKeyText.trim())
                     onModelChange(modelText.trim())
+                    onBaseUrlChange(baseUrlText.trim())
                     AiConfig.onlineApiKey = apiKeyText.trim()
                     AiConfig.onlineModel = modelText.trim().ifBlank { AiConfig.defaultOnlineModel }
+                    AiConfig.onlineBaseUrl = baseUrlText.trim()
                     scope.launch {
                         val reply = com.salman.herbalencyclopedia.data.ai.OnlineAssistant.testConnection()
                         testing = false
