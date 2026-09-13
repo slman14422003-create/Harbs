@@ -442,17 +442,8 @@ fun HerbalNavGraph(
                         onSetAiSearchThreshold = { v -> scope.launch { preferencesRepository.setAiSearchThreshold(v) } },
                         onSetAiExtraStopWords = { w -> scope.launch { preferencesRepository.setAiExtraStopWords(w) } },
                         onResetAiSettings = { scope.launch { preferencesRepository.resetAiSettings() } },
-                        aiSynonyms = aiSynonyms,
-                        aiTrainedExamples = aiTrainedExamples,
-                        aiTrainedThreshold = aiTrainedThreshold,
-                        onSetAiSynonyms = { m -> scope.launch { preferencesRepository.setAiSynonyms(m) } },
-                        onSetAiTrainedExamples = { list -> scope.launch { preferencesRepository.setAiTrainedExamples(list) } },
-                        aiAutoLearnedExamples = aiAutoLearnedExamples,
-                        aiAutoLearnEnabled = aiAutoLearnEnabled,
-                        onSetAiAutoLearnedExamples = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
-                        onDemoteLearnedExample = { question -> appViewModel.demoteSemoLearning(question) },
-                        onSetAiAutoLearnEnabled = { v -> scope.launch { preferencesRepository.setAiAutoLearnEnabled(v) } },
-                        onSetAiTrainedThreshold = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } },
+                        onOpenTrainedCases = { navController.navigate(Screen.AdminTrainedCases.route) },
+                        onOpenSemoLearning = { navController.navigate(Screen.AdminSemoLearning.route) },
                         aiOnlineEnabled = aiOnlineEnabled,
                         aiOnlineApiKey = aiOnlineApiKey,
                         aiOnlineModel = aiOnlineModel,
@@ -474,6 +465,40 @@ fun HerbalNavGraph(
                             onBack = { navController.popBackStack() },
                             onSave = { config, cb -> appViewModel.saveUpdateConfig(config, cb) },
                             onTestNow = { ctx, config -> appViewModel.testUpdateConfig(ctx, config) }
+                        )
+                    }
+                }
+                // ── شاشتان مستقلتان لـ"الحالات المدرَّبة" و"تعلّم سيمو الذاتي"،
+                // كانتا مدمجتين ضمن AdminTools أعلاه (راجع توثيق onOpenTrainedCases/
+                // onOpenSemoLearning في AdminToolsScreen.kt). ──
+                composable(Screen.AdminTrainedCases.route) {
+                    if (appViewModel.isAdmin) {
+                        com.salman.herbalencyclopedia.ui.screens.tools.SemoTrainedCasesScreen(
+                            onBack = { navController.popBackStack() },
+                            synonyms = aiSynonyms,
+                            trainedExamples = aiTrainedExamples,
+                            trainedThreshold = aiTrainedThreshold,
+                            onSynonymsChange = { m -> scope.launch { preferencesRepository.setAiSynonyms(m) } },
+                            onTrainedExamplesChange = { list -> scope.launch { preferencesRepository.setAiTrainedExamples(list) } },
+                            onTrainedThresholdChange = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } }
+                        )
+                    }
+                }
+                composable(Screen.AdminSemoLearning.route) {
+                    if (appViewModel.isAdmin) {
+                        com.salman.herbalencyclopedia.ui.screens.tools.SemoSelfLearningScreen(
+                            onBack = { navController.popBackStack() },
+                            autoLearnedExamples = aiAutoLearnedExamples,
+                            autoLearnEnabled = aiAutoLearnEnabled,
+                            trainedExamples = aiTrainedExamples,
+                            onAutoLearnedExamplesChange = { list -> scope.launch { preferencesRepository.setAiAutoLearnedExamples(list) } },
+                            onAutoLearnEnabledChange = { v -> scope.launch { preferencesRepository.setAiAutoLearnEnabled(v) } },
+                            onDemoteLearnedExample = { question -> appViewModel.demoteSemoLearning(question) },
+                            onPromoteToTrained = { example ->
+                                scope.launch { preferencesRepository.setAiTrainedExamples(aiTrainedExamples + example) }
+                                scope.launch { preferencesRepository.setAiAutoLearnedExamples(aiAutoLearnedExamples - example) }
+                                appViewModel.demoteSemoLearning(example.pattern)
+                            }
                         )
                     }
                 }

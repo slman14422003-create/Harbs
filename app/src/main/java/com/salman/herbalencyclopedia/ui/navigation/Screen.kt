@@ -22,6 +22,12 @@ sealed class Screen(val route: String) {
     data object AdminEdit : Screen("admin/edit/{herbId}") { const val NEW = "new"; fun createRoute(herbId: String) = "admin/edit/$herbId" }
     data object AdminTools : Screen("admin/tools")
     data object AdminUpdate : Screen("admin/update")
+    // ── فصل "الحالات المدرَّبة" و"تعلّم سيمو الذاتي" في شاشتين مستقلتين
+    // بدل بطاقتين ضمن قائمة "أدوات الإدارة" الطويلة نفسها — كل واحدة
+    // تُفتح الآن بزر خاص بها (نفس مبدأ AdminUpdate) بدل الظهور دوماً
+    // مدمجتين مع بقية الأدوات. ──
+    data object AdminTrainedCases : Screen("admin/trained_cases")
+    data object AdminSemoLearning : Screen("admin/semo_learning")
 
     // ── الخلطات (Blends) ──────────────────────────────────────────────
     data object Blends : Screen("blends")
