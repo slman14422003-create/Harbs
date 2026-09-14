@@ -21,6 +21,9 @@ class AppContainer(context: Context) {
     }
     val updateRepository: UpdateRepository by lazy { UpdateRepository() }
     val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository() }
+    // إحصائية إدمن فقط: كم جهاز يستخدم الموسوعة — راجع DeviceStatsRepository
+    // وAppViewModel.init (النبضة عند كل بدء تشغيل) وAdminToolsScreen (العرض).
+    val deviceStatsRepository: DeviceStatsRepository by lazy { DeviceStatsRepository() }
     // مزامنة "تعلّم سيمو الذاتي" بين الأجهزة عبر Firestore — انظر
     // SemoLearningRepository وAppViewModel.init للسلك الفعلي.
     val semoLearningRepository: SemoLearningRepository by lazy { SemoLearningRepository() }
