@@ -271,6 +271,34 @@ object OnlineAssistant {
                     put("maxOutputTokens", MAX_OUTPUT_TOKENS)
                 }
             )
+            // ═══ إصلاح خلل حقيقي أُبلغ عنه: مقارنة بين عشبتين تُعطي معلومتين
+            // أو ثلاثة فقط ثم "تُقطَش" الإجابة — ليس بسبب طول الرد (راجع
+            // MAX_OUTPUT_TOKENS أعلاه، مرتفع بما يكفي)، بل لأن Gemini يوقف
+            // التوليد فجأة بمنتصف الإجابة بسبب مرشِّحات الأمان الافتراضية
+            // (finishReason="SAFETY") بمجرد وصوله لفقرة "التحذيرات/الأضرار" —
+            // وهي بالضبط الفقرة التي تأتي عادة بعد الفوائد وطريقة الاستخدام
+            // في أي إجابة مقارنة (راجع النمط نفسه في buildOverview محلياً)،
+            // فيتوقف الرد بالضبط بعد أول 2-3 نقاط (فوائد/استخدام) وقبل بلوغ
+            // التحذيرات. العتبات الافتراضية لـGemini حسّاسة تجاه أي محتوى
+            // يشبه "معلومات طبية عن جرعات/سمّية/تحذيرات صحية" حتى لو كان
+            // سياقه تثقيفياً بحتاً من موسوعة أعشاب موثوقة. رفع العتبة هنا إلى
+            // BLOCK_ONLY_HIGH (يحجب فقط المحتوى شديد الخطورة فعلاً، لا كل ما
+            // يُشبه نصيحة طبية) يسمح للإجابة بإكمال فقرة التحذيرات نفسها التي
+            // هي صميم عمل هذا التطبيق أصلاً — موسوعة أعشاب بلا تحذيرات كاملة
+            // ناقصة الفائدة الأهم.
+            put(
+                "safetySettings",
+                JSONArray().apply {
+                    listOf(
+                        "HARM_CATEGORY_HARASSMENT",
+                        "HARM_CATEGORY_HATE_SPEECH",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT"
+                    ).forEach { category ->
+                        put(JSONObject().put("category", category).put("threshold", "BLOCK_ONLY_HIGH"))
+                    }
+                }
+            )
         }
     }
 
@@ -297,9 +325,11 @@ object OnlineAssistant {
     }
 
     /**
-     * راجع توثيق [MAX_OUTPUT_TOKENS] أعلاه: يتحقق هنا أيضاً من finishReason
-     * لكل مرشَّح — إن كان "MAX_TOKENS" (الرد اقتُطع فعلاً رغم السقف الحالي)
-     * تُلحَق ملاحظة صريحة بنهاية النص بدل عرضه وكأنه اكتمل بشكل طبيعي.
+     * راجع توثيق [MAX_OUTPUT_TOKENS] وsafetySettings في [buildRequestBody]
+     * أعلاه: يتحقق هنا من finishReason لكل مرشَّح — أي قيمة غير "STOP"
+     * الطبيعية (أبرزها "MAX_TOKENS" و"SAFETY") تعني أن الرد اقتُطع فعلياً
+     * قبل اكتماله، فتُلحَق ملاحظة صريحة ومختلفة لكل سبب بدل عرض النص
+     * الجزئي وكأنه اكتمل بشكل طبيعي بلا أي تفسير.
      */
     private fun extractReplyText(rawJson: String): String? = try {
         val root = JSONObject(rawJson)
@@ -312,8 +342,11 @@ object OnlineAssistant {
             else {
                 val sb = StringBuilder()
                 for (i in 0 until parts.length()) sb.append(parts.getJSONObject(i).optString("text", ""))
-                if (candidate.optString("finishReason") == "MAX_TOKENS" && sb.isNotBlank()) {
-                    sb.append("\n\n[الرد طويل جداً واقتُطع هنا — جرّب صياغة أضيق للسؤال]")
+                if (sb.isNotBlank()) {
+                    when (candidate.optString("finishReason")) {
+                        "MAX_TOKENS" -> sb.append("\n\n[الرد طويل جداً واقتُطع هنا — جرّب صياغة أضيق للسؤال]")
+                        "SAFETY", "RECITATION", "OTHER" -> sb.append("\n\n[توقّف الرد هنا بسبب مرشّحات الخادم — جرّب إعادة صياغة السؤال]")
+                    }
                 }
                 sb.toString().ifBlank { null }
             }
