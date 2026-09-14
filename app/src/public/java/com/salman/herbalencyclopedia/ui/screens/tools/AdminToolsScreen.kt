@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.ui.screens.tools
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.salman.herbalencyclopedia.data.ai.AiConfig
+import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
 
@@ -47,6 +48,37 @@ fun AdminToolsScreen(
     deviceStatsActive7d: Long? = null,
     deviceStatsError: String? = null,
     onRefreshDeviceStats: () -> Unit = {}
+) {
+    LaunchedEffect(Unit) { onBack() }
+}
+
+// نسخة "public" لشاشتي "الحالات المدرَّبة" و"تعلّم سيمو الذاتي" — نفس
+// التوقيع تماماً الموجود في نسخة "full" (راجع AdminToolsScreen.kt هناك)
+// حتى يبقى استدعاؤهما في HerbalNavGraph.kt مطابقاً حرفياً بين النكهتين.
+// كانتا مفقودتين هنا فقط، وهذا هو سبب فشل compilePublicReleaseKotlin.
+@Composable
+fun SemoTrainedCasesScreen(
+    onBack: () -> Unit,
+    synonyms: Map<String, String>,
+    trainedExamples: List<TrainedExample>,
+    trainedThreshold: Float,
+    onSynonymsChange: (Map<String, String>) -> Unit,
+    onTrainedExamplesChange: (List<TrainedExample>) -> Unit,
+    onTrainedThresholdChange: (Float) -> Unit
+) {
+    LaunchedEffect(Unit) { onBack() }
+}
+
+@Composable
+fun SemoSelfLearningScreen(
+    onBack: () -> Unit,
+    autoLearnedExamples: List<TrainedExample>,
+    autoLearnEnabled: Boolean,
+    trainedExamples: List<TrainedExample>,
+    onAutoLearnedExamplesChange: (List<TrainedExample>) -> Unit,
+    onAutoLearnEnabledChange: (Boolean) -> Unit,
+    onDemoteLearnedExample: (String) -> Unit,
+    onPromoteToTrained: (TrainedExample) -> Unit
 ) {
     LaunchedEffect(Unit) { onBack() }
 }
