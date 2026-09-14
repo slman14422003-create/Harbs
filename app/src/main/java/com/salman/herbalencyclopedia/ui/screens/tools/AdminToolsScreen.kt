@@ -77,7 +77,16 @@ fun AdminToolsScreen(
     onSetAiOnlineApiKey: (String) -> Unit = {},
     onSetAiOnlineModel: (String) -> Unit = {},
     onSetAiOnlineBaseUrl: (String) -> Unit = {},
-    onResetAiOnlineSettings: () -> Unit = {}
+    onResetAiOnlineSettings: () -> Unit = {},
+    // ── أداة إدمن جديدة بطلب صريح: "كم جهاز يستخدم الموسوعة" — راجع
+    // DeviceStatsRepository وAppViewModel.refreshDeviceStats للتفاصيل
+    // الكاملة. تُجلَب فقط عند الضغط على زر التحديث هنا (لا تلقائياً عند
+    // فتح الشاشة) لتفادي أي قراءة إضافية غير مطلوبة فعلياً.
+    deviceStatsLoading: Boolean = false,
+    deviceStatsTotal: Long? = null,
+    deviceStatsActive7d: Long? = null,
+    deviceStatsError: String? = null,
+    onRefreshDeviceStats: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -134,6 +143,16 @@ fun AdminToolsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { Text(tr("إحصائيات الاستخدام"), style = MaterialTheme.typography.titleLarge) }
+            item {
+                DeviceStatsCard(
+                    loading = deviceStatsLoading,
+                    total = deviceStatsTotal,
+                    active7d = deviceStatsActive7d,
+                    error = deviceStatsError,
+                    onRefresh = onRefreshDeviceStats
+                )
+            }
             item { Text(tr("الصيانة والمزامنة"), style = MaterialTheme.typography.titleLarge) }
             item { AdminButton(Icons.Filled.Sync, "تحديث البيانات", "جلب أحدث نسخة من Firestore", { onRefresh(); notify(true, msgDataRefreshing) }) }
             item { AdminButton(Icons.Filled.NetworkCheck, "اختبار الاتصال", "التحقق من الوصول إلى البيانات", { onTestConnection { ok, msg -> notify(ok, msg) } }) }
@@ -270,6 +289,59 @@ fun AdminToolsScreen(
             headlineContent = { Text(tr(title)) },
             supportingContent = { Text(tr(subtitle)) }
         )
+    }
+}
+
+/**
+ * بطاقة "كم جهاز يستخدم الموسوعة" — أداة إدمن جديدة بطلب صريح من المستخدم.
+ * لا تُحمَّل تلقائياً عند فتح الشاشة (القيم تبدأ null)؛ فقط عند الضغط على
+ * "تحديث" (راجع AppViewModel.refreshDeviceStats وDeviceStatsRepository)،
+ * تفادياً لأي قراءة Firestore غير مطلوبة فعلياً في كل مرة تُفتح فيها لوحة
+ * الإدارة.
+ */
+@Composable
+private fun DeviceStatsCard(
+    loading: Boolean,
+    total: Long?,
+    active7d: Long?,
+    error: String?,
+    onRefresh: () -> Unit
+) {
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Filled.PhoneAndroid, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
+
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(tr("عدد الأجهزة"), style = MaterialTheme.typography.titleMedium)
+                when {
+                    error != null -> Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    total == null -> Text(tr("اضغط تحديث لعرض العدد"), style = MaterialTheme.typography.bodySmall)
+                    else -> Text(
+                        tr("الإجمالي: $total  ·  نشط آخر 7 أيام: ${active7d ?: 0}"),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+            } else {
+                GlassIconButton(onClick = onRefresh) {
+                    Icon(Icons.Filled.Refresh, contentDescription = tr("تحديث"))
+                }
+            }
+        }
     }
 }
 /**
