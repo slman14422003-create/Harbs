@@ -94,7 +94,24 @@ object OnlineAssistant {
      * محدودين. يُطبَّق هذا على مسار الدردشة الفعلي [answer] وعلى
      * [testConnectionVerbose] معاً، فلا يبقى أي مسار يستخدم السقف القديم.
      */
-    private const val MAX_OUTPUT_TOKENS = 2048
+    /**
+     * ═══ إصلاح خلل حقيقي أُبلغ عنه: مقارنة أعشاب متعددة (طلبات "قارن")
+     * لا تزال تُقصّ بمنتصف الإجابة رغم رفع maxOutputTokens إلى 2048 سابقاً
+     * ═══
+     * السبب: 2048 توكن كان كافياً لسؤال مفصَّل عن عشبة واحدة، لكن رد مقارنة
+     * حقيقي بين عدة أعشاب (فوائد + تحذيرات + أضرار + طريقة استخدام لكل
+     * عنصر مقارَن، بالعربية التي تستهلك توكنات أكثر من الإنجليزية للمعنى
+     * نفسه) يتجاوزه بسهولة، فيقطعه Gemini في نفس نقطة finishReason=
+     * "MAX_TOKENS" الموثَّقة أعلاه. رُفع السقف إلى 8192 — أقصى ما تدعمه
+     * نماذج Gemini Flash المستخدمة هنا فعلياً، فلا مجال لرفعه أكثر أصلاً؛
+     * هامش يكفي لمقارنة مفصَّلة بين عدة عناصر معاً بالعربية بارتياح.
+     * كخط دفاع أخير إن استُهلك حتى هذا السقف بمقارنة ضخمة جداً (احتمال ضئيل
+     * جداً بعد الرفع، لكن غير مستحيل)، [extractReplyText] أدناه يتحقق الآن
+     * من finishReason ويُلحق ملاحظة صريحة بنهاية النص المقتطَع بدل عرضه
+     * كأنه رد كامل عادي بلا أي إشارة — فرق بين "إجابة تبدو غريبة الانتهاء
+     * بلا تفسير" و"إجابة تشرح صراحة أنها اختُصرت".
+     */
+    private const val MAX_OUTPUT_TOKENS = 8192
 
     suspend fun answer(
         question: String,
@@ -279,16 +296,25 @@ object OnlineAssistant {
         append("\n")
     }
 
+    /**
+     * راجع توثيق [MAX_OUTPUT_TOKENS] أعلاه: يتحقق هنا أيضاً من finishReason
+     * لكل مرشَّح — إن كان "MAX_TOKENS" (الرد اقتُطع فعلاً رغم السقف الحالي)
+     * تُلحَق ملاحظة صريحة بنهاية النص بدل عرضه وكأنه اكتمل بشكل طبيعي.
+     */
     private fun extractReplyText(rawJson: String): String? = try {
         val root = JSONObject(rawJson)
         val candidates = root.optJSONArray("candidates")
         if (candidates == null || candidates.length() == 0) null
         else {
-            val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
+            val candidate = candidates.getJSONObject(0)
+            val parts = candidate.optJSONObject("content")?.optJSONArray("parts")
             if (parts == null) null
             else {
                 val sb = StringBuilder()
                 for (i in 0 until parts.length()) sb.append(parts.getJSONObject(i).optString("text", ""))
+                if (candidate.optString("finishReason") == "MAX_TOKENS" && sb.isNotBlank()) {
+                    sb.append("\n\n[الرد طويل جداً واقتُطع هنا — جرّب صياغة أضيق للسؤال]")
+                }
                 sb.toString().ifBlank { null }
             }
         }
