@@ -3,10 +3,14 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    // أُعيدت إضافتها: هي المسؤولة عن فصل مصادر Kotlin بشكل صحيح بين نكهتَي
-    // full وpublic. غيابها كان يسبّب دمج ملفات النكهتين في نفس مهمة الترجمة
-    // (راجع التعليق في build.gradle.kts الجذري لتفاصيل الأخطاء الناتجة).
-    id("org.jetbrains.kotlin.android")
+    // org.jetbrains.kotlin.android حُذفت: منذ AGP 9.0 دعم Kotlin مدمج داخل
+    // AGP نفسه، وتطبيق هذا الـ plugin بشكل منفصل صار خطأ بناء صريحًا (لا
+    // مجرد تحذير) — راجع https://kotl.in/gradle/agp-built-in-kotlin.
+    // ملاحظة مهمة إن ظهر تضارب/دمج بين ملفات نكهتَي full وpublic بعد هذا
+    // التغيير: راجع "Migrate the kotlin.sourceSets{} DSL" في نفس الرابط؛
+    // الوضع الافتراضي المتضمَّن في AGP يفترض أن مجلدي app/src/full/java
+    // وapp/src/public/java يبقيان مفصولين تلقائيًا دون أي إعداد إضافي.
+    // plugin مترجم Compose يبقى — منفصل تمامًا عن دعم Kotlin الأساسي.
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
