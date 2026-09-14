@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia.data.repository
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import com.salman.herbalencyclopedia.BuildConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +23,16 @@ import java.net.URL
  * URL (falling back to the release page if no .apk asset is attached).
  */
 class UpdateRepository(
-    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    /**
+     * "full" (نسخة المطوّر/dev harb، بلوحة تحكم إدارية) أو "public" (نسخة
+     * المستخدم العادي) — راجع flavorDimensions في app/build.gradle.kts.
+     * كل ووركفلو إصدار يبني ويرفع النكهتين معاً كملفين .apk منفصلين على
+     * نفس الـ GitHub Release الواحد (android-release.yml)، لذلك لا بد من
+     * معرفة النكهة الحالية هنا لاختيار الملف الصحيح من بين الاثنين بدل
+     * التخمين — راجع [pickApkAsset].
+     */
+    private val flavor: String = BuildConfig.FLAVOR
 ) {
     companion object {
         private const val DEFAULT_REPO = "slman14422003-create/Harbs"
@@ -115,19 +125,29 @@ class UpdateRepository(
     ): AppUpdateInfo? = withContext(Dispatchers.IO) {
             if (!config.enabled) return@withContext null
 
-            // إن كان هناك رابط Worker مخصّص، هو المصدر الوحيد للتحقق من
-            // التحديث — لا يُتصل بـ GitHub إطلاقاً في هذه الحالة، لأن
-            // الـ Worker نفسه هو من يقرأ من GitHub ويخزّن النتيجة مؤقتاً
-            // (Cache)، فالاتصال به مباشرة أسرع وأكثر ثباتاً من تكرار نفس
-            // المنطق على الجهاز.
-            if (!config.updateSourceUrl.isNullOrBlank()) {
-                return@withContext checkCustomSourceUpdate(config, currentVersionCode, currentVersionName)
+            // نسخة "full" (نسخة المطوّر، تُعرَف باسم dev harb) مخصّصة للمطوّر
+            // نفسه فقط — تحديثاتها تُقرأ حصراً من الريليس الرسمي على GitHub
+            // مباشرة، بلا أي مرور عبر بروكسي عام أو Worker مخصّص (تلك الآلية
+            // مبنية أصلاً لخدمة المستخدم العادي في الدول التي تحجب GitHub،
+            // وليست جزءاً من مسار نسخة المطوّر). لذلك تُلغى هذه الإعدادات هنا
+            // حتى لو كانت مفعّلة في Firestore للنسخة العامة.
+            val effectiveConfig = if (flavor == "full") {
+                config.copy(useProxyFallback = false, customProxyBaseUrl = null, updateSourceUrl = null)
+            } else config
+
+            // إن كان هناك رابط Worker مخصّص (نسخة "public" فقط، بعد الإلغاء
+            // أعلاه لنسخة "full")، هو المصدر الوحيد للتحقق من التحديث — لا
+            // يُتصل بـ GitHub إطلاقاً في هذه الحالة، لأن الـ Worker نفسه هو
+            // من يقرأ من GitHub ويخزّن النتيجة مؤقتاً (Cache)، فالاتصال به
+            // مباشرة أسرع وأكثر ثباتاً من تكرار نفس المنطق على الجهاز.
+            if (!effectiveConfig.updateSourceUrl.isNullOrBlank()) {
+                return@withContext checkCustomSourceUpdate(effectiveConfig, currentVersionCode, currentVersionName)
             }
 
-            val repo = config.githubRepo.trim().trim('/')
+            val repo = effectiveConfig.githubRepo.trim().trim('/')
             if (repo.isBlank()) return@withContext null
 
-            val release = fetchLatestReleaseWithFallback(repo, config)
+            val release = fetchLatestReleaseWithFallback(repo, effectiveConfig)
             if (release?.apkUrl == null) return@withContext null
             // This project's release workflow tags releases as "v<versionName>-<versionCode>"
             // (see .github/workflows/android-release.yml), e.g. "v2.0.0-42". Split those apart
@@ -145,14 +165,14 @@ class UpdateRepository(
                 parsedVersionCode = null
             }
 
-            val remoteVersionName = config.overrideVersionName ?: parsedVersionName
+            val remoteVersionName = effectiveConfig.overrideVersionName ?: parsedVersionName
             if (remoteVersionName.isNullOrBlank()) return@withContext null
 
-            val mandatory = config.minVersionCode > 0 && currentVersionCode < config.minVersionCode
+            val mandatory = effectiveConfig.minVersionCode > 0 && currentVersionCode < effectiveConfig.minVersionCode
 
             val newer = when {
                 // Admin forced a specific version label: nothing numeric to trust, compare as text.
-                config.overrideVersionName != null -> isVersionNewer(remoteVersionName, currentVersionName)
+                effectiveConfig.overrideVersionName != null -> isVersionNewer(remoteVersionName, currentVersionName)
                 // Normal case: the tag carries a real build number, so compare it directly against
                 // the installed versionCode. This is exact — no guessing from a version string.
                 parsedVersionCode != null -> currentVersionCode < parsedVersionCode
@@ -170,12 +190,12 @@ class UpdateRepository(
                 // Don't show the raw GitHub release body (CI-generated / commit-log style
                 // text) to end users — always show a fixed, friendly Arabic message unless
                 // the admin explicitly typed a custom one in the admin panel.
-                releaseNotes = config.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
+                releaseNotes = effectiveConfig.releaseNotesOverride ?: "تم تحديث الأخطاء وإدخال تحسينات جديدة.",
                 releasePageUrl = releasePageUrl,
                 apkUrl = release?.apkUrl,
                 mandatory = mandatory,
-                useProxyFallback = config.useProxyFallback,
-                customProxyBaseUrl = config.customProxyBaseUrl
+                useProxyFallback = effectiveConfig.useProxyFallback,
+                customProxyBaseUrl = effectiveConfig.customProxyBaseUrl
             )
         }
 
@@ -278,9 +298,15 @@ class UpdateRepository(
         val requestTagUrl = if (proxyBase != null) viaProxy(proxyBase, tagPageUrl) else tagPageUrl
         val html = fetchText(requestTagUrl) ?: return null
 
-        val apkPath = Regex("""href="(/${Regex.escape(repo)}/releases/download/[^"]+?\.apk)"""")
-            .find(html)?.groupValues?.get(1)
-        val apkUrl = apkPath?.replace("&amp;", "&")?.let { "https://github.com$it" }
+        // قد تحتوي صفحة الإصدار على رابطَي .apk (full وpublic معاً)، لذا نجمع
+        // كل الروابط الموجودة ثم نمرّرها لنفس منطق [pickApkAsset] المستخدم مع
+        // استجابة الـ API، بدل أخذ أول رابط .apk يظهر في الصفحة كما كان سابقاً.
+        val apkAssets = Regex("""href="(/${Regex.escape(repo)}/releases/download/[^"]+?\.apk)"""")
+            .findAll(html)
+            .map { it.groupValues[1].replace("&amp;", "&") }
+            .map { path -> path.substringAfterLast('/') to "https://github.com$path" }
+            .toList()
+        val apkUrl = pickApkAsset(apkAssets)
 
         return ReleaseData(tagName = tag, body = "", htmlUrl = tagPageUrl, apkUrl = apkUrl)
     }
@@ -376,24 +402,44 @@ class UpdateRepository(
             val tag = json.optString("tag_name")
             val body = json.optString("body")
             val htmlUrl = json.optString("html_url")
-            var apkUrl: String? = null
             val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
+            val assetList = if (assets != null) {
+                (0 until assets.length()).map { i ->
                     val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url")
-                        break
-                    }
+                    asset.optString("name") to asset.optString("browser_download_url")
                 }
-            }
+            } else emptyList()
+            val apkUrl = pickApkAsset(assetList)
             // apkUrl/htmlUrl are left as plain github.com URLs here regardless of
             // [proxyBase] — see the ReleaseData/downloadCandidates doc comments.
             if (tag.isBlank()) null else ReleaseData(tag, body, htmlUrl, apkUrl)
         }
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * Picks the .apk asset that matches the running edition ([flavor]) out of a
+     * release's assets ("name" to "download URL" pairs).
+     *
+     * The public GitHub release for this project always carries BOTH editions'
+     * .apk files at once — "full" (dev harb) and "public" — because one CI run
+     * builds and uploads both flavors to the same release (see
+     * android-release.yml). Grabbing "whichever .apk comes first" (the old
+     * behavior) meant either edition could randomly end up being offered the
+     * other edition's file. AGP's default output filename here is
+     * "app-<flavor>-release.apk", so assets are matched on that "-<flavor>-"
+     * segment. If nothing matches (e.g. an older release built before this
+     * fix, with a single un-suffixed .apk attached) and there's exactly one
+     * .apk on the release, that one is used as a compatibility fallback —
+     * otherwise, no match is treated as no update available, rather than
+     * risking handing out the wrong edition's file.
+     */
+    private fun pickApkAsset(assets: List<Pair<String, String>>): String? {
+        val apks = assets.filter { (name, _) -> name.endsWith(".apk", ignoreCase = true) }
+        apks.firstOrNull { (name, _) -> name.contains("-$flavor-", ignoreCase = true) }
+            ?.let { return it.second }
+        return apks.singleOrNull()?.second
     }
 
     // ------------------------------------------------------------------
