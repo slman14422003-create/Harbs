@@ -362,6 +362,18 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         // ولا داعي لانتظارها.
         checkForUpdateSilently()
 
+        // ── نبضة "جهاز يستخدم التطبيق" لإحصائية الأدمن الجديدة ──
+        // مرة واحدة فقط لكل بدء تشغيل (init{} هنا)، بلا انتظار ولا تأثير
+        // على أي واجهة — أفضل جهد تماماً، أي فشل (بلا إنترنت مثلاً) يُتجاهل
+        // بصمت عبر runCatching بدل تعطيل بدء التطبيق. راجع DeviceStatsRepository
+        // وAdminToolsScreen (زر "تحديث" الإحصائية) للتفاصيل الكاملة.
+        viewModelScope.launch {
+            runCatching {
+                val uid = container.authRepository.ensureAnonymousUid()
+                uid?.let { container.deviceStatsRepository.pingDevice(it) }
+            }
+        }
+
         // ── ترجمة تفاعلية: تعيد ترجمة القوائم الخام كلما تغيّرت هي أو اللغة ──
         // *** إصلاح: دائرة تحميل عالقة للأبد (السبب الفعلي المُبلَّغ عنه) ***
         // كان التعليق هنا يدّعي أن isLoading "يُطفأ تلقائياً" من وصول الحالة
@@ -766,6 +778,39 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             } catch (e: Exception) {
                 onDone(false, HerbRepository.describeError(e))
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // إحصائية "كم جهاز يستخدم الموسوعة" — أداة إدمن جديدة، مقروءة فقط عبر
+    // زر تحديث يدوي في AdminToolsScreen (لا تُحمَّل تلقائياً عند فتح لوحة
+    // الإدمن، فتبقى بلا أي تكلفة قراءة إضافية إلا عند طلبها فعلياً).
+    // ---------------------------------------------------------------------
+
+    var deviceStatsLoading by mutableStateOf(false)
+        private set
+    var deviceStatsTotal by mutableStateOf<Long?>(null)
+        private set
+    var deviceStatsActive7d by mutableStateOf<Long?>(null)
+        private set
+    var deviceStatsError by mutableStateOf<String?>(null)
+        private set
+
+    fun refreshDeviceStats() {
+        viewModelScope.launch {
+            deviceStatsLoading = true
+            deviceStatsError = null
+            runCatching {
+                val total = container.deviceStatsRepository.totalDeviceCount()
+                val active = container.deviceStatsRepository.activeDeviceCount(sinceDays = 7)
+                total to active
+            }.onSuccess { (total, active) ->
+                deviceStatsTotal = total
+                deviceStatsActive7d = active
+            }.onFailure {
+                deviceStatsError = "تعذّر جلب إحصائية الأجهزة."
+            }
+            deviceStatsLoading = false
         }
     }
 
