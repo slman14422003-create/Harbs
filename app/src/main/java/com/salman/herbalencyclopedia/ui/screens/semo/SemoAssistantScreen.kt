@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -32,7 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -632,39 +635,72 @@ private fun ChatBubble(message: ChatMessage, modifier: Modifier = Modifier, onRa
                 )
             }
         }
-        // تقييم سريع لإجابات "البحث الحر" القابلة للتعلّم الذاتي فقط: 👍
-        // يحوّل هذه الإجابة إلى حالة يتعلّمها سيمو تلقائياً لأسئلة مشابهة
-        // لاحقاً، و👎 يتراجع عن أي شيء تعلّمه سابقاً بنفسه لسؤال مشابه.
-        if (!message.isUser && message.learnable) {
+        // ═══ ميزة أُبلغ عن طلبها: زر نسخ على ردود سيمو، كي يقدر أي مستخدم
+        // ينسخ نص الرد كاملاً (مثلاً لمشاركته خارج التطبيق) ═══
+        // يظهر على كل رد فعلي من سيمو (لا رسائل المستخدم نفسه)، ولا يظهر
+        // على فقاعة "أفكّر وأبحث..." المؤقتة (message.isPlaceholder) لأن
+        // نصها ليس إجابة فعلية بعد وليس هناك ما يُنسخ فائدة منه.
+        // ملاحظة عن التنبيه بعد النسخ: أندرويد 13 (API 33) فما فوق يعرض
+        // تنبيهاً نظامياً تلقائياً عند أي نسخ للحافظة (والتطبيق مستهدَف هنا
+        // لـ targetSdk 36، فوق هذا الحد)، فإضافة Toast خاص بنا فوقه يعني
+        // تنبيهين مكرَّرين للمستخدم لنفس الحدث — لذا نعرض Toast خاصاً بنا
+        // فقط على الأجهزة الأقدم من API 33 التي لا تملك هذا التنبيه التلقائي.
+        if (!message.isUser && !message.isPlaceholder) {
+            val clipboardManager = LocalClipboardManager.current
+            val copyContext = LocalContext.current
+            // يُحسَب هنا (داخل نطاق @Composable، حيث tr() قابل للاستدعاء)
+            // لا داخل onClick أدناه (نطاق عادي غير Composable لا يمكن
+            // استدعاء tr() بداخله مباشرة).
+            val copiedToastText = tr("تم نسخ الرد")
             Row(
                 Modifier.padding(start = 34.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                when (message.feedback) {
-                    null -> {
-                        Text(
-                            tr("هل كانت هذه الإجابة مفيدة؟"),
+                GlassIconButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(message.text))
+                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+                            // راجع التعليق أعلى هذه الكتلة: تنبيهنا الخاص فقط
+                            // لما قبل API 33، بنفس نمط tr() المستخدم بباقي
+                            // نصوص هذه الشاشة (لا موارد strings.xml منفصلة).
+                            android.widget.Toast.makeText(
+                                copyContext,
+                                copiedToastText,
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    size = 26.dp
+                ) {
+                    Icon(Icons.Filled.ContentCopy, tr("نسخ الرد"), modifier = Modifier.size(14.dp))
+                }
+                if (message.learnable) {
+                    when (message.feedback) {
+                        null -> {
+                            Text(
+                                tr("هل كانت هذه الإجابة مفيدة؟"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            GlassIconButton(onClick = { onRate(true) }, size = 26.dp) {
+                                Icon(Icons.Filled.ThumbUp, tr("مفيدة"), modifier = Modifier.size(14.dp))
+                            }
+                            GlassIconButton(onClick = { onRate(false) }, size = 26.dp) {
+                                Icon(Icons.Filled.ThumbDown, tr("غير مفيدة"), modifier = Modifier.size(14.dp))
+                            }
+                        }
+                        true -> Text(
+                            tr("🌱 شكراً، سيتذكّر سيمو هذه الإجابة لسؤال مشابه لاحقاً."),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        false -> Text(
+                            tr("تم، لن يعتمد سيمو على هذه الإجابة تحديداً مرة أخرى."),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        GlassIconButton(onClick = { onRate(true) }, size = 26.dp) {
-                            Icon(Icons.Filled.ThumbUp, tr("مفيدة"), modifier = Modifier.size(14.dp))
-                        }
-                        GlassIconButton(onClick = { onRate(false) }, size = 26.dp) {
-                            Icon(Icons.Filled.ThumbDown, tr("غير مفيدة"), modifier = Modifier.size(14.dp))
-                        }
                     }
-                    true -> Text(
-                        tr("🌱 شكراً، سيتذكّر سيمو هذه الإجابة لسؤال مشابه لاحقاً."),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    false -> Text(
-                        tr("تم، لن يعتمد سيمو على هذه الإجابة تحديداً مرة أخرى."),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
