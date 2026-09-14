@@ -168,38 +168,52 @@ jobs:
       - name: Locate build outputs
         id: outputs
         run: |
-          # البحث عن أحدث APK و AAB
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
-          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" 2>/dev/null | head -1)
-          
-          if [ -z "$APK_PATH" ]; then
-            echo "::error::No APK found in app/build/outputs/apk/release/"
-            find app/build -name "*.apk" 2>/dev/null || echo "No APK files found anywhere"
+          # المشروع فيه نكهتان (full/public)، فمسارات المخرجات تتضمن اسم
+          # النكهة (مثلاً apk/full/release/ وapk/public/release/) ولا يوجد
+          # مسار مسطّح "apk/release/". نبحث تحت المجلد الأعلى مباشرةً كي
+          # نلتقط كل النكهات معًا.
+          APK_PATHS=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | sort)
+          AAB_PATHS=$(find app/build/outputs/bundle -name "*.aab" 2>/dev/null | sort)
+
+          if [ -z "$APK_PATHS" ]; then
+            echo "::error::No APK found under app/build/outputs/apk/"
             exit 1
           fi
-          
-          if [ -z "$AAB_PATH" ]; then
-            echo "::warning::No AAB found in app/build/outputs/bundle/release/"
+
+          if [ -z "$AAB_PATHS" ]; then
+            echo "::warning::No AAB found under app/build/outputs/bundle/"
           fi
-          
-          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "aab_path=$AAB_PATH" >> "$GITHUB_OUTPUT"
-          echo "Found APK: $APK_PATH"
-          echo "Found AAB: $AAB_PATH"
+
+          {
+            echo "apk_paths<<EOF"
+            echo "$APK_PATHS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "aab_paths<<EOF"
+            echo "$AAB_PATHS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Found APKs:"
+          echo "$APK_PATHS"
+          echo "Found AABs:"
+          echo "$AAB_PATHS"
 
       - name: Upload APK artifact (for direct download)
         uses: actions/upload-artifact@v7
         with:
           name: app-release-apk
-          path: ${{ steps.outputs.outputs.apk_path }}
+          path: ${{ steps.outputs.outputs.apk_paths }}
           if-no-files-found: error
 
       - name: Upload App Bundle artifact (for Play Store upload)
-        if: ${{ steps.outputs.outputs.aab_path != '' }}
+        if: ${{ steps.outputs.outputs.aab_paths != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: app-release-bundle
-          path: ${{ steps.outputs.outputs.aab_path }}
+          path: ${{ steps.outputs.outputs.aab_paths }}
           if-no-files-found: warn
 
       - name: Create GitHub Release (APK)
@@ -211,17 +225,18 @@ jobs:
             ## 📦 الإصدار ${{ steps.appver.outputs.version_name }}
 
             - رقم الإصدار: ${{ steps.appver.outputs.version_code }}
+            - يتضمن هذا الإصدار نسختَي full (بلوحة تحكم إدارية) وpublic (للمستخدم العادي).
             - إذا لم تُضبط أسرار التوقيع، فهذا البناء غير موقّع ومخصص للاختبار فقط.
           generate_release_notes: true
-          files: ${{ steps.outputs.outputs.apk_path }}
+          files: ${{ steps.outputs.outputs.apk_paths }}
           fail_on_unmatched_files: true
 
       - name: Add App Bundle to GitHub Release
-        if: ${{ steps.outputs.outputs.aab_path != '' }}
+        if: ${{ steps.outputs.outputs.aab_paths != '' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.appver.outputs.version_name }}
-          files: ${{ steps.outputs.outputs.aab_path }}
+          files: ${{ steps.outputs.outputs.aab_paths }}
           fail_on_unmatched_files: true
 
       - name: Cleanup Gradle cache
