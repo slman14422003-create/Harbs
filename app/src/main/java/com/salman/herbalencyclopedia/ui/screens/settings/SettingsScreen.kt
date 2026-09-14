@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import com.salman.herbalencyclopedia.BuildConfig
 
 // خُمس مراحل بدل ثلاث سابقاً (انظر FontScaleFactors في Type.kt)، بحد
 // أقصى أوضح لمن يحتاج تكبيراً حقيقياً بدل الاكتفاء بفارق طفيف.
@@ -279,41 +280,46 @@ fun SettingsScreen(
                         subtitle = tr("شروط استخدام التطبيق ومحتوى الموسوعة"),
                         onClick = onTermsClick
                     )
-                    if (isAdmin) {
+                    // نسخة "public" (BuildConfig.HAS_ADMIN == false): لا تسجيل دخول
+                    // ولا أي زر إداري إطلاقاً — راجع flavorDimensions/productFlavors
+                    // في app/build.gradle.kts وملفات app/src/public/... للتفاصيل.
+                    if (BuildConfig.HAS_ADMIN) {
+                        if (isAdmin) {
+                            SettingsDivider()
+                            ActionRow(
+                                icon = Icons.Filled.AdminPanelSettings,
+                                iconTint = Color(0xFF1565C0),
+                                title = tr("أدوات الإدارة"),
+                                subtitle = tr("إدارة الأعشاب والتصنيفات والبيانات"),
+                                onClick = onAdminToolsClick
+                            )
+                            SettingsDivider()
+                            ActionRow(
+                                icon = Icons.Filled.Inbox,
+                                iconTint = Color(0xFF00838F),
+                                title = tr("ملاحظات المستخدمين"),
+                                subtitle = tr("الأخطاء والملاحظات المرسلة من المستخدمين"),
+                                onClick = onAdminFeedbackClick
+                            )
+                        }
                         SettingsDivider()
-                        ActionRow(
-                            icon = Icons.Filled.AdminPanelSettings,
-                            iconTint = Color(0xFF1565C0),
-                            title = tr("أدوات الإدارة"),
-                            subtitle = tr("إدارة الأعشاب والتصنيفات والبيانات"),
-                            onClick = onAdminToolsClick
-                        )
-                        SettingsDivider()
-                        ActionRow(
-                            icon = Icons.Filled.Inbox,
-                            iconTint = Color(0xFF00838F),
-                            title = tr("ملاحظات المستخدمين"),
-                            subtitle = tr("الأخطاء والملاحظات المرسلة من المستخدمين"),
-                            onClick = onAdminFeedbackClick
-                        )
-                    }
-                    SettingsDivider()
-                    if (isLoggedIn) {
-                        ActionRow(
-                            icon = Icons.AutoMirrored.Filled.Logout,
-                            iconTint = Color(0xFFC62828),
-                            title = tr("تسجيل الخروج"),
-                            subtitle = tr("إنهاء الجلسة الحالية"),
-                            onClick = onLogoutClick
-                        )
-                    } else {
-                        ActionRow(
-                            icon = Icons.Filled.Login,
-                            iconTint = Color(0xFF00695C),
-                            title = tr("تسجيل الدخول"),
-                            subtitle = tr("لإدارة المحتوى وحفظ التفضيلات"),
-                            onClick = onLoginClick
-                        )
+                        if (isLoggedIn) {
+                            ActionRow(
+                                icon = Icons.AutoMirrored.Filled.Logout,
+                                iconTint = Color(0xFFC62828),
+                                title = tr("تسجيل الخروج"),
+                                subtitle = tr("إنهاء الجلسة الحالية"),
+                                onClick = onLogoutClick
+                            )
+                        } else {
+                            ActionRow(
+                                icon = Icons.Filled.Login,
+                                iconTint = Color(0xFF00695C),
+                                title = tr("تسجيل الدخول"),
+                                subtitle = tr("لإدارة المحتوى وحفظ التفضيلات"),
+                                onClick = onLoginClick
+                            )
+                        }
                     }
                 }
             }
