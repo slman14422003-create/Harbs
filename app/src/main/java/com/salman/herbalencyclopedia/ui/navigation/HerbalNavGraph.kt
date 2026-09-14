@@ -428,7 +428,12 @@ fun HerbalNavGraph(
                         onSetAiOnlineApiKey = { v -> scope.launch { preferencesRepository.setAiOnlineApiKey(v) } },
                         onSetAiOnlineModel = { v -> scope.launch { preferencesRepository.setAiOnlineModel(v) } },
                         onSetAiOnlineBaseUrl = { v -> scope.launch { preferencesRepository.setAiOnlineBaseUrl(v) } },
-                        onResetAiOnlineSettings = { scope.launch { preferencesRepository.resetAiOnlineSettings() } }
+                        onResetAiOnlineSettings = { scope.launch { preferencesRepository.resetAiOnlineSettings() } },
+                        deviceStatsLoading = appViewModel.deviceStatsLoading,
+                        deviceStatsTotal = appViewModel.deviceStatsTotal,
+                        deviceStatsActive7d = appViewModel.deviceStatsActive7d,
+                        deviceStatsError = appViewModel.deviceStatsError,
+                        onRefreshDeviceStats = { appViewModel.refreshDeviceStats() }
                     )
                 }
                 composable(Screen.AdminUpdate.route) {
