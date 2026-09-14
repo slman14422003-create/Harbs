@@ -1231,11 +1231,36 @@ object HerbAssistant {
      *    المفرد)، ضمن كلمات السؤال — يكفي أن تكون كل كلمات الاسم مذكورة
      *    بأي صيغة قريبة، ولا يشترط ترتيبها أو تطابقها حرفياً بالكامل.
      */
+    /**
+     * ═══ إصلاح خلل حقيقي أُبلغ عنه ("سألت عن فوائد الكركديه فرد بأعشاب
+     * غير متعلقة إطلاقاً، رغم أن الكركديه موجود فعلاً بالموسوعة") ═══
+     * السبب الأرجح: كثير من أسماء الأعشاب بالموسوعة مكتوبة مع اسمها
+     * العلمي/الإنجليزي بين قوسين للتوضيح (مثال: "الكركديه (Hibiscus)").
+     * المطابقة أدناه (سواء الاحتواء الحرفي الكامل أو تقسيم الاسم لكلمات)
+     * كانت تتعامل مع اسم العشبة *كاملاً بما فيه القوس الإنجليزي* ككتلة
+     * واحدة يجب أن تتطابق كل كلماتها مع كلمات السؤال — فسؤال عربي بحت لا
+     * يذكر الكلمة الإنجليزية إطلاقاً (وهذا الحال الطبيعي لأي سؤال عربي)
+     * يفشل بمطابقة تلك العشبة تحديداً بصمت تام، فتسقط للبحث الحر العام
+     * الذي قد يُرجع أعشاباً أخرى غير متعلّقة أصلاً بالسؤال. الإصلاح:
+     * [arabicMatchableCore] يحذف أي محتوى بين قوسين (عادة الاسم العلمي/
+     * الإنجليزي) وأي كلمة مكتوبة بحروف لاتينية بالكامل قبل المطابقة، فيبقى
+     * فقط الاسم العربي الفعلي هو ما يُقارَن بكلمات السؤال — يؤثر هذا على
+     * *كل* عشبة بالموسوعة مكتوب اسمها بهذا النمط الشائع، لا الكركديه فقط.
+     */
+    private fun arabicMatchableCore(name: String): String {
+        val withoutParens = name.replace(Regex("[\\(\\[][^)\\]]*[\\)\\]]"), " ")
+        val arabicOnlyTokens = withoutParens.split(Regex("\\s+"))
+            .filterNot { token -> token.isNotEmpty() && token.none { ch -> ch in '\u0600'..'\u06FF' } }
+        return arabicOnlyTokens.joinToString(" ").ifBlank { name }
+    }
+
     fun relevantHerbs(question: String, allHerbs: List<Herb>): List<Herb> {
         val qNorm = normalize(question)
         if (qNorm.isBlank()) return emptyList()
 
-        val literal = allHerbs.filter { herb -> herb.name.isNotBlank() && qNorm.contains(normalize(herb.name)) }
+        val literal = allHerbs.filter { herb ->
+            herb.name.isNotBlank() && qNorm.contains(normalize(arabicMatchableCore(herb.name)))
+        }
         if (literal.isNotEmpty()) return literal
 
         val qTokens = qNorm.split(Regex("\\s+")).filter { it.length > 1 }
@@ -1255,7 +1280,9 @@ object HerbAssistant {
         // يكفي) بينما يمنع تطابقات عابرة لا معنى لها بين كلمتين قصيرتين جداً.
         return allHerbs.filter { herb ->
             if (herb.name.isBlank()) return@filter false
-            val nameTokens = normalize(herb.name).split(Regex("\\s+")).filter { it.length > 1 }
+            // راجع توثيق [arabicMatchableCore] أعلاه: نطابق على الاسم
+            // العربي الفعلي فقط، لا الاسم كاملاً بقوسه الإنجليزي إن وُجد.
+            val nameTokens = normalize(arabicMatchableCore(herb.name)).split(Regex("\\s+")).filter { it.length > 1 }
             if (nameTokens.isEmpty()) return@filter false
             nameTokens.all { nt ->
                 qTokens.any { qt ->
