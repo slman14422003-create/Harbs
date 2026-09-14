@@ -113,9 +113,22 @@ fun AdminEditHerbScreen(
             )
         }
     ) { padding ->
+        // ═══ إصلاح خلل حقيقي أُبلغ عنه: لوحة المفاتيح تغطي حقل "ملاحظات
+        // إضافية" (وأي حقل أسفله) بلا أي طريقة للتمرير لرؤيته أثناء الكتابة
+        // فيه ═══
+        // السبب: التطبيق edge-to-edge (enableEdgeToEdge + setDecorFitsSystemWindows
+        // = false في MainActivity)، فإعداد android:windowSoftInputMode="adjustResize"
+        // بالمانيفست لم يعد يُغيّر حجم الشاشة تلقائياً عند ظهور لوحة المفاتيح
+        // كما في الوضع القديم غير edge-to-edge — أصبحت مسؤولية حجز المساحة
+        // للوحة المفاتيح على Compose نفسه عبر imePadding()، وكانت غائبة هنا.
+        // فكان التمرير (verticalScroll) يحسب طول المحتوى بلا أي حساب لارتفاع
+        // لوحة المفاتيح، فتبقى الحقول السفلية عملياً خلف اللوحة بلا أي مساحة
+        // تمرير إضافية للوصول إليها. imePadding() هنا يضيف مساحة سفلية تساوي
+        // ارتفاع لوحة المفاتيح الظاهرة فتصبح كل الحقول قابلة للتمرير فوقها.
         Column(
             modifier = Modifier
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

@@ -108,9 +108,14 @@ fun AdminEditBlendScreen(
             )
         }
     ) { padding ->
+        // نفس إصلاح لوحة المفاتيح المطبَّق في AdminEditHerbScreen (راجع
+        // التوثيق الكامل هناك): imePadding() ضروري هنا أيضاً لنفس السبب
+        // بالضبط — نموذج طويل قابل للتمرير بحقول نص متعددة، بلا حساب
+        // لارتفاع لوحة المفاتيح في وضع edge-to-edge.
         Column(
             modifier = Modifier
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
