@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.salman.herbalencyclopedia.BuildConfig
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.ai.HerbCategoryLookup
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
@@ -371,6 +372,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             runCatching {
                 val uid = container.authRepository.ensureAnonymousUid()
                 uid?.let { container.deviceStatsRepository.pingDevice(it) }
+            }
+        }
+
+        // ── وضع الصيانة: عَلَم إدمن جديد يوقف نسخة public مؤقتاً برسالة ──
+        // يُقرأ مرة واحدة عند بدء التشغيل فقط، ولنسخة public حصراً — نسخة
+        // full (الأدمن) يجب أن تبقى قادرة على الدخول دوماً لتستطيع تعطيل
+        // الصيانة لاحقاً من نفس الجهاز، فلا يجوز لهذا العلَم حجبها عن نفسها.
+        // انظر MaintenanceRepository وHerbalNavGraph (الشاشة الحاجبة).
+        if (BuildConfig.FLAVOR == "public") {
+            viewModelScope.launch {
+                val config = container.maintenanceRepository.fetch()
+                maintenanceEnabled = config.enabled
+                maintenanceMessage = config.message
             }
         }
 
@@ -811,6 +825,90 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 deviceStatsError = "تعذّر جلب إحصائية الأجهزة."
             }
             deviceStatsLoading = false
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // نمو الأجهزة يوماً بيوم — بطاقة إدمن جديدة، راجع
+    // DeviceStatsRepository.dailyNewDeviceCounts. لا تُجلَب تلقائياً (نفس
+    // مبدأ deviceStats أعلاه): فقط عند الضغط على "تحديث" بالبطاقة.
+    // ---------------------------------------------------------------------
+
+    var deviceGrowthLoading by mutableStateOf(false)
+        private set
+    var deviceGrowth by mutableStateOf<List<Pair<String, Int>>>(emptyList())
+        private set
+    var deviceGrowthError by mutableStateOf<String?>(null)
+        private set
+
+    fun refreshDeviceGrowth() {
+        viewModelScope.launch {
+            deviceGrowthLoading = true
+            deviceGrowthError = null
+            runCatching { container.deviceStatsRepository.dailyNewDeviceCounts(days = 14) }
+                .onSuccess { deviceGrowth = it }
+                .onFailure { deviceGrowthError = "تعذّر جلب بيانات نمو الأجهزة." }
+            deviceGrowthLoading = false
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // سجل الأعطال — راجع CrashLogRepository وHerbalApp.onCreate (المُعترِض
+    // الذي يُرسل الأعطال فعلياً). لا يُجلَب تلقائياً؛ فقط عند فتح البطاقة
+    // بلوحة الإدمن (نفس مبدأ deviceStats).
+    // ---------------------------------------------------------------------
+
+    var crashLogsLoading by mutableStateOf(false)
+        private set
+    var crashLogs by mutableStateOf<List<com.salman.herbalencyclopedia.data.repository.CrashLog>>(emptyList())
+        private set
+    var crashLogsError by mutableStateOf<String?>(null)
+        private set
+
+    fun refreshCrashLogs() {
+        viewModelScope.launch {
+            crashLogsLoading = true
+            crashLogsError = null
+            runCatching { container.crashLogRepository.recentCrashes() }
+                .onSuccess { crashLogs = it }
+                .onFailure { crashLogsError = "تعذّر جلب سجل الأعطال." }
+            crashLogsLoading = false
+        }
+    }
+
+    fun clearCrashLogs(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            runCatching { container.crashLogRepository.clearAll() }
+                .onSuccess { crashLogs = emptyList(); onResult(true, null) }
+                .onFailure { onResult(false, "تعذّر مسح سجل الأعطال.") }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // وضع الصيانة — راجع MaintenanceRepository. القيمتان تُقرآن مرة واحدة
+    // بـinit{} (نسخة public فقط)، ويُعدِّلهما الأدمن من نسخة full عبر
+    // [saveMaintenanceConfig] (يحفظ في Firestore مباشرة، لا يُطبَّق على
+    // نسخة full نفسها أبداً — راجع الشرح بـMaintenanceRepository).
+    // ---------------------------------------------------------------------
+
+    var maintenanceEnabled by mutableStateOf(false)
+        private set
+    var maintenanceMessage by mutableStateOf("")
+        private set
+
+    fun saveMaintenanceConfig(enabled: Boolean, message: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            runCatching {
+                container.maintenanceRepository.save(
+                    com.salman.herbalencyclopedia.data.repository.MaintenanceConfig(enabled, message)
+                )
+            }.onSuccess {
+                maintenanceEnabled = enabled
+                maintenanceMessage = message
+                onResult(true, null)
+            }.onFailure {
+                onResult(false, "تعذّر حفظ إعدادات الصيانة.")
+            }
         }
     }
 
