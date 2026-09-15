@@ -100,6 +100,24 @@ fun AdminEditHerbScreen(
 
     val selectedCategoryName = categories.firstOrNull { it.id == categoryId }?.name ?: tr("بدون تصنيف")
 
+    // ═══ ميزة إدمن جديدة: "معاينة قبل النشر" ═══
+    // يفتح شاشة تفاصيل العشبة الحقيقية (HerbDetailScreen — نفس ما يراه
+    // المستخدم لاحقاً بالضبط) لكن ببيانات المسوّدة الحالية غير المحفوظة
+    // بعد، بدل الاضطرار للحفظ أولاً لمعرفة شكلها النهائي. draftHerb يُبنى
+    // من كل الحقول الحيّة فتتحدّث المعاينة تلقائياً مع كل تعديل.
+    var showHerbPreview by remember { mutableStateOf(false) }
+    val draftHerb = Herb(
+        id = existingHerb?.id ?: "",
+        name = name.ifBlank { tr("(بلا اسم بعد)") },
+        categoryId = categoryId,
+        benefits = benefits,
+        warnings = warnings,
+        harms = harms,
+        usage = usage,
+        notes = notes,
+        imageUrl = imageUrl.ifBlank { null }
+    )
+
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
@@ -228,36 +246,50 @@ fun AdminEditHerbScreen(
 
             errorMessage?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
-            GlassButton(
-                onClick = {
-                    isSaving = true
-                    errorMessage = null
-                    val herb = Herb(
-                        id = existingHerb?.id ?: "",
-                        name = name,
-                        categoryId = categoryId,
-                        benefits = benefits,
-                        warnings = warnings,
-                        harms = harms,
-                        usage = usage,
-                        notes = notes,
-                        imageUrl = imageUrl.ifBlank { null }
-                    )
-                    onSave(herb) { success, message ->
-                        isSaving = false
-                        if (success) onBack() else errorMessage = message
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                GlassOutlinedButton(
+                    onClick = { showHerbPreview = true },
+                    enabled = name.isNotBlank(),
+                    modifier = Modifier.weight(1f)
+                ) { Text(tr("معاينة")) }
+
+                GlassButton(
+                    onClick = {
+                        isSaving = true
+                        errorMessage = null
+                        onSave(draftHerb) { success, message ->
+                            isSaving = false
+                            if (success) onBack() else errorMessage = message
+                        }
+                    },
+                    enabled = name.isNotBlank() && !isSaving && !isCompressingImage,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text(tr("حفظ"))
                     }
-                },
-                enabled = name.isNotBlank() && !isSaving && !isCompressingImage,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(tr("حفظ"))
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+
+    if (showHerbPreview) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showHerbPreview = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                com.salman.herbalencyclopedia.ui.screens.herbdetail.HerbDetailScreen(
+                    herb = draftHerb,
+                    isFavorite = false,
+                    onBack = { showHerbPreview = false },
+                    onToggleFavorite = {},
+                    onReportIssue = {}
+                )
+            }
         }
     }
 }
