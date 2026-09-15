@@ -3,6 +3,7 @@ package com.salman.herbalencyclopedia
 import android.app.ActivityManager
 import android.app.Application
 import android.graphics.Bitmap
+import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -63,6 +64,29 @@ class HerbalApp : Application(), ImageLoaderFactory {
         // subsequent Firestore/Auth request can carry an attestation token. Release
         // builds use Play Integrity; debug builds use Firebase's debug provider.
         if (firebaseApp != null) FirebaseSecurity.install()
+
+        // ═══ سجل أعطال عن بعد — أداة إدمن جديدة بطلب صريح ═══
+        // يلتقط أي استثناء غير مُعالَج (تصادم التطبيق) ويُرسل تفاصيله
+        // (رسالة الخطأ + أول 25 سطر من الـ stack trace، بلا أي بيانات
+        // شخصية عن المستخدم) إلى Firestore عبر CrashLogRepository، ثم يمرّر
+        // الاستثناء كما هو للمعترِض الافتراضي السابق فيُكمل مساره الطبيعي
+        // (تسجيل بـ Logcat + إنهاء العملية) — هذا توثيق للعطل وليس منعاً له.
+        // يُضبط هنا (لا في MainActivity) ليلتقط أي تصادم بأي مكان بالتطبيق،
+        // بما فيها ما قد يحدث قبل ظهور أي Activity على الإطلاق.
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching {
+                container.crashLogRepository.report(
+                    throwable = throwable,
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE,
+                    flavor = BuildConfig.FLAVOR,
+                    deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}",
+                    androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+                )
+            }
+            previousHandler?.uncaughtException(thread, throwable)
+        }
 
         // إعدادات كاش Firestore المحلي تُضبط هنا - مرة واحدة فقط عند بدء
         // التطبيق، قبل أي Activity أو ViewModel أو Repository (مثل
