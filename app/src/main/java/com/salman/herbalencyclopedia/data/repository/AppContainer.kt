@@ -24,6 +24,12 @@ class AppContainer(context: Context) {
     // إحصائية إدمن فقط: كم جهاز يستخدم الموسوعة — راجع DeviceStatsRepository
     // وAppViewModel.init (النبضة عند كل بدء تشغيل) وAdminToolsScreen (العرض).
     val deviceStatsRepository: DeviceStatsRepository by lazy { DeviceStatsRepository() }
+    // سجل أعطال عن بعد — راجع CrashLogRepository وHerbalApp.onCreate
+    // (معترِض الاستثناءات) وAdminToolsScreen (عرض/مسح السجل).
+    val crashLogRepository: CrashLogRepository by lazy { CrashLogRepository() }
+    // علَم "وضع الصيانة" — راجع MaintenanceRepository وAppViewModel.init
+    // (يُقرأ مرة عند بدء تشغيل نسخة public) وAdminToolsScreen (تبديل الأدمن).
+    val maintenanceRepository: MaintenanceRepository by lazy { MaintenanceRepository() }
     // مزامنة "تعلّم سيمو الذاتي" بين الأجهزة عبر Firestore — انظر
     // SemoLearningRepository وAppViewModel.init للسلك الفعلي.
     val semoLearningRepository: SemoLearningRepository by lazy { SemoLearningRepository() }
