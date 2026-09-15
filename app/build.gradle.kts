@@ -61,6 +61,13 @@ android {
         vectorDrawables.useSupportLibrary = true
 
         buildConfigField("String", "EXPECTED_SIGNATURE_SHA256", "\"$releaseSignatureSha256\"")
+        // ميزة إدمن جديدة: بطاقة "معلومات البناء" بأدوات الإدارة تعرض متى
+        // بُني الـ APK فعلياً (تاريخ/وقت التصريف نفسه، لا تاريخ التثبيت على
+        // الجهاز) — مفيد للتأكد من أن نسخة الاختبار الحالية هي فعلاً آخر
+        // بناء، خصوصاً عند تركيب عدة نسخ full/public على نفس الجهاز أو بعد
+        // إعادة توزيع APK قديم بالغلط. يُحسَب مرة واحدة وقت تكوين Gradle
+        // (وقت البناء الفعلي)، لا وقت تشغيل التطبيق.
+        buildConfigField("long", "BUILD_TIME_MILLIS", "${System.currentTimeMillis()}L")
     }
 
     signingConfigs {
