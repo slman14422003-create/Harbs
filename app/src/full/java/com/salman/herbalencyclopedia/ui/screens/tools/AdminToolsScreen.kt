@@ -86,7 +86,22 @@ fun AdminToolsScreen(
     deviceStatsTotal: Long? = null,
     deviceStatsActive7d: Long? = null,
     deviceStatsError: String? = null,
-    onRefreshDeviceStats: () -> Unit = {}
+    onRefreshDeviceStats: () -> Unit = {},
+    // ── نمو الأجهزة يوماً بيوم — بطاقة إدمن جديدة، راجع AppViewModel.refreshDeviceGrowth ──
+    deviceGrowthLoading: Boolean = false,
+    deviceGrowth: List<Pair<String, Int>> = emptyList(),
+    deviceGrowthError: String? = null,
+    onRefreshDeviceGrowth: () -> Unit = {},
+    // ── سجل أعطال عن بعد — بطاقة إدمن جديدة، راجع AppViewModel.refreshCrashLogs/clearCrashLogs ──
+    crashLogsLoading: Boolean = false,
+    crashLogs: List<com.salman.herbalencyclopedia.data.repository.CrashLog> = emptyList(),
+    crashLogsError: String? = null,
+    onRefreshCrashLogs: () -> Unit = {},
+    onClearCrashLogs: ((Boolean, String?) -> Unit) -> Unit = { _ -> },
+    // ── وضع الصيانة — بطاقة إدمن جديدة، راجع AppViewModel.saveMaintenanceConfig ──
+    maintenanceEnabled: Boolean = false,
+    maintenanceMessage: String = "",
+    onSaveMaintenanceConfig: (Boolean, String, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -151,6 +166,35 @@ fun AdminToolsScreen(
                     active7d = deviceStatsActive7d,
                     error = deviceStatsError,
                     onRefresh = onRefreshDeviceStats
+                )
+            }
+            item {
+                DeviceGrowthCard(
+                    loading = deviceGrowthLoading,
+                    data = deviceGrowth,
+                    error = deviceGrowthError,
+                    onRefresh = onRefreshDeviceGrowth
+                )
+            }
+            item { Text(tr("معلومات هذا البناء"), style = MaterialTheme.typography.titleLarge) }
+            item { BuildInfoCard() }
+            item { Text(tr("وضع الصيانة"), style = MaterialTheme.typography.titleLarge) }
+            item {
+                MaintenanceModeCard(
+                    enabled = maintenanceEnabled,
+                    message = maintenanceMessage,
+                    onSave = onSaveMaintenanceConfig,
+                    notify = { ok, msg -> notify(ok, msg) }
+                )
+            }
+            item { Text(tr("سجل الأعطال"), style = MaterialTheme.typography.titleLarge) }
+            item {
+                CrashLogsCard(
+                    loading = crashLogsLoading,
+                    logs = crashLogs,
+                    error = crashLogsError,
+                    onRefresh = onRefreshCrashLogs,
+                    onClear = { onClearCrashLogs { ok, msg -> notify(ok, msg) } }
                 )
             }
             item { Text(tr("الصيانة والمزامنة"), style = MaterialTheme.typography.titleLarge) }
@@ -339,6 +383,223 @@ private fun DeviceStatsCard(
             } else {
                 GlassIconButton(onClick = onRefresh) {
                     Icon(Icons.Filled.Refresh, contentDescription = tr("تحديث"))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة "نمو الأجهزة" — عدد الأجهزة الجديدة يوماً بيوم لآخر 14 يوماً، رسم
+ * بياني بسيط بأعمدة (Canvas خفيف بلا أي مكتبة رسوم خارجية). نفس مبدأ
+ * DeviceStatsCard أعلاه: لا تُجلَب تلقائياً، فقط عند الضغط على "تحديث".
+ */
+@Composable
+private fun DeviceGrowthCard(
+    loading: Boolean,
+    data: List<Pair<String, Int>>,
+    error: String?,
+    onRefresh: () -> Unit
+) {
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.TrendingUp, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(tr("نمو الأجهزة (آخر 14 يوم)"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    GlassIconButton(onClick = onRefresh, size = 32.dp) {
+                        Icon(Icons.Filled.Refresh, contentDescription = tr("تحديث"), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            when {
+                error != null -> Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                data.isEmpty() -> Text(tr("اضغط تحديث لعرض بيانات النمو"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> {
+                    val maxCount = (data.maxOfOrNull { it.second } ?: 0).coerceAtLeast(1)
+                    val barColor = MaterialTheme.colorScheme.primary
+                    androidx.compose.foundation.Canvas(
+                        modifier = Modifier.fillMaxWidth().height(100.dp)
+                    ) {
+                        val barSpacing = 4.dp.toPx()
+                        val barWidth = (size.width - barSpacing * (data.size - 1)) / data.size
+                        data.forEachIndexed { index, (_, count) ->
+                            val barHeight = size.height * (count.toFloat() / maxCount)
+                            drawRect(
+                                color = barColor,
+                                topLeft = androidx.compose.ui.geometry.Offset(index * (barWidth + barSpacing), size.height - barHeight),
+                                size = androidx.compose.ui.geometry.Size(barWidth, barHeight)
+                            )
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(data.first().first.takeLast(5), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(data.last().first.takeLast(5), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(
+                        tr("إجمالي الأجهزة الجديدة بهذه الفترة: ${data.sumOf { it.second }}"),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * بطاقة "معلومات هذا البناء" — versionName/versionCode/النكهة/وقت التصريف
+ * الفعلي (BuildConfig.BUILD_TIME_MILLIS، راجع build.gradle.kts). مفيدة
+ * للتأكد من أن نسخة الاختبار الحالية على الجهاز هي فعلاً آخر بناء، خصوصاً
+ * عند وجود عدة نسخ full/public على نفس الجهاز.
+ */
+@Composable
+private fun BuildInfoCard() {
+    val buildDate = remember {
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+            .format(java.util.Date(com.salman.herbalencyclopedia.BuildConfig.BUILD_TIME_MILLIS))
+    }
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    tr("النسخة ${com.salman.herbalencyclopedia.BuildConfig.VERSION_NAME} (${com.salman.herbalencyclopedia.BuildConfig.VERSION_CODE}) · ${com.salman.herbalencyclopedia.BuildConfig.FLAVOR}"),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Text(tr("تاريخ هذا البناء: $buildDate"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * بطاقة "وضع الصيانة" — تبديل يوقف نسخة public مؤقتاً برسالة للمستخدمين،
+ * راجع MaintenanceRepository وMainActivity.MaintenanceScreen. التبديل هنا
+ * يُخزَّن فقط محلياً حتى الضغط على "حفظ"، فلا يُطبَّق على المستخدمين إلا
+ * بعد تأكيد صريح، تفادياً لتفعيل الصيانة بالخطأ بلمسة واحدة.
+ */
+@Composable
+private fun MaintenanceModeCard(
+    enabled: Boolean,
+    message: String,
+    onSave: (Boolean, String, (Boolean, String?) -> Unit) -> Unit,
+    notify: (Boolean, String?) -> Unit
+) {
+    var draftEnabled by remember(enabled) { mutableStateOf(enabled) }
+    var draftMessage by remember(message) { mutableStateOf(message) }
+    var saving by remember { mutableStateOf(false) }
+    val msgSaved = tr("تم حفظ إعدادات الصيانة")
+
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("تفعيل وضع الصيانة (نسخة public فقط)"), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Text(
+                        tr("عند التفعيل تُحجب نسخة المستخدم العادي كاملة برسالة أدناه؛ نسخة الأدمن (هذه) تبقى تعمل دوماً."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = draftEnabled, onCheckedChange = { draftEnabled = it })
+            }
+            OutlinedTextField(
+                value = draftMessage,
+                onValueChange = { draftMessage = it },
+                label = { Text(tr("رسالة الصيانة")) },
+                placeholder = { Text(tr("نعمل على تحسين التطبيق حالياً، عودوا خلال وقت قصير.")) },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth()
+            )
+            TextButton(
+                enabled = !saving,
+                onClick = {
+                    saving = true
+                    onSave(draftEnabled, draftMessage.trim()) { ok, msg ->
+                        saving = false
+                        notify(ok, msg ?: if (ok) msgSaved else null)
+                    }
+                }
+            ) { Text(if (saving) tr("جارٍ الحفظ...") else tr("حفظ")) }
+        }
+    }
+}
+
+/**
+ * بطاقة "سجل الأعطال" — آخر الأعطال المُبلَّغ عنها تلقائياً من مُعترِض
+ * الاستثناءات (راجع HerbalApp.onCreate وCrashLogRepository). لا تُجلَب
+ * تلقائياً؛ فقط عند الضغط على "تحديث".
+ */
+@Composable
+private fun CrashLogsCard(
+    loading: Boolean,
+    logs: List<com.salman.herbalencyclopedia.data.repository.CrashLog>,
+    error: String?,
+    onRefresh: () -> Unit,
+    onClear: () -> Unit
+) {
+    val dateFormatter = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US) }
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.BugReport, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(tr("آخر الأعطال (${logs.size})"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    GlassIconButton(onClick = onRefresh, size = 32.dp) {
+                        Icon(Icons.Filled.Refresh, contentDescription = tr("تحديث"), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            when {
+                error != null -> Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                logs.isEmpty() -> Text(tr("لا توجد أعطال مسجَّلة — اضغط تحديث لجلب آخر السجل"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        logs.forEach { log ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+                            ) {
+                                Column(Modifier.padding(10.dp)) {
+                                    Text(
+                                        log.message.ifBlank { tr("(بلا رسالة)") },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        "v${log.versionName} (${log.versionCode}) · ${log.flavor} · ${log.deviceModel} · ${log.androidVersion}" +
+                                            (log.createdAt?.let { " · " + dateFormatter.format(it.toDate()) } ?: ""),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    TextButton(onClick = onClear) { Text(tr("مسح السجل"), color = MaterialTheme.colorScheme.error) }
                 }
             }
         }
