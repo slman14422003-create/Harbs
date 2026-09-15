@@ -7,7 +7,20 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -16,8 +29,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -37,6 +54,7 @@ import com.salman.herbalencyclopedia.ui.theme.rememberEffectivePerformanceMode
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
 import com.salman.herbalencyclopedia.ui.util.LocalAppLanguage
 import com.salman.herbalencyclopedia.ui.util.LocaleManager
+import com.salman.herbalencyclopedia.ui.util.tr
 
 class MainActivity : ComponentActivity() {
 
@@ -175,12 +193,22 @@ class MainActivity : ComponentActivity() {
                         LocalPerformanceMode provides effectivePerformanceMode,
                         LocalRefreshRateTier provides refreshRateTier
                     ) {
-                        HerbalNavGraph(
-                            appViewModel = appViewModel,
-                            preferencesRepository = container.preferencesRepository,
-                            pendingDeepLink = deepLink,
-                            onDeepLinkHandled = { pendingDeepLink.value = null }
-                        )
+                        // ═══ وضع الصيانة — ميزة إدمن جديدة ═══
+                        // maintenanceEnabled لا يُضبط بـtrue إطلاقاً إلا لنسخة
+                        // public (راجع AppViewModel.init وMaintenanceRepository)،
+                        // فنسخة full (الأدمن) تتجاوز هذا الفحص دوماً وتصل للتطبيق
+                        // كاملاً بصرف النظر عن قيمة العلَم، لتستطيع تعطيل
+                        // الصيانة لاحقاً من نفس الجهاز.
+                        if (appViewModel.maintenanceEnabled) {
+                            MaintenanceScreen(message = appViewModel.maintenanceMessage)
+                        } else {
+                            HerbalNavGraph(
+                                appViewModel = appViewModel,
+                                preferencesRepository = container.preferencesRepository,
+                                pendingDeepLink = deepLink,
+                                onDeepLinkHandled = { pendingDeepLink.value = null }
+                            )
+                        }
                     }
                 }
             }
@@ -188,3 +216,41 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * شاشة "وضع الصيانة" — تحجب كامل نسخة public عند تفعيلها من لوحة الإدمن
+ * (راجع AdminToolsScreen وMaintenanceRepository)، بدل توزيع تحديث كامل فقط
+ * لإيقاف التطبيق مؤقتاً أثناء صيانة السيرفر أو ترحيل بيانات كبير.
+ */
+@Composable
+private fun MaintenanceScreen(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                Icons.Filled.Build,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(56.dp)
+            )
+            Text(
+                tr("التطبيق قيد الصيانة حالياً"),
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                message.ifBlank { tr("نعمل على تحسين التطبيق حالياً، عودوا خلال وقت قصير.") },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
