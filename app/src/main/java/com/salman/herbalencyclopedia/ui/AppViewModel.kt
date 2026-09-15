@@ -376,15 +376,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
 
         // ── وضع الصيانة: عَلَم إدمن جديد يوقف نسخة public مؤقتاً برسالة ──
-        // يُقرأ مرة واحدة عند بدء التشغيل فقط، ولنسخة public حصراً — نسخة
-        // full (الأدمن) يجب أن تبقى قادرة على الدخول دوماً لتستطيع تعطيل
-        // الصيانة لاحقاً من نفس الجهاز، فلا يجوز لهذا العلَم حجبها عن نفسها.
-        // انظر MaintenanceRepository وHerbalNavGraph (الشاشة الحاجبة).
+        // مستمع حي (وليس قراءة لمرة واحدة بعد الآن) ولنسخة public حصراً —
+        // نسخة full (الأدمن) يجب أن تبقى قادرة على الدخول دوماً لتستطيع
+        // تعطيل الصيانة لاحقاً من نفس الجهاز، فلا يجوز لهذا العلَم حجبها عن
+        // نفسها. كون المستمع حياً هو ما يجعل التفعيل والتعطيل كليهما يُطبَّقان
+        // فوراً سحابياً على كل الأجهزة المفتوحة حالياً بلا انتظار إعادة
+        // تشغيل — راجع MaintenanceRepository.observe وMainActivity (الشاشة
+        // الحاجبة).
         if (BuildConfig.FLAVOR == "public") {
             viewModelScope.launch {
-                val config = container.maintenanceRepository.fetch()
-                maintenanceEnabled = config.enabled
-                maintenanceMessage = config.message
+                container.maintenanceRepository.observe().collect { config ->
+                    maintenanceEnabled = config.enabled
+                    maintenanceMessage = config.message
+                }
             }
         }
 
