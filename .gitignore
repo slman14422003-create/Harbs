@@ -25,3 +25,4 @@ app/google-services.json
 app/*.jks
 app/keystore.properties
 app/release.keystore.jks
+app/ai.properties
