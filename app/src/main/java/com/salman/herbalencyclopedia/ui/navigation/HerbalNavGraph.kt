@@ -433,7 +433,19 @@ fun HerbalNavGraph(
                         deviceStatsTotal = appViewModel.deviceStatsTotal,
                         deviceStatsActive7d = appViewModel.deviceStatsActive7d,
                         deviceStatsError = appViewModel.deviceStatsError,
-                        onRefreshDeviceStats = { appViewModel.refreshDeviceStats() }
+                        onRefreshDeviceStats = { appViewModel.refreshDeviceStats() },
+                        deviceGrowthLoading = appViewModel.deviceGrowthLoading,
+                        deviceGrowth = appViewModel.deviceGrowth,
+                        deviceGrowthError = appViewModel.deviceGrowthError,
+                        onRefreshDeviceGrowth = { appViewModel.refreshDeviceGrowth() },
+                        crashLogsLoading = appViewModel.crashLogsLoading,
+                        crashLogs = appViewModel.crashLogs,
+                        crashLogsError = appViewModel.crashLogsError,
+                        onRefreshCrashLogs = { appViewModel.refreshCrashLogs() },
+                        onClearCrashLogs = { cb -> appViewModel.clearCrashLogs(cb) },
+                        maintenanceEnabled = appViewModel.maintenanceEnabled,
+                        maintenanceMessage = appViewModel.maintenanceMessage,
+                        onSaveMaintenanceConfig = { enabled, message, cb -> appViewModel.saveMaintenanceConfig(enabled, message, cb) }
                     )
                 }
                 composable(Screen.AdminUpdate.route) {
