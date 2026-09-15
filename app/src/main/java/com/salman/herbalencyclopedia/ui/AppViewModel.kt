@@ -390,6 +390,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     maintenanceMessage = config.message
                 }
             }
+        } else {
+            // نسخة full: نفس المستمع الحي، لكن لعرض الحالة الحالية بلوحة
+            // الأدمن فقط (maintenanceAdminStatus*) — لا يمسّ maintenanceEnabled
+            // إطلاقاً كي لا تنحجب هذه النسخة أبداً خلف MaintenanceScreen.
+            viewModelScope.launch {
+                container.maintenanceRepository.observe().collect { config ->
+                    maintenanceAdminStatusEnabled = config.enabled
+                    maintenanceAdminStatusMessage = config.message
+                }
+            }
         }
 
         // ── ترجمة تفاعلية: تعيد ترجمة القوائم الخام كلما تغيّرت هي أو اللغة ──
@@ -900,6 +910,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     var maintenanceMessage by mutableStateOf("")
         private set
 
+    // عرض فقط للوحة تحكم الأدمن (نسخة full) — الحالة الحقيقية الحالية في
+    // Firestore، مستقلة تماماً عن العلَمين أعلاه (اللذين يحجبان public فقط).
+    // بدونها كان مفتاح "وضع الصيانة" بلوحة الأدمن يظهر دائماً "متوقف" عند
+    // فتح الشاشة بصرف النظر عن حالته الفعلية، بعد إصلاح تسرّب الحجب لنسخة
+    // full (راجع saveMaintenanceConfig أدناه وinit{}).
+    var maintenanceAdminStatusEnabled by mutableStateOf(false)
+        private set
+    var maintenanceAdminStatusMessage by mutableStateOf("")
+        private set
+
     fun saveMaintenanceConfig(enabled: Boolean, message: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             runCatching {
@@ -907,8 +927,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     com.salman.herbalencyclopedia.data.repository.MaintenanceConfig(enabled, message)
                 )
             }.onSuccess {
-                maintenanceEnabled = enabled
-                maintenanceMessage = message
+                // *** الإصلاح: كانت هاتان السطران يضبطان حالة الصيانة محلياً
+                // على نسخة full نفسها (التي استدعت هذه الدالة أصلاً من لوحة
+                // الأدمن)، فتنحجب شاشة الأدمن فوراً خلف MaintenanceScreen في
+                // MainActivity بمجرد تفعيل الصيانة — رغم أن هذا العلَم يجب أن
+                // يبقى مقصوراً على نسخة public حصراً (راجع التعليق أعلاه
+                // وMaintenanceRepository). الحفظ في Firestore أعلاه كافٍ
+                // تماماً؛ نسخة public تستقبله عبر المستمع الحي
+                // (observe/collect بـinit{}) دون أي تدخل هنا.
                 onResult(true, null)
             }.onFailure {
                 onResult(false, "تعذّر حفظ إعدادات الصيانة.")
