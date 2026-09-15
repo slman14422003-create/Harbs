@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.salman.herbalencyclopedia.BuildConfig
 import com.salman.herbalencyclopedia.data.ai.HerbAssistant
 import com.salman.herbalencyclopedia.data.ai.HerbCategoryLookup
+import com.salman.herbalencyclopedia.data.ai.TrainedExample
 import com.salman.herbalencyclopedia.data.model.AppUpdateConfig
 import com.salman.herbalencyclopedia.data.model.AppUpdateInfo
 import com.salman.herbalencyclopedia.data.model.Blend
@@ -41,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
@@ -514,6 +516,44 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     }
                 }
         }
+
+        // ── مزامنة "الحالات المدرَّبة يدوياً" بين الأجهزة (نسخة full تنشر،
+        // كل الأجهزة بما فيها public تستقبل) ─────────────────────────────
+        // خلافاً للتعلّم الذاتي أعلاه (دمج/إضافة فقط)، القائمة هنا منسَّقة
+        // بالكامل من المطوّر عبر أدوات المطور في نسخة full، فالنسخة
+        // الواردة من Firestore هي دوماً الاستبدال الكامل والنهائي (تعديل أو
+        // حذف مثال من أدوات المطور يجب أن ينعكس فعلاً، لا أن يبقى الدمج
+        // القديم عالقاً محلياً للأبد). في نسخة full، هذا يعيد فعلياً نفس
+        // القائمة التي نشرها المطوّر للتو (لا فرق محسوس)؛ في نسخة public —
+        // التي لا تملك شاشة أدوات المطور أصلاً ولذلك لم تكن هذه الحالات
+        // تصلها بأي شكل من قبل — هذا هو المصدر الوحيد لها الآن. فشل الشبكة
+        // لا يوقف شيئاً: يبقى سيمو يعمل بآخر قائمة محلية معروفة له.
+        viewModelScope.launch {
+            container.semoTrainedRepository.observeSharedTrainedExamples()
+                .catch { /* المزامنة انتهازية فقط؛ لا تُسقِط التطبيق أو تُعطّل سيمو محلياً. */ }
+                .collect { shared ->
+                    if (shared == null) {
+                        // لا نشر سابق إطلاقاً بعد. في نسخة full تحديداً
+                        // (BuildConfig.HAS_ADMIN)، إن كانت توجد حالات محلية
+                        // من قبل هذا التحديث، انشرها الآن كبذرة أولى — تصل
+                        // تلقائياً بعدها لكل الأجهزة المتصلة الأخرى بما فيها
+                        // نسخة public. لا شيء يحدث في نسخة public نفسها
+                        // (لم تملك أي حالات محلية أصلاً، ولا صلاحية نشر
+                        // حتى لو حاولت — محمي بـfirestore.rules).
+                        if (BuildConfig.HAS_ADMIN) {
+                            val local = container.preferencesRepository.aiTrainedExamples.first()
+                            if (local.isNotEmpty()) {
+                                container.semoTrainedRepository.publish(local)
+                            }
+                        }
+                        return@collect
+                    }
+                    val local = container.preferencesRepository.aiTrainedExamples.first()
+                    if (shared != local) {
+                        container.preferencesRepository.setAiTrainedExamples(shared)
+                    }
+                }
+        }
     }
 
     /**
@@ -700,6 +740,20 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun demoteSemoLearning(question: String) {
         viewModelScope.launch { container.semoLearningRepository.demote(question) }
+    }
+
+    /**
+     * يُستدعى من HerbalNavGraph.kt عند أي تعديل على "الحالات المدرَّبة
+     * يدوياً" من أدوات المطور (إضافة/حذف/ترقية من التعلّم الذاتي) — يرفع
+     * القائمة الكاملة الجديدة إلى المستند المشترك في Firestore بلا انتظار
+     * (fire-and-forget)، فتصل تلقائياً لكل الأجهزة الأخرى المتصلة بما فيها
+     * نسخة public (راجع SemoTrainedRepository وAppViewModel.init). الحفظ
+     * المحلي عبر [PreferencesRepository.setAiTrainedExamples] يحدث مستقلاً
+     * عن هذا الاستدعاء ولا ينتظره. لا تأثير فعلي إن استُدعيت (نظرياً) من
+     * نسخة public: قواعد Firestore ترفض الكتابة من أي حساب غير المطوّر.
+     */
+    fun publishTrainedExamples(examples: List<TrainedExample>) {
+        viewModelScope.launch { container.semoTrainedRepository.publish(examples) }
     }
 
     /**
