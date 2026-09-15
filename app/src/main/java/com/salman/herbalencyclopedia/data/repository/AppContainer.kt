@@ -33,6 +33,11 @@ class AppContainer(context: Context) {
     // مزامنة "تعلّم سيمو الذاتي" بين الأجهزة عبر Firestore — انظر
     // SemoLearningRepository وAppViewModel.init للسلك الفعلي.
     val semoLearningRepository: SemoLearningRepository by lazy { SemoLearningRepository() }
+    // مزامنة "الحالات المدرَّبة يدوياً" (تدريب المطوّر من أدوات المطور،
+    // نسخة full فقط) لكل الأجهزة المتصلة بما فيها نسخة public — قراءة
+    // مفتوحة للجميع، كتابة محمية للمطوّر حصراً (راجع firestore.rules
+    // وSemoTrainedRepository وAppViewModel.init).
+    val semoTrainedRepository: SemoTrainedRepository by lazy { SemoTrainedRepository() }
     // ترجمة بيانات الأعشاب/التصنيفات/الخلطات إلى الإنجليزية عبر واجهة جوجل
     // المجانية، مع تخزين مؤقت دائم — راجع AppViewModel.translateHerbs وما شابه.
     val translationRepository: TranslationRepository by lazy {
