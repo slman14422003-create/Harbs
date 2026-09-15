@@ -47,7 +47,19 @@ fun AdminToolsScreen(
     deviceStatsTotal: Long? = null,
     deviceStatsActive7d: Long? = null,
     deviceStatsError: String? = null,
-    onRefreshDeviceStats: () -> Unit = {}
+    onRefreshDeviceStats: () -> Unit = {},
+    deviceGrowthLoading: Boolean = false,
+    deviceGrowth: List<Pair<String, Int>> = emptyList(),
+    deviceGrowthError: String? = null,
+    onRefreshDeviceGrowth: () -> Unit = {},
+    crashLogsLoading: Boolean = false,
+    crashLogs: List<com.salman.herbalencyclopedia.data.repository.CrashLog> = emptyList(),
+    crashLogsError: String? = null,
+    onRefreshCrashLogs: () -> Unit = {},
+    onClearCrashLogs: ((Boolean, String?) -> Unit) -> Unit = { _ -> },
+    maintenanceEnabled: Boolean = false,
+    maintenanceMessage: String = "",
+    onSaveMaintenanceConfig: (Boolean, String, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> }
 ) {
     LaunchedEffect(Unit) { onBack() }
 }
