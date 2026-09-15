@@ -443,8 +443,8 @@ fun HerbalNavGraph(
                         crashLogsError = appViewModel.crashLogsError,
                         onRefreshCrashLogs = { appViewModel.refreshCrashLogs() },
                         onClearCrashLogs = { cb -> appViewModel.clearCrashLogs(cb) },
-                        maintenanceEnabled = appViewModel.maintenanceEnabled,
-                        maintenanceMessage = appViewModel.maintenanceMessage,
+                        maintenanceEnabled = appViewModel.maintenanceAdminStatusEnabled,
+                        maintenanceMessage = appViewModel.maintenanceAdminStatusMessage,
                         onSaveMaintenanceConfig = { enabled, message, cb -> appViewModel.saveMaintenanceConfig(enabled, message, cb) }
                     )
                 }
