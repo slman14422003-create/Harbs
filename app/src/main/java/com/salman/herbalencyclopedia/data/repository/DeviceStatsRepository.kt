@@ -57,4 +57,55 @@ class DeviceStatsRepository(
             .whereGreaterThanOrEqualTo("last_seen", cutoff)
             .count().get(AggregateSource.SERVER).await().count
     }
+
+    /**
+     * عدد الأجهزة "الجديدة" (أول ظهور) يوماً بيوم لآخر [days] يوماً — لبطاقة
+     * "نمو الأجهزة" الجديدة بأدوات الإدارة. على عكس [totalDeviceCount] و
+     * [activeDeviceCount]، Firestore لا يدعم تجميع count() حسب اليوم مباشرة
+     * (group by)، فهذا الاستعلام يقرأ مستندات آخر [days] يوماً فعلياً (لا
+     * الأجهزة كلها) ثم يُجمِّعها يوماً بيوم محلياً — مقبول هنا لأن هذه أداة
+     * إدمن تُستدعى يدوياً بالضغط على زر، لا تلقائياً، ولأن عدد المستندات
+     * بنافذة 14 يوماً محدود عملياً بحجم قاعدة المستخدمين الفعلي.
+     *
+     * يستعمل عمداً java.util.Calendar/SimpleDateFormat بدل java.time.* —
+     * الأخيرة تتطلب API 26+ أو تفعيل core library desugaring (غير مُفعَّل
+     * بالمشروع)، بينما minSdk هنا 24؛ استخدامها كان سيُصرَّف بنجاح لكنه
+     * يتحطم فعلياً (NoClassDefFoundError) على أي جهاز Android 7/7.1 حقيقي.
+     *
+     * تُعاد قائمة بترتيب الأيام (الأقدم أولاً)، كل عنصر "yyyy-MM-dd" مع
+     * عدد الأجهزة الجديدة بذلك اليوم (صفر لليوم بلا أي جهاز جديد).
+     */
+    suspend fun dailyNewDeviceCounts(days: Int = 14): List<Pair<String, Int>> {
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+
+        fun startOfDay(cal: java.util.Calendar) = (cal.clone() as java.util.Calendar).apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+
+        val today = startOfDay(java.util.Calendar.getInstance())
+        val cutoffCal = (today.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, -(days - 1)) }
+        val cutoff = Timestamp(cutoffCal.time)
+
+        val snapshot = collection()
+            .whereGreaterThanOrEqualTo("first_seen", cutoff)
+            .get(com.google.firebase.firestore.Source.SERVER)
+            .await()
+
+        val counts = LinkedHashMap<String, Int>()
+        val cursor = cutoffCal.clone() as java.util.Calendar
+        while (!cursor.after(today)) {
+            counts[formatter.format(cursor.time)] = 0
+            cursor.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+
+        snapshot.documents.forEach { doc ->
+            val firstSeen = doc.getTimestamp("first_seen") ?: return@forEach
+            val key = formatter.format(firstSeen.toDate())
+            counts[key] = (counts[key] ?: 0) + 1
+        }
+        return counts.toList()
+    }
 }
