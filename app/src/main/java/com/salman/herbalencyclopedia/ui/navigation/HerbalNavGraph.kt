@@ -472,7 +472,10 @@ fun HerbalNavGraph(
                             trainedExamples = aiTrainedExamples,
                             trainedThreshold = aiTrainedThreshold,
                             onSynonymsChange = { m -> scope.launch { preferencesRepository.setAiSynonyms(m) } },
-                            onTrainedExamplesChange = { list -> scope.launch { preferencesRepository.setAiTrainedExamples(list) } },
+                            onTrainedExamplesChange = { list ->
+                                scope.launch { preferencesRepository.setAiTrainedExamples(list) }
+                                appViewModel.publishTrainedExamples(list)
+                            },
                             onTrainedThresholdChange = { v -> scope.launch { preferencesRepository.setAiTrainedThreshold(v) } }
                         )
                     }
@@ -488,7 +491,9 @@ fun HerbalNavGraph(
                             onAutoLearnEnabledChange = { v -> scope.launch { preferencesRepository.setAiAutoLearnEnabled(v) } },
                             onDemoteLearnedExample = { question -> appViewModel.demoteSemoLearning(question) },
                             onPromoteToTrained = { example ->
-                                scope.launch { preferencesRepository.setAiTrainedExamples(aiTrainedExamples + example) }
+                                val updatedTrained = aiTrainedExamples + example
+                                scope.launch { preferencesRepository.setAiTrainedExamples(updatedTrained) }
+                                appViewModel.publishTrainedExamples(updatedTrained)
                                 scope.launch { preferencesRepository.setAiAutoLearnedExamples(aiAutoLearnedExamples - example) }
                                 appViewModel.demoteSemoLearning(example.pattern)
                             }
