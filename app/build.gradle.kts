@@ -28,6 +28,30 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// نفس نمط keystore.properties تماماً: ملف محلي غير مرفوع لأي مستودع
+// (راجع .gitignore وapp/ai.properties.example) لتزويد "سيمو المتصل"
+// بمفتاح Gemini API وعنوان مرآة اختياري تُخبَز داخل BuildConfig وقت
+// البناء، فتعمل على أي جهاز (بما فيها نسخة public التي لا تملك شاشة
+// أدوات المطور أصلاً ولذلك لم يكن ممكناً ضبط هذا فيها من قبل) دون أي
+// إعداد يدوي بعد التثبيت. بيئة CI تقرأ من متغيرات البيئة أولاً؛ البناء
+// المحلي يرجع لملف app/ai.properties إن وُجد. القيمة المحفوظة فعلياً من
+// شاشة أدوات المطور (نسخة full فقط، إن ضبطها المطوّر يدوياً) تبقى لها
+// الأولوية دوماً فوق هذه القيمة المخبوزة (راجع PreferencesRepository.kt).
+val aiPropertiesFile = rootProject.file("app/ai.properties")
+val aiProperties = Properties().apply {
+    if (aiPropertiesFile.exists()) {
+        load(FileInputStream(aiPropertiesFile))
+    }
+}
+val bakedGeminiApiKey: String =
+    System.getenv("GEMINI_API_KEY")
+        ?: (aiProperties["geminiApiKey"] as String?)
+        ?: ""
+val bakedGeminiBaseUrl: String =
+    System.getenv("GEMINI_BASE_URL")
+        ?: (aiProperties["geminiBaseUrl"] as String?)
+        ?: ""
+
 val hasEnvSigning = !releaseStoreFile.isNullOrBlank() &&
     !releaseStorePassword.isNullOrBlank() &&
     !releaseKeyAlias.isNullOrBlank() &&
@@ -68,6 +92,9 @@ android {
         // إعادة توزيع APK قديم بالغلط. يُحسَب مرة واحدة وقت تكوين Gradle
         // (وقت البناء الفعلي)، لا وقت تشغيل التطبيق.
         buildConfigField("long", "BUILD_TIME_MILLIS", "${System.currentTimeMillis()}L")
+
+        buildConfigField("String", "BAKED_ONLINE_API_KEY", "\"$bakedGeminiApiKey\"")
+        buildConfigField("String", "BAKED_ONLINE_BASE_URL", "\"$bakedGeminiBaseUrl\"")
     }
 
     signingConfigs {
