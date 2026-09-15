@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia.data.repository
 
 import android.content.Context
+import com.salman.herbalencyclopedia.BuildConfig
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -307,14 +308,23 @@ class PreferencesRepository(private val context: Context) {
 
     // ── الوضع الذكي عبر الإنترنت (Gemini المجاني) ────────────────────────
 
+    // القيمة المخبوزة (BuildConfig، من app/ai.properties وقت البناء) هي
+    // الخيار الاحتياطي فقط حين لا يوجد أي اختيار صريح محفوظ في DataStore.
+    // بهذا: (1) نسخة full تبقى كما كانت تماماً إن ضبط المطوّر القيم يدوياً
+    // من أدوات المطور (لها الأولوية دوماً)، و(2) نسخة public — التي لا
+    // تملك شاشة أدوات المطور أصلاً فلم يكن ممكناً ضبط أي قيمة فيها من قبل
+    // — تحصل الآن على القيمة المخبوزة تلقائياً فيعمل "سيمو المتصل" دون أي
+    // خطوة إضافية بعد التثبيت.
     val aiOnlineEnabled: Flow<Boolean> = context.dataStore.data.map {
-        it[Keys.AI_ONLINE_ENABLED] ?: AiConfig.defaultOnlineEnabled
+        it[Keys.AI_ONLINE_ENABLED]
+            ?: (AiConfig.defaultOnlineEnabled || BuildConfig.BAKED_ONLINE_API_KEY.isNotBlank())
     }
     val aiOnlineApiKey: Flow<String> = context.dataStore.data.map {
-        it[Keys.AI_ONLINE_API_KEY] ?: ""
+        it[Keys.AI_ONLINE_API_KEY] ?: BuildConfig.BAKED_ONLINE_API_KEY
     }
     val aiOnlineBaseUrl: Flow<String> = context.dataStore.data.map {
-        it[Keys.AI_ONLINE_BASE_URL] ?: AiConfig.defaultOnlineBaseUrl
+        it[Keys.AI_ONLINE_BASE_URL]
+            ?: BuildConfig.BAKED_ONLINE_BASE_URL.ifBlank { AiConfig.defaultOnlineBaseUrl }
     }
     val aiOnlineModel: Flow<String> = context.dataStore.data.map {
         it[Keys.AI_ONLINE_MODEL] ?: AiConfig.defaultOnlineModel
