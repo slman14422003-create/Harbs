@@ -2,7 +2,11 @@ package com.salman.herbalencyclopedia.data.repository
 
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Source
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.tasks.await
 
 data class MaintenanceConfig(
@@ -24,16 +28,39 @@ class MaintenanceRepository(
 ) {
     private fun doc() = db.collection("app_config").document("maintenance")
 
-    /** تُقرأ مرة عند كل بدء تشغيل (راجع AppViewModel.init). أي فشل (بلا إنترنت) يُعامَل كـ"غير مفعّلة" بدل حجب المستخدم بلا داعٍ. */
-    suspend fun fetch(): MaintenanceConfig = runCatching {
-        val snap = doc().get(Source.SERVER).await()
-        if (snap.exists()) {
-            MaintenanceConfig(
-                enabled = snap.getBoolean("enabled") ?: false,
-                message = snap.getString("message")?.trim().orEmpty()
-            )
-        } else MaintenanceConfig()
-    }.getOrDefault(MaintenanceConfig())
+    /**
+     * مستمع حي (Firestore snapshot listener) بدل قراءة لمرة واحدة: هذا هو ما
+     * يجعل تفعيل/تعطيل الصيانة من لوحة الأدمن يطبَّق فوراً على كل نسخ public
+     * المفتوحة حالياً — بلا الحاجة لإعادة تشغيل التطبيق — سواء بالتفعيل
+     * (تُحجب فوراً) أو التعطيل (يُلغى الحجب فوراً وتعود شاشتها المعتادة).
+     * أي انقطاعة لحظية بلا إنترنت لا تُغلق الصندوق نهائياً، بل تُعاد
+     * المحاولة بتأخير تصاعدي (نفس منطق FeedbackRepository.observeFeedback)
+     * إلى أن يعود الاتصال، وبانتظار ذلك تبقى آخر قيمة معروفة سارية بدل
+     * حجب المستخدم بلا داعٍ لمجرد انقطاع مؤقت.
+     */
+    fun observe(): Flow<MaintenanceConfig> = callbackFlow {
+        val registration = doc().addSnapshotListener { snap, error ->
+            if (error != null) {
+                close(error)
+                return@addSnapshotListener
+            }
+            if (snap != null && snap.exists()) {
+                trySend(
+                    MaintenanceConfig(
+                        enabled = snap.getBoolean("enabled") ?: false,
+                        message = snap.getString("message")?.trim().orEmpty()
+                    )
+                )
+            } else {
+                trySend(MaintenanceConfig())
+            }
+        }
+        awaitClose { registration.remove() }
+    }.retryWhen { _, attempt ->
+        val delayMs = (1000L shl attempt.toInt().coerceAtMost(5)).coerceAtMost(30_000L)
+        delay(delayMs)
+        true
+    }
 
     suspend fun save(config: MaintenanceConfig) {
         doc().set(
