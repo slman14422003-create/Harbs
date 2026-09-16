@@ -366,14 +366,21 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         checkForUpdateSilently()
 
         // ── نبضة "جهاز يستخدم التطبيق" لإحصائية الأدمن الجديدة ──
-        // مرة واحدة فقط لكل بدء تشغيل (init{} هنا)، بلا انتظار ولا تأثير
-        // على أي واجهة — أفضل جهد تماماً، أي فشل (بلا إنترنت مثلاً) يُتجاهل
-        // بصمت عبر runCatching بدل تعطيل بدء التطبيق. راجع DeviceStatsRepository
-        // وAdminToolsScreen (زر "تحديث" الإحصائية) للتفاصيل الكاملة.
-        viewModelScope.launch {
-            runCatching {
-                val uid = container.authRepository.ensureAnonymousUid()
-                uid?.let { container.deviceStatsRepository.pingDevice(it) }
+        // نسخة public فقط (BuildConfig.HAS_ADMIN == false): هذه الإحصائية
+        // مقصودة لعدّ مستخدمي نسخة public الفعليين، فتسجيل نبضة من جهاز
+        // المطوّر نفسه (نسخة full، سواء قبل تسجيل الدخول كأدمن أو بعده) كان
+        // يُضيف مستندات زائفة تُضخّم العدد ولا تمثّل أي مستخدم حقيقي. مرة
+        // واحدة فقط لكل بدء تشغيل (init{} هنا)، بلا انتظار ولا تأثير على أي
+        // واجهة — أفضل جهد تماماً، أي فشل (بلا إنترنت مثلاً) يُتجاهل بصمت
+        // عبر runCatching بدل تعطيل بدء التطبيق. راجع DeviceStatsRepository
+        // وAdminToolsScreen (زر "تحديث" الإحصائية، متاح بنسخة full ليقرأ
+        // فقط - لا يكتب) للتفاصيل الكاملة.
+        if (!BuildConfig.HAS_ADMIN) {
+            viewModelScope.launch {
+                runCatching {
+                    val uid = container.authRepository.ensureAnonymousUid()
+                    uid?.let { container.deviceStatsRepository.pingDevice(it) }
+                }
             }
         }
 
