@@ -27,10 +27,12 @@ class UpdateRepository(
     /**
      * "full" (نسخة المطوّر/dev harb، بلوحة تحكم إدارية) أو "public" (نسخة
      * المستخدم العادي) — راجع flavorDimensions في app/build.gradle.kts.
-     * كل ووركفلو إصدار يبني ويرفع النكهتين معاً كملفين .apk منفصلين على
-     * نفس الـ GitHub Release الواحد (android-release.yml)، لذلك لا بد من
-     * معرفة النكهة الحالية هنا لاختيار الملف الصحيح من بين الاثنين بدل
-     * التخمين — راجع [pickApkAsset].
+     * كل نكهة تُصدَر بووركفلو منفصل تماماً وعلى تاجات ريليس منفصلة على نفس
+     * المستودع: release.yml ينشر تحت تاجات "v<اسم>-<كود>" لنسخة public،
+     * وfull.yml ينشر تحت تاجات "full-v<اسم>" لنسخة full — بلا أي تداخل
+     * بينهما. لذلك لازم معرفة النكهة الحالية هنا لتصفية الريليسات على
+     * تاجها الصحيح (راجع [tagMatchesFlavor]) بدل الاعتماد على "أحدث ريليس
+     * بتاريخ النشر" الذي قد يرجع تاج النكهة الأخرى بالغلط.
      */
     private val flavor: String = BuildConfig.FLAVOR
 ) {
@@ -285,14 +287,20 @@ class UpdateRepository(
         proxyBase.trimEnd('/') + "/" + url
 
     private fun fetchLatestReleaseViaHtml(repo: String, proxyBase: String?): ReleaseData? {
-        val latestUrl = "https://github.com/$repo/releases/latest"
-        val requestUrl = if (proxyBase != null) viaProxy(proxyBase, latestUrl) else latestUrl
-        // "releases/latest" هو رابط إعادة توجيه دائم من GitHub نحو
-        // ".../releases/tag/<tag>" — لا نتابعه تلقائياً، بل نقرأ رأس
-        // Location مباشرة لاستخراج اسم التاج دون تحميل أي صفحة إضافية.
-        val location = resolveRedirectLocation(requestUrl) ?: return null
-        val tag = location.trimEnd('/').substringAfterLast('/').substringBefore('?')
-        if (tag.isBlank()) return null
+        // نفس سبب التعديل بـ [fetchLatestRelease]: رابط "releases/latest"
+        // (والتحويل الذي يصدره) يرجع الأحدث زمنياً بغض النظر عن بادئة
+        // التاج، وهذا خاطئ هنا لوجود تاجَي إصدار منفصلين (v* و full-v*)
+        // على نفس المستودع. بدلها نقرأ صفحة فهرس الريليسات (مرتّبة، الأحدث
+        // أولاً) ونلقط أول تاج يطابق النكهة الحالية عبر [tagMatchesFlavor].
+        val listPageUrl = "https://github.com/$repo/releases"
+        val requestListUrl = if (proxyBase != null) viaProxy(proxyBase, listPageUrl) else listPageUrl
+        val listHtml = fetchText(requestListUrl) ?: return null
+
+        val tag = Regex("""releases/tag/([^"/?]+)""")
+            .findAll(listHtml)
+            .map { it.groupValues[1] }
+            .firstOrNull { tagMatchesFlavor(it) }
+            ?: return null
 
         val tagPageUrl = "https://github.com/$repo/releases/tag/$tag"
         val requestTagUrl = if (proxyBase != null) viaProxy(proxyBase, tagPageUrl) else tagPageUrl
@@ -309,23 +317,6 @@ class UpdateRepository(
         val apkUrl = pickApkAsset(apkAssets)
 
         return ReleaseData(tagName = tag, body = "", htmlUrl = tagPageUrl, apkUrl = apkUrl)
-    }
-
-    /** يفتح الرابط بلا اتّباع تحويل تلقائي، ويُرجع رأس Location الخام إن كان رد التحويل (3xx). */
-    private fun resolveRedirectLocation(url: String): String? {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 8000
-            readTimeout = 8000
-            instanceFollowRedirects = false
-            setRequestProperty("User-Agent", "Harbs-App-Update-Checker")
-        }
-        return try {
-            val code = conn.responseCode
-            if (code in 300..399) conn.getHeaderField("Location") else null
-        } finally {
-            conn.disconnect()
-        }
     }
 
     /** يجلب نص صفحة عادية (مع اتّباع أي تحويلات) — يُستخدم لقراءة HTML صفحة الإصدار فقط. */
@@ -382,8 +373,15 @@ class UpdateRepository(
      * that worked for the metadata API will also work for the asset CDN.
      */
     private fun fetchLatestRelease(repo: String, proxyBase: String? = null): ReleaseData? = try {
-        val apiUrl = "https://api.github.com/repos/$repo/releases/latest"
-        val requestUrl = if (proxyBase != null) viaProxy(proxyBase, apiUrl) else apiUrl
+        // لا نستخدم "/releases/latest": هذا المسار يرجع أحدث ريليس بتاريخ
+        // النشر بغض النظر عن بادئة التاج، بينما full.yml و release.yml
+        // يصدران على تاجين منفصلين تماماً على نفس المستودع (full-v* مقابل
+        // v*). لو صدر full بعد آخر إصدار public، "/releases/latest" كان
+        // يرجع ريليس full لنسخة public (والعكس صحيح) — لهيك نجلب قائمة
+        // الريليسات (الأحدث أولاً) ونختار أول واحد تاجه يطابق النكهة
+        // الحالية عبر [tagMatchesFlavor].
+        val listUrl = "https://api.github.com/repos/$repo/releases?per_page=100"
+        val requestUrl = if (proxyBase != null) viaProxy(proxyBase, listUrl) else listUrl
         val conn = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 8000
@@ -398,24 +396,48 @@ class UpdateRepository(
         } else {
             val text = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
-            val json = JSONObject(text)
-            val tag = json.optString("tag_name")
-            val body = json.optString("body")
-            val htmlUrl = json.optString("html_url")
-            val assets = json.optJSONArray("assets")
-            val assetList = if (assets != null) {
-                (0 until assets.length()).map { i ->
-                    val asset = assets.getJSONObject(i)
-                    asset.optString("name") to asset.optString("browser_download_url")
-                }
-            } else emptyList()
-            val apkUrl = pickApkAsset(assetList)
-            // apkUrl/htmlUrl are left as plain github.com URLs here regardless of
-            // [proxyBase] — see the ReleaseData/downloadCandidates doc comments.
-            if (tag.isBlank()) null else ReleaseData(tag, body, htmlUrl, apkUrl)
+            val list = org.json.JSONArray(text)
+            var result: ReleaseData? = null
+            for (i in 0 until list.length()) {
+                val json = list.getJSONObject(i)
+                if (json.optBoolean("draft", false) || json.optBoolean("prerelease", false)) continue
+                val tag = json.optString("tag_name")
+                if (tag.isBlank() || !tagMatchesFlavor(tag)) continue
+
+                val body = json.optString("body")
+                val htmlUrl = json.optString("html_url")
+                val assets = json.optJSONArray("assets")
+                val assetList = if (assets != null) {
+                    (0 until assets.length()).map { j ->
+                        val asset = assets.getJSONObject(j)
+                        asset.optString("name") to asset.optString("browser_download_url")
+                    }
+                } else emptyList()
+                val apkUrl = pickApkAsset(assetList)
+                // apkUrl/htmlUrl are left as plain github.com URLs here regardless of
+                // [proxyBase] — see the ReleaseData/downloadCandidates doc comments.
+                result = ReleaseData(tag, body, htmlUrl, apkUrl)
+                break
+            }
+            result
         }
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * يتحقق أن تاج الريليس يخص النكهة الحالية، بدل الاعتماد على "أحدث ريليس
+     * بتاريخ النشر" الذي قد يرجع تاج النكهة الأخرى (راجع تعليق [fetchLatestRelease]).
+     * public: تاجات "v<رقم>..." (مثال v2.0.0-42) من release.yml.
+     * full: تاجات "full-v<رقم>..." (مثال full-v1.0) من full.yml.
+     */
+    private fun tagMatchesFlavor(tag: String): Boolean {
+        val t = tag.trim()
+        return if (flavor == "full") {
+            Regex("^full-v\\d", RegexOption.IGNORE_CASE).containsMatchIn(t)
+        } else {
+            Regex("^v\\d", RegexOption.IGNORE_CASE).containsMatchIn(t)
+        }
     }
 
     /**
