@@ -142,13 +142,13 @@ jobs:
 
           echo "Build outputs:"
           find app/build/outputs/apk/public -name "*.apk"
-          find app/build/outputs/bundle/public -name "*.aab"
+          find app/build/outputs/bundle/publicRelease -name "*.aab"
 
       - name: Locate build outputs
         id: outputs
         run: |
           APK_PATHS=$(find app/build/outputs/apk/public -name "*.apk" 2>/dev/null | sort)
-          AAB_PATHS=$(find app/build/outputs/bundle/public -name "*.aab" 2>/dev/null | sort)
+          AAB_PATHS=$(find app/build/outputs/bundle/publicRelease -name "*.aab" 2>/dev/null | sort)
 
           if [ -z "$APK_PATHS" ]; then
             echo "::error::No public-flavor APK found under app/build/outputs/apk/public/"
@@ -156,7 +156,7 @@ jobs:
           fi
 
           if [ -z "$AAB_PATHS" ]; then
-            echo "::warning::No AAB found under app/build/outputs/bundle/public/"
+            echo "::warning::No AAB found under app/build/outputs/bundle/publicRelease/"
           fi
 
           {
