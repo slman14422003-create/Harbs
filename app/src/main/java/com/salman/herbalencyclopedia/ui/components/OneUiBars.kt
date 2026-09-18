@@ -73,10 +73,15 @@ fun GlassTopBar(
     large: Boolean = false,
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
+    // إصلاح وضوح: 0.10 مزج كانت نسبة صبغة primary ضعيفة جداً، فيبدو الشريط
+    // العلوي قريباً جداً من لون خلفية الشاشة نفسها (خصوصاً بالوضع الداكن
+    // وبعض لوحات الألوان قليلة التشبّع) - عملياً "بلا شريط ظاهر" رغم أن كل
+    // طبقاته مرسومة فعلياً. رفعها إلى 0.24 يعطي هوية لونية واضحة تميّز
+    // الشريط عن المحتوى تحته في كل الأوضاع دون تغيير أي شيء آخر بالتصميم.
     val surface = androidx.compose.ui.graphics.lerp(
         MaterialTheme.colorScheme.surfaceContainerHigh,
         MaterialTheme.colorScheme.primary,
-        0.10f
+        0.24f
     )
     val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
     // ظل أسود افتراضي (Modifier.shadow بلا ألوان مخصّصة) يعطي إحساساً
@@ -85,15 +90,24 @@ fun GlassTopBar(
     // داعٍ. تظليل بلون السطح نفسه (surfaceContainerHigh) بدل الأسود
     // المحايد يجعل الظل امتداداً طبيعياً للزجاج بدل بقعة رمادية منفصلة
     // عنه، بنفس الفكرة في [OneUiFloatingNavBar] أدناه.
-    val shadowTint = surface.copy(alpha = 0.55f)
+    val shadowTint = surface.copy(alpha = 0.7f)
 
     LiquidGlassSurface(
         shape = shape,
         modifier = modifier
             .fillMaxWidth()
-            .shadow(8.dp, shape, clip = false, ambientColor = shadowTint, spotColor = shadowTint),
+            .shadow(10.dp, shape, clip = false, ambientColor = shadowTint, spotColor = shadowTint),
         tint = surface,
-        borderAlpha = 0.16f,
+        // إصلاح وضوح (راجع تعليق `surface` أعلاه): حدّ 0.16 كان خافتاً جداً
+        // ليرسم فاصلاً بصرياً واضحاً بين الشريط والمحتوى. 0.30 يعطي حافة
+        // زجاجية واضحة تحدّد شكل الشريط بدل أن يذوب في الخلفية.
+        borderAlpha = 0.30f,
+        // إصلاح وضوح إضافي: خفض شفافية صبغة التمويه الحقيقي خلف الشريط
+        // (تُستخدم فقط حين backdrop متاح وAndroid 12+) من الافتراضي
+        // (0.46/0.30) إلى صبغة أعتم بوضوح، فيبقى لون الشريط المميّز (المزيج
+        // أعلاه) واضحاً فوق ما يتحرك خلفه بدل أن يطغى التمويه الحقيقي عليه.
+        backdropTintAlphaTop = 0.66f,
+        backdropTintAlphaBottom = 0.52f,
         // فقاعتا التوهّج الأبيض/الملوّن (blurBubbles) كانتا تُنتجان بقعة
         // ساطعة غير منضبطة المكان فوق الشريط الزجاجي الملوّن حديثاً — تُقرأ
         // كخلل/فراغ أبيض غريب بدل لمعان أنيق، خصوصاً فوق تدرّج ملوّن غامق.
@@ -152,10 +166,14 @@ fun OneUiFloatingNavBar(
     // (بلا تمويه حقيقي متاح، فالتلوين هنا هو الفارق الوحيد المرئي). مزجه
     // بقليل من primary اللوحة المختارة يمنحه هوية لونية واضحة تتبدّل
     // تلقائياً مع أي ثيم بدل رمادي عام واحد لكل الثيمات.
+    // إصلاح وضوح (نفس سبب GlassTopBar أعلاه بالضبط): 0.14 مزج ضعيف جداً
+    // يجعل كبسولة التنقّل السفلية قريبة جداً من لون خلفية الشاشة، فتبدو
+    // بلا حضور بصري واضح فوق المحتوى المتحرّك خلفها. 0.26 يعطيها هوية
+    // لونية أوضح تُميّزها بوصفها شريط تنقّل عائم، لا امتداداً شفافاً للخلفية.
     val container = androidx.compose.ui.graphics.lerp(
         MaterialTheme.colorScheme.surfaceContainerHigh,
         MaterialTheme.colorScheme.primary,
-        0.14f
+        0.26f
     )
     val shape = RoundedCornerShape(30.dp)
     // على تنقّل الإيماءات الحاجز السفلي (navigationBars) رفيع جداً (عادة
@@ -183,7 +201,9 @@ fun OneUiFloatingNavBar(
             shape = shape,
             tint = container,
             glowColor = MaterialTheme.colorScheme.tertiary,
-            borderAlpha = 0.16f,
+            // إصلاح وضوح: نفس رفع حدّ الشريط العلوي، لحافة زجاجية أوضح تحدّد
+            // شكل الكبسولة العائمة بدل أن تذوب حافتها في المحتوى خلفها.
+            borderAlpha = 0.28f,
             // نفس السبب أعلاه في GlassTopBar: بلا فقاعات توهّج على الشريط
             // السفلي، فلا تظهر بقعة بيضاء/فراغ بصري غريب فوق تلوينه الجديد.
             blurBubbles = false,
