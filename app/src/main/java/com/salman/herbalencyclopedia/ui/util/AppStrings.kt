@@ -77,6 +77,8 @@ private val staticDictionary: Map<String, String> = mapOf(
     "صورة العشبة" to "Herb Image",
     "اختيار صورة" to "Choose Image",
     "جاري ضغط الصورة..." to "Compressing image...",
+    "جاري تحميل بيانات الموسوعة..." to "Loading encyclopedia data...",
+    "جاري تحميل الأعشاب..." to "Loading herbs...",
     "بدون تصنيف" to "Uncategorized",
 
     // الإعدادات
