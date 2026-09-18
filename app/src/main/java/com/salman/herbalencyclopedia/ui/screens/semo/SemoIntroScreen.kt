@@ -133,6 +133,11 @@ fun SemoIntroScreen(onAccept: () -> Unit) {
         // شريط سفلي ثابت يحمل زر الموافقة الوحيد، حتى يبقى ظاهراً دائماً
         // بغض النظر عن مقدار التمرير داخل النقاط أعلاه — بنفس نمط
         // WelcomeScreen العام تماماً.
+        //
+        // إصلاح: نفس مشكلة WelcomeScreen العامة تماماً - بلا navigationBarsPadding
+        // كان الزر يظهر جزئياً خلف شريط التنقل التقليدي (الأزرار الثلاثة)
+        // على الأجهزة التي تستخدمه. راجع تعليق الإصلاح الكامل في
+        // WelcomeScreen.kt لنفس السطر بالضبط.
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -142,6 +147,7 @@ fun SemoIntroScreen(onAccept: () -> Unit) {
                         listOf(Color.Transparent, MaterialTheme.colorScheme.background)
                     )
                 )
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 20.dp)
         ) {
             GlassButton(
