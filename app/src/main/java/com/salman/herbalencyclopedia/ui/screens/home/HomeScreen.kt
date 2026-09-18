@@ -216,7 +216,10 @@ fun HomeScreen(
                     // القديم ظاهراً أثناء التحديث، ومؤشر السحب وحده يدل على
                     // التقدّم). الآن يظهر مؤشر التحميل الكامل فقط في التحميل
                     // الأول الحقيقي (لا بيانات معروضة أصلاً بعد).
-                    isLoading && categories.isEmpty() -> LoadingView(Modifier.fillMaxSize())
+                    isLoading && categories.isEmpty() -> LoadingView(
+                        Modifier.fillMaxSize(),
+                        message = tr("جاري تحميل بيانات الموسوعة...")
+                    )
                     // بنفس المبدأ: خطأ أثناء تحديث بيانات مُحمَّلة أصلاً لا
                     // يجب أن يُخفي تلك البيانات — تماماً كما يبقي معالج
                     // المزامنة الحيّة في AppViewModel.init البيانات القديمة
