@@ -596,10 +596,21 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         for (attempt in 1..MAX_CATALOG_SYNC_ATTEMPTS) {
             val result = withTimeoutOrNull(CATALOG_SYNC_TIMEOUT_MS) {
                 runCatching {
-                    val categories = container.herbRepository.fetchCategories(fromServer)
-                    val herbs = container.herbRepository.fetchHerbs(fromServer)
-                    val blends = container.herbRepository.fetchBlends(fromServer)
-                    Triple(categories, herbs, blends)
+                    // إصلاح سرعة: كانت الطلبات الثلاثة تُنتظَر الواحدة تلو
+                    // الأخرى (تصنيفات ثم أعشاب ثم خلطات) رغم استقلالها التام
+                    // عن بعضها - أي أن زمن أول تحميل (تحديداً أول تثبيت بلا
+                    // كاش محلي بعد) كان مجموع زمن الطلبات الثلاثة مجتمعة، لا
+                    // أبطأها فقط. نفس نمط async/awaitAll المستخدم أصلاً أدناه
+                    // لترجمة القوائم بالتوازي (راجع translateHerbs/
+                    // translateCategories/translateBlends) يُطبَّق هنا أيضاً:
+                    // الطلبات الثلاثة تُطلَق معاً وتُنتظَر معاً، فيهبط زمن
+                    // الانتظار الفعلي إلى أبطأ طلب واحد بدل مجموعها.
+                    coroutineScope {
+                        val categoriesDeferred = async { container.herbRepository.fetchCategories(fromServer) }
+                        val herbsDeferred = async { container.herbRepository.fetchHerbs(fromServer) }
+                        val blendsDeferred = async { container.herbRepository.fetchBlends(fromServer) }
+                        Triple(categoriesDeferred.await(), herbsDeferred.await(), blendsDeferred.await())
+                    }
                 }
             }
 
