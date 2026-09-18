@@ -27,6 +27,7 @@ import com.salman.herbalencyclopedia.data.model.Herb
 import com.salman.herbalencyclopedia.data.search.HerbSearch
 import com.salman.herbalencyclopedia.ui.components.EmptyView
 import com.salman.herbalencyclopedia.ui.components.HerbCard
+import com.salman.herbalencyclopedia.ui.components.LoadingView
 import com.salman.herbalencyclopedia.ui.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,7 +44,20 @@ fun AllHerbsScreen(
     // دون تعديل، لكن HerbalNavGraph يمرّرهما فعلياً من AppViewModel (انظر
     // uiState.isLoading و[AppViewModel.refresh] هناك).
     isRefreshing: Boolean = false,
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    // *** إصلاح: أول تشغيل للتطبيق (بلا أي كاش محلي بعد) كان يعرض "لا توجد
+    // نتائج" بدل مؤشر تحميل *** — هذه الشاشة لم تكن تستقبل isLoading
+    // إطلاقاً، فحين تصل فارغة (herbs = []) أثناء أول جلب فعلي من Firestore
+    // (راجع AppViewModel.init: كاش محلي فوراً إن وُجد، وإلا مزامنة شبكية)
+    // كان `filtered.isEmpty()` يتحقق فوراً ويعرض EmptyView بنص "لا توجد
+    // نتائج لـ ''" - بالضبط الرسالة المُبلَّغ عنها - قبل أن تصل البيانات
+    // أصلاً، فيظن المستخدم أن الموسوعة فارغة أو التطبيق معطوب. isRefreshing
+    // أعلاه غير كافٍ لهذا لأنه مُقيَّد بـ`herbs.isNotEmpty()` تحديداً (كي لا
+    // يظهر مؤشر السحب-للتحديث خطأً عند أول تحميل) وهو مبرَّر لغرضه لكنه
+    // يترك أول تحميل بلا أي مؤشر إطلاقاً. هذه الوسيطة الجديدة منفصلة تماماً
+    // وتُستخدم فقط لإظهار LoadingView الحقيقية عند اجتماع isLoading=true مع
+    // herbs فارغة - أي أول تحميل حصراً - راجع نقطة الاستخدام أدناه.
+    isLoading: Boolean = false
 ) {
     var query by remember { mutableStateOf("") }
     // نفس إصلاح شاشة البحث المستقلة (SearchScreen): بحث مطبَّع وموسَّع
@@ -129,7 +143,12 @@ fun AllHerbsScreen(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 )
-                if (filtered.isEmpty()) {
+                if (isLoading && herbs.isEmpty()) {
+                    LoadingView(
+                        modifier = Modifier.fillMaxSize(),
+                        message = tr("جاري تحميل الأعشاب...")
+                    )
+                } else if (filtered.isEmpty()) {
                     EmptyView(message = tr("لا توجد نتائج لـ \"$query\""), modifier = Modifier.fillMaxSize())
                 } else {
                     LazyColumn(
