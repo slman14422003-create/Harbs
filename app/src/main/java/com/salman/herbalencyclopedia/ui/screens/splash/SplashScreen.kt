@@ -1,5 +1,6 @@
 package com.salman.herbalencyclopedia.ui.screens.splash
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import com.salman.herbalencyclopedia.ui.theme.AppMotion
 import androidx.compose.animation.core.RepeatMode
@@ -9,8 +10,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Spa
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -102,6 +106,14 @@ private const val SPLASH_MAX_EXTRA_WAIT_MS = 3500L
 @Composable
 fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
     var stage by remember { mutableStateOf(0) }
+    // يصبح true فقط إذا انتهى الحد الأدنى الثابت لعرض الحركة
+    // ([SPLASH_MIN_STAGE2_MS]) والبيانات لا تزال غير جاهزة - أي أن الشاشة
+    // تنتظر فعلياً استجابة الشبكة الآن (أبرز ما يحدث في أول تشغيل بعد
+    // التثبيت مباشرة، بلا أي كاش محلي بعد)، لا مجرّد المدة الجمالية الثابتة
+    // لحركة الدخول. يُستخدم أدناه لعرض مؤشر ونص "جاري تحميل البيانات"
+    // صريحين بدل النقاط الثلاث العامة، فيعرف المستخدم فعلياً أن التطبيق
+    // يجلب بيانات الموسوعة لا أنه معلّق بلا سبب.
+    var waitingForData by remember { mutableStateOf(false) }
     val highQuality = com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode.current.isHighQuality
     val dataReadyState = androidx.compose.runtime.rememberUpdatedState(isDataReady)
 
@@ -157,6 +169,9 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
         delay(250)
         stage = 2
         delay(SPLASH_MIN_STAGE2_MS)
+        if (!dataReadyState.value) {
+            waitingForData = true
+        }
         val deadline = System.currentTimeMillis() + SPLASH_MAX_EXTRA_WAIT_MS
         while (!dataReadyState.value && System.currentTimeMillis() < deadline) {
             delay(100)
@@ -276,7 +291,36 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                 visible = stage >= 2,
                 enter = fadeIn(tween(600, delayMillis = 200))
             ) {
-                LoadingDots(highQuality = highQuality)
+                // أثناء الانتظار الفعلي لبيانات الشبكة (waitingForData)
+                // نستبدل النقاط الثلاث العامة بدائرة تحميل + نص صريح "جاري
+                // تحميل البيانات"، حتى لا يبدو التطبيق معلّقاً بلا سبب واضح
+                // في أول تشغيل بعد التثبيت تحديداً (حيث لا كاش محلي بعد
+                // والانتظار الفعلي للشبكة أطول من بقية الحالات). بمجرد وصول
+                // البيانات (أو التوقف عن الانتظار) تعود الشاشة لتنتقل
+                // للرئيسية عبر onFinished في LaunchedEffect أعلاه كالمعتاد.
+                AnimatedContent(
+                    targetState = waitingForData,
+                    transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(150)) },
+                    label = "splashLoadingIndicator"
+                ) { waiting ->
+                    if (waiting) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.5.dp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = "جاري تحميل البيانات...",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                    } else {
+                        LoadingDots(highQuality = highQuality)
+                    }
+                }
             }
         }
 
