@@ -102,6 +102,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     // راجع startAdminLiveSync/stopAdminLiveSync وتعليق init أدناه لسبب ذلك.
     private var adminSyncJob: Job? = null
 
+    // مستمع الخلطات الحيّ لجلسة الأدمن - مستقل عمداً عن adminSyncJob أعلاه
+    // (راجع توثيق startAdminLiveSync لسبب هذا الفصل).
+    private var blendsSyncJob: Job? = null
+
     val favoriteIds: StateFlow<Set<String>> = container.preferencesRepository.favoriteIds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
@@ -425,6 +429,23 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         // فيها نسخة مُترجَمة جديدة، فتتحقق فعلياً الفرضية الأصلية بدل أن
         // تبقى وعداً غير منفَّذ.
         viewModelScope.launch {
+            // *** إصلاح: أول انبعاث فوري لهذا الدمج (عند بدء التطبيق مباشرة)
+            // يحدث بقوائم خام لا تزال فارغة افتراضياً (_rawCategories/_rawHerbs/
+            // _rawBlends لم تُملأ بعد من الكاش المحلي أو الشبكة - تلك عملية
+            // منفصلة أدناه)، وذلك بمجرد وصول أول قيمة من appLanguage (عادة
+            // أسرع من كتلة الكاش/المزامنة). كانت هذه الكتلة تُطفئ isLoading
+            // دوماً في كل انبعاث (لإصلاح دائرة تحميل تبديل اللغة الموثّق
+            // أدناه)، فتظهر شاشة "لا توجد تصنيفات بعد" فوراً عند أول تشغيل -
+            // قبل أن يبدأ التحميل الفعلي حتى - موهمة المستخدم أن لا شيء يجري،
+            // خصوصاً على اتصال بطيء يأخذ الجلب الحقيقي عدة ثوانٍ ليصل بعدها.
+            // بعض المستخدمين كانوا يسحبون للتحديث يدوياً عند رؤية هذه الشاشة
+            // الفارغة، فيصادف نجاح ذلك لاحقاً (لأن الجلب التلقائي كان سينجح
+            // أصلاً) ويُظَن أن الجلب اليدوي هو ما "شغّل" التحميل. الآن هذا
+            // الانبعاث الأول تحديداً يُحدّث القوائم المعروضة فقط بلا لمس
+            // isLoading/error، تاركاً حالة التحميل بيد كتلة الكاش/المزامنة
+            // أدناه؛ أي انبعاث لاحق (بيانات حقيقية وصلت، أو تبديل لغة) يستمر
+            // بإطفاء isLoading تماماً كالسابق.
+            var isFirstTranslatedEmission = true
             combine(
                 _rawCategories,
                 _rawHerbs,
@@ -448,12 +469,17 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 // دوماً مع آخر نسخة من الفئات بصرف النظر عن مصدرها (كاش
                 // محلي أو مزامنة شبكية) — انظر توثيق [HerbCategoryLookup].
                 HerbCategoryLookup.categoryNames = categories.associate { it.id to it.name }
-                _uiState.value = _uiState.value.copy(
-                    categories = categories,
-                    herbs = herbs,
-                    blends = blends,
-                    isLoading = false
-                )
+                _uiState.value = if (isFirstTranslatedEmission) {
+                    isFirstTranslatedEmission = false
+                    _uiState.value.copy(categories = categories, herbs = herbs, blends = blends)
+                } else {
+                    _uiState.value.copy(
+                        categories = categories,
+                        herbs = herbs,
+                        blends = blends,
+                        isLoading = false
+                    )
+                }
             }
         }
 
@@ -592,7 +618,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private suspend fun syncCatalogFromServer(showLoading: Boolean, fromServer: Boolean = false) {
         if (showLoading) _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-        var lastResult: Result<Triple<List<Category>, List<Herb>, List<Blend>>>? = null
+        var lastResult: Result<*>? = null
         for (attempt in 1..MAX_CATALOG_SYNC_ATTEMPTS) {
             val result = withTimeoutOrNull(CATALOG_SYNC_TIMEOUT_MS) {
                 runCatching {
@@ -605,19 +631,42 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     // translateCategories/translateBlends) يُطبَّق هنا أيضاً:
                     // الطلبات الثلاثة تُطلَق معاً وتُنتظَر معاً، فيهبط زمن
                     // الانتظار الفعلي إلى أبطأ طلب واحد بدل مجموعها.
+                    //
+                    // *** إصلاح: الخلطات مفصولة الآن عمداً عن التصنيفات/الأعشاب -
+                    // هذا هو السبب الفعلي المُبلَّغ عنه ("أول تثبيت لا يجلب
+                    // البيانات تلقائياً"). كانت الطلبات الثلاثة تُنتظَر معاً عبر
+                    // await() مباشرة داخل نفس coroutineScope، فأي استثناء من
+                    // أيّ منها (بما فيها الخلطات وهي بيانات إضافية مقارنة
+                    // بالتصنيفات/الأعشاب الأساسية للموسوعة) يُلغي البقية فوراً
+                    // (سلوك coroutineScope الافتراضي) ويُفشل المزامنة كاملة -
+                    // حتى لو نجحت التصنيفات والأعشاب فعلياً. ولأن قواعد أمان
+                    // Firestore (راجع firestore.rules) لم تكن تحتوي أي قاعدة
+                    // لمجموعة "blends" أصلاً، كانت كل قراءة لها تُرفض دائماً
+                    // (PERMISSION_DENIED، وهو خطأ دائم وليس مؤقتاً)، فتفشل
+                    // المزامنة بكاملها من أول محاولة بلا أي فائدة من التكرار.
+                    // أول تثبيت (بلا أي كاش محلي يُخفي هذا) يظهر الخطأ فوراً؛
+                    // التثبيتات القديمة تبقى تعرض آخر كاش نجح *قبل* إضافة ميزة
+                    // الخلطات وتتجمّد عليه بصمت. الآن: فشل الخلطات وحدها
+                    // (runCatching محلي) لا يُسقط شيئاً - يُبتلَع، وتبقى آخر
+                    // نسخة معروفة منها كما هي، بينما التصنيفات والأعشاب
+                    // (الأساسية) تستمر بالتحميل والعرض بشكل طبيعي تماماً.
                     coroutineScope {
                         val categoriesDeferred = async { container.herbRepository.fetchCategories(fromServer) }
                         val herbsDeferred = async { container.herbRepository.fetchHerbs(fromServer) }
-                        val blendsDeferred = async { container.herbRepository.fetchBlends(fromServer) }
+                        val blendsDeferred = async { runCatching { container.herbRepository.fetchBlends(fromServer) } }
                         Triple(categoriesDeferred.await(), herbsDeferred.await(), blendsDeferred.await())
                     }
                 }
             }
 
             if (result != null && result.isSuccess) {
-                val (categories, herbs, blends) = result.getOrThrow()
+                val (categories, herbs, blendsResult) = result.getOrThrow()
                 _rawCategories.value = categories
                 _rawHerbs.value = herbs
+                // نجاح الخلطات اختياري: عند فشلها نُبقي آخر نسخة معروفة محلياً
+                // (كاش سابق أو ما كان معروضاً أصلاً) بدل مسحها لمجرد أن هذا
+                // الطلب المحدد لها فشل.
+                val blends = blendsResult.getOrDefault(_rawBlends.value)
                 _rawBlends.value = blends
                 container.preferencesRepository.saveCatalogCache(herbs, categories, blends)
                 _uiState.value = _uiState.value.copy(isLoading = false, error = null)
@@ -664,18 +713,34 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         adminSyncJob = viewModelScope.launch {
             combine(
                 container.herbRepository.observeCategories(),
-                container.herbRepository.observeHerbs(),
-                container.herbRepository.observeBlends()
-            ) { categories, herbs, blends -> Triple(categories, herbs, blends) }
+                container.herbRepository.observeHerbs()
+            ) { categories, herbs -> categories to herbs }
                 .catch { e ->
                     _uiState.value = _uiState.value.copy(error = HerbRepository.describeError(e))
                 }
-                .collect { (categories, herbs, blends) ->
+                .collect { (categories, herbs) ->
                     _rawCategories.value = categories
                     _rawHerbs.value = herbs
-                    _rawBlends.value = blends
                     _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-                    container.preferencesRepository.saveCatalogCache(herbs, categories, blends)
+                    container.preferencesRepository.saveCatalogCache(herbs, categories, _rawBlends.value)
+                }
+        }
+        // *** إصلاح: الخلطات كانت مدموجة (combine) هنا مع التصنيفات/الأعشاب في
+        // مستمع واحد - نفس مشكلة syncCatalogFromServer أعلاه لكن للمزامنة
+        // الحيّة: combine لا ينتج أي قيمة إطلاقاً قبل أن يبعث كل مصدر مرة
+        // واحدة على الأقل، فإن كانت قراءة الخلطات مرفوضة دائماً (كما كانت
+        // بسبب قاعدة أمان مفقودة - راجع firestore.rules)، لن يبعث
+        // observeBlends() أي قيمة إطلاقاً (يعيد المحاولة بصمت للأبد بدل ذلك -
+        // راجع retryWhen في HerbRepository.observeCollection)، فتبقى شاشة
+        // الأدمن عالقة على "جارٍ التحميل" للأبد رغم أن التصنيفات والأعشاب
+        // متاحتان فعلياً. الآن مستمع مستقل تماماً لا يُعطّل ولا يتعطّل بفشل
+        // الأول: فشله يُبتلَع بصمت وتبقى آخر نسخة معروفة من الخلطات كما هي.
+        blendsSyncJob = viewModelScope.launch {
+            container.herbRepository.observeBlends()
+                .catch { /* يُبتلَع عمداً - راجع التعليق أعلاه */ }
+                .collect { blends ->
+                    _rawBlends.value = blends
+                    container.preferencesRepository.saveCatalogCache(_rawHerbs.value, _rawCategories.value, blends)
                 }
         }
     }
@@ -684,6 +749,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private fun stopAdminLiveSync() {
         adminSyncJob?.cancel()
         adminSyncJob = null
+        blendsSyncJob?.cancel()
+        blendsSyncJob = null
     }
 
     /**
