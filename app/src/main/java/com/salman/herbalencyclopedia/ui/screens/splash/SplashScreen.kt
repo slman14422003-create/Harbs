@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.salman.herbalencyclopedia.ui.theme.rememberSmoothMotionAllowed
 import kotlinx.coroutines.delay
 
 /** الحد الأدنى لعرض المرحلة الثانية (النص + النقاط) قبل التحقق من جهوزية البيانات. */
@@ -92,6 +93,23 @@ private const val SPLASH_MAX_EXTRA_WAIT_MS = 3500L
  * وأسفل ([badgeBob]) وتتمايل الأوراق الزخرفية بلطف ([leafSway])، بنفس مبدأ
  * إيقاف الحركات اللانهائية في الوضع الاقتصادي المتّبع أصلاً في بقية الشاشة.
  *
+ * ═══ إصلاح: الحركات اللانهائية هنا لا تراعي معدّل التحديث الفعلي ═══
+ * التوهّج (glowAlpha) وطفوّ الشارة (badgeBob) وتمايل الأوراق (leafSway)
+ * والنقاط الثلاث (LoadingDots) كانت كلها تُشغَّل بشرط واحد فقط: اختيار
+ * المستخدم "أداء عالٍ" (highQuality)، بخلاف بقية حركات التطبيق المتصلة
+ * (staggeredEntrance/entranceFade في Animations.kt، فقاعة "سيمو يكتب…"،
+ * انتقالات التنقّل بين الشاشات) التي تحترم أيضاً [rememberSmoothMotionAllowed]
+ * — أي تتوقف تلقائياً حين يكون معدّل التحديث الفعلي الحالي أقل من 60Hz، سواء
+ * لأن الجهاز ضعيف أصلاً أو لأن توفير الطاقة/التحكّم الحراري أرجعا الوضع
+ * الفعلي لاقتصادي مؤقتاً. وبما أن شاشة البداية هي أول ما يراه كل مستخدم عند
+ * كل فتح للتطبيق، كانت هذا الاستثناء يعني أربع حركات لانهائية بلا فائدة
+ * بصرية تُذكر تحديداً على الأجهزة التي تحتاج أقل حِمل ممكن. الآن تستخدم نفس
+ * الإشارة الموحّدة [smoothMotionAllowed] بدل [highQuality] وحدها لهذا القرار
+ * تحديداً (يبقى [highQuality] Boolean قديم لكن لم يعد يُستخدم في هذا الملف).
+ * كما تُوحَّد كل حركات fadeIn/scaleIn/slideIn هنا على منحنى [AppMotion.Smooth]
+ * بدل ترك بعضها بمنحنى Compose الافتراضي (FastOutSlowInEasing) الذي كان
+ * يخلق إحساساً بعدم التناسق داخل نفس تتابع الظهور.
+ *
  * [isDataReady] تحسين لتجربة أول تشغيل بعد التثبيت تحديداً: سابقاً كانت
  * الشاشة تنتقل دوماً بعد مهلة ثابتة (١٫٧٥ ثانية) بغض النظر عن وصول بيانات
  * الموسوعة من Firestore أم لا، فكان أول تثبيت (بلا أي كاش محلي بعد) يهبط
@@ -114,7 +132,10 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
     // صريحين بدل النقاط الثلاث العامة، فيعرف المستخدم فعلياً أن التطبيق
     // يجلب بيانات الموسوعة لا أنه معلّق بلا سبب.
     var waitingForData by remember { mutableStateOf(false) }
-    val highQuality = com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode.current.isHighQuality
+    // يجمع اختيار المستخدم (وضع الأداء) مع معدّل التحديث الفعلي الحالي —
+    // راجع التوثيق أعلاه. هذا ما يقرر تشغيل الحركات اللانهائية الأربع أدناه
+    // بدل [PerformanceMode.isHighQuality] وحدها.
+    val smoothMotionAllowed = rememberSmoothMotionAllowed()
     val dataReadyState = androidx.compose.runtime.rememberUpdatedState(isDataReady)
 
     val iconScale by animateFloatAsState(
@@ -123,9 +144,10 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
         label = "logoScale"
     )
 
-    // التوهّج العضوي المتنفس حركة لانهائية — تُستبعد في الوضع الاقتصادي
-    // فتبقى شاشة البداية خفيفة تماماً على الأجهزة الضعيفة.
-    val glowAlpha = if (highQuality) {
+    // التوهّج العضوي المتنفس حركة لانهائية — تُستبعد حين لا يُسمح بحركة
+    // متصلة سلسة (وضع اقتصادي، أو معدّل تحديث فعلي أقل من 60Hz) فتبقى شاشة
+    // البداية خفيفة تماماً على الأجهزة الضعيفة.
+    val glowAlpha = if (smoothMotionAllowed) {
         val infiniteTransition = rememberInfiniteTransition(label = "glow")
         val animated by infiniteTransition.animateFloat(
             initialValue = 0.35f,
@@ -139,8 +161,9 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
 
     // طفوّ خفيف مستمر للشارة (شعار + الزجاج المحيط به معاً) — يمنحها إحساس
     // "حيّة" بدل التجمّد التام بعد حركة الدخول. سعة الحركة صغيرة عمداً (±5dp)
-    // كي تبقى أنيقة وهادئة لا مشتّتة. تُستبعد بالكامل في الوضع الاقتصادي.
-    val badgeBob = if (highQuality) {
+    // كي تبقى أنيقة وهادئة لا مشتّتة. تُستبعد كلياً حين لا يُسمح بحركة متصلة
+    // سلسة (نفس شرط [glowAlpha] أعلاه).
+    val badgeBob = if (smoothMotionAllowed) {
         val bobTransition = rememberInfiniteTransition(label = "badgeBob")
         val animated by bobTransition.animateFloat(
             initialValue = -5f,
@@ -152,8 +175,8 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
     } else 0f
 
     // تمايل بسيط جداً لأوراق الزخرفة في الزوايا (±3 درجات حول زاويتها
-    // الأصلية) — نفس مبدأ التوقف في الوضع الاقتصادي أعلاه.
-    val leafSway = if (highQuality) {
+    // الأصلية) — نفس شرط التوقف أعلاه.
+    val leafSway = if (smoothMotionAllowed) {
         val swayTransition = rememberInfiniteTransition(label = "leafSway")
         val animated by swayTransition.animateFloat(
             initialValue = -3f,
@@ -242,7 +265,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = stage >= 1,
-                    enter = fadeIn(tween(550)) + scaleIn(tween(700, easing = AppMotion.Smooth), initialScale = 0.6f)
+                    enter = fadeIn(tween(550, easing = AppMotion.Smooth)) + scaleIn(tween(700, easing = AppMotion.Smooth), initialScale = 0.6f)
                 ) {
                     com.salman.herbalencyclopedia.ui.components.LiquidGlassSurface(
                         shape = CircleShape,
@@ -267,7 +290,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
 
             AnimatedVisibility(
                 visible = stage >= 2,
-                enter = fadeIn(tween(600)) + slideInVertically(tween(600, easing = AppMotion.Smooth)) { it / 3 }
+                enter = fadeIn(tween(600, easing = AppMotion.Smooth)) + slideInVertically(tween(600, easing = AppMotion.Smooth)) { it / 3 }
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
@@ -289,7 +312,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
 
             AnimatedVisibility(
                 visible = stage >= 2,
-                enter = fadeIn(tween(600, delayMillis = 200))
+                enter = fadeIn(tween(600, delayMillis = 200, easing = AppMotion.Smooth))
             ) {
                 // أثناء الانتظار الفعلي لبيانات الشبكة (waitingForData)
                 // نستبدل النقاط الثلاث العامة بدائرة تحميل + نص صريح "جاري
@@ -300,7 +323,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                 // للرئيسية عبر onFinished في LaunchedEffect أعلاه كالمعتاد.
                 AnimatedContent(
                     targetState = waitingForData,
-                    transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(150)) },
+                    transitionSpec = { fadeIn(tween(300, easing = AppMotion.Smooth)) togetherWith fadeOut(tween(150, easing = AppMotion.Smooth)) },
                     label = "splashLoadingIndicator"
                 ) { waiting ->
                     if (waiting) {
@@ -318,7 +341,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
                             )
                         }
                     } else {
-                        LoadingDots(highQuality = highQuality)
+                        LoadingDots(smoothMotionAllowed = smoothMotionAllowed)
                     }
                 }
             }
@@ -326,7 +349,7 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
 
         AnimatedVisibility(
             visible = stage >= 2,
-            enter = fadeIn(tween(700, delayMillis = 250)),
+            enter = fadeIn(tween(700, delayMillis = 250, easing = AppMotion.Smooth)),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
         ) {
             Text(
@@ -340,19 +363,15 @@ fun SplashScreen(onFinished: () -> Unit, isDataReady: Boolean = true) {
 }
 
 /**
- * كانت هذه الحركة (3 نبضات لانهائية متزامنة) الوحيدة في شاشة البداية غير
- * المرتبطة بوضع الأداء إطلاقاً — كل بقية عناصر الشاشة (التوهّج العضوي خلف
- * الشعار) تلتزم بمبدأ إطفاء الحركات اللانهائية في الوضع الاقتصادي، بينما
- * هذه كانت تعمل بلا شرط على كل الأجهزة. الأثر صغير (نقاط صغيرة، ومدة
- * الشاشة قصيرة) لكنه يخالف نفس المبدأ المتّبع بقية التطبيق ويضيف 3 حركات
- * لانهائية بلا داعٍ تحديداً على الأجهزة التي اختارت/اقتُرح لها الوضع
- * الاقتصادي لأنها الأضعف أصلاً. في الوضع الاقتصادي تظهر النقاط بسطوع
- * ثابت متدرّج بدل النبض المتحرك — نفس الشكل تقريباً بلا أي تكلفة حركة.
+ * نبضات النقاط الثلاث تتوقف الآن تحت نفس شرط بقية الحركات اللانهائية في
+ * هذا الملف: [smoothMotionAllowed] (وضع الأداء + معدّل التحديث الفعلي معاً)،
+ * لا اختيار وضع الأداء وحده. في الحالتين تظهر النقاط بسطوع ثابت متدرّج بدل
+ * النبض المتحرك — نفس الشكل تقريباً بلا أي تكلفة حركة إضافية.
  */
 @Composable
-private fun LoadingDots(highQuality: Boolean) {
+private fun LoadingDots(smoothMotionAllowed: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (highQuality) {
+        if (smoothMotionAllowed) {
             val transition = rememberInfiniteTransition(label = "dots")
             repeat(3) { index ->
                 val alpha by transition.animateFloat(
