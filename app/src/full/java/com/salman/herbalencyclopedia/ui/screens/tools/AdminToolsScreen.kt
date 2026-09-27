@@ -66,9 +66,9 @@ fun AdminToolsScreen(
     // شاشة كاملة خاصة بها بدل الظهور دوماً مدموجتين هنا.
     onOpenTrainedCases: () -> Unit = {},
     onOpenSemoLearning: () -> Unit = {},
-    // ── الوضع الذكي عبر الإنترنت (Gemini المجاني من Google، متاح فعلياً من
-    // سوريا دون VPN) — راجع توثيق AiConfig.onlineEnabled في HerbAssistant.kt
-    // وOnlineAssistant.kt لتفاصيل الآلية والسبب. ──
+    // ── الوضع الذكي عبر الإنترنت (نموذج مجاني عبر Groq، بلا بطاقة ائتمان) —
+    // راجع توثيق AiConfig.onlineEnabled في HerbAssistant.kt وOnlineAssistant.kt
+    // لتفاصيل الآلية وسبب التبديل من Gemini. ──
     aiOnlineEnabled: Boolean = AiConfig.defaultOnlineEnabled,
     aiOnlineApiKey: String = "",
     aiOnlineModel: String = AiConfig.defaultOnlineModel,
@@ -1083,13 +1083,13 @@ private fun AiSelfLearningDevTools(
 }
 
 /**
- * أدوات مطور للوضع الذكي عبر الإنترنت: تفعيل/تعطيل، إدخال مفتاح Gemini API
- * (مجاني من Google AI Studio)، اسم النموذج (افتراضياً "gemini-flash-latest"،
- * راجع توثيقه في AiConfig)، واختبار اتصال حيّ يعرض رد النموذج فعلياً أو
- * سبب الفشل. راجع توثيق [AiConfig.onlineEnabled] وOnlineAssistant.kt
- * للسياق الكامل — لماذا Gemini تحديداً (مجاني ومتاح فعلياً من سوريا دون
- * VPN منذ سبتمبر 2026) ولماذا يبقى سيمو المحلي كما هو تماماً عند التعطيل
- * أو عند انعدام الإنترنت.
+ * أدوات مطور للوضع الذكي عبر الإنترنت: تفعيل/تعطيل، إدخال مفتاح Groq API
+ * (مجاني بلا بطاقة ائتمان من console.groq.com)، اسم النموذج (افتراضياً
+ * "llama-3.3-70b-versatile"، راجع توثيقه في AiConfig)، واختبار اتصال حيّ
+ * يعرض رد النموذج فعلياً أو سبب الفشل. راجع توثيق [AiConfig.onlineEnabled]
+ * وOnlineAssistant.kt للسياق الكامل — لماذا التبديل من Gemini إلى Groq
+ * (نفاد حصة بروكسي Gemini المجانية اليومية) ولماذا يبقى سيمو المحلي كما هو
+ * تماماً عند التعطيل أو عند انعدام الإنترنت.
  */
 @Composable
 private fun AiOnlineDevTools(
@@ -1124,7 +1124,7 @@ private fun AiOnlineDevTools(
                 Text(tr("الوضع الذكي عبر الإنترنت"), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             }
             Text(
-                tr("يستخدم نموذج Gemini المجاني من Google — متاح فعلياً من سوريا مباشرة دون أي VPN. عند التفعيل ووجود مفتاح صالح واتصال إنترنت فعلي، تُرسَل الأسئلة التي تحتاج بحثاً فعلياً لهذا النموذج بدل البحث المحلي. بلا إنترنت أو بلا مفتاح، يبقى سيمو يعمل محلياً تماماً كما كان دون أي تغيير."),
+                tr("يستخدم نموذج مجاني عبر Groq (بلا بطاقة ائتمان). عند التفعيل ووجود مفتاح صالح واتصال إنترنت فعلي، تُرسَل الأسئلة التي تحتاج بحثاً فعلياً لهذا النموذج بدل البحث المحلي. بلا إنترنت أو بلا مفتاح، يبقى سيمو يعمل محلياً تماماً كما كان دون أي تغيير."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1137,7 +1137,7 @@ private fun AiOnlineDevTools(
                 Column(Modifier.weight(1f)) {
                     Text(tr("تفعيل الوضع الذكي عبر الإنترنت"), style = MaterialTheme.typography.labelLarge)
                     Text(
-                        tr("يتطلب مفتاح Gemini API صالح أدناه."),
+                        tr("يتطلب مفتاح Groq API صالح أدناه."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1148,8 +1148,8 @@ private fun AiOnlineDevTools(
             OutlinedTextField(
                 value = apiKeyText,
                 onValueChange = { apiKeyText = it },
-                label = { Text(tr("مفتاح Gemini API")) },
-                supportingText = { Text(tr("مجاني من Google AI Studio (aistudio.google.com)")) },
+                label = { Text(tr("مفتاح Groq API")) },
+                supportingText = { Text(tr("مجاني بلا بطاقة ائتمان من console.groq.com/keys")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (showApiKey) androidx.compose.ui.text.input.VisualTransformation.None
@@ -1167,7 +1167,7 @@ private fun AiOnlineDevTools(
                 value = modelText,
                 onValueChange = { modelText = it },
                 label = { Text(tr("اسم النموذج")) },
-                supportingText = { Text(tr("الافتراضي يشير دوماً لأحدث نموذج Flash مجاني من Google. اكتب اسم النموذج المجرَّد فقط بلا بادئة (مثال: gemini-flash-latest) — لا تكتب models/ في البداية، فهي مُضافة تلقائياً بالكود.")) },
+                supportingText = { Text(tr("الافتراضي \"llama-3.3-70b-versatile\" — نموذج مجاني سريع بلا تفكير داخلي خفي. راجع قائمة نماذج Groq الكاملة في console.groq.com/docs/models لتغييره.")) },
                 singleLine = true,
                 // نفس إصلاح خانة رابط البروكسي أعلاه: تعطيل auto-correct/الأحرف
                 // الكبيرة التلقائية، لأن هذه الخانة نصية حساسة لأي تعديل صامت.
@@ -1183,7 +1183,7 @@ private fun AiOnlineDevTools(
                 onValueChange = { baseUrlText = it },
                 label = { Text(tr("عنوان بروكسي/مرآة (اختياري)")) },
                 supportingText = {
-                    Text(tr("اتركه فارغاً للاتصال المباشر بـ Google. إن كان Gemini محجوباً لديك، ضع هنا عنوان خادم بروكسي خاص بك (مثال: Cloudflare Worker) يُعيد توجيه نفس المسار لخوادم Google الحقيقية."))
+                    Text(tr("اتركه فارغاً للاتصال المباشر بـ Groq. إن كان Groq محجوباً لديك، ضع هنا عنوان خادم بروكسي خاص بك (مثال: Cloudflare Worker) يُعيد توجيه نفس المسار (/chat/completions) لخوادم Groq الحقيقية."))
                 },
                 placeholder = { Text("https://my-proxy.example.workers.dev") },
                 singleLine = true,
