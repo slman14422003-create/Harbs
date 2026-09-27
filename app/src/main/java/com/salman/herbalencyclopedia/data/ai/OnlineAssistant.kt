@@ -54,11 +54,12 @@ fun hasActiveInternetConnection(context: Context): Boolean {
 }
 
 /**
- * الوضع الذكي عبر الإنترنت لسيمو: يستخدم نموذج مجاني عبر Groq
- * (console.groq.com — بلا بطاقة ائتمان، راجع توثيق [AiConfig.onlineEnabled]
- * لتفاصيل سبب التبديل إليه من Gemini). واجهة Groq متوافقة مع معيار OpenAI
- * القياسي (`/chat/completions`، مفتاح Bearer بترويسة Authorization بدل
- * باراميتر رابط)، وهذا ما يبنيه [sendRequest]/[buildRequestBody] أدناه.
+ * الوضع الذكي عبر الإنترنت لسيمو: يستخدم نموذج Gemini المجاني من Google
+ * (Google AI Studio — بلا بطاقة ائتمان، راجع توثيق [AiConfig.onlineEnabled]
+ * لتفاصيل رفع الحظر عنه في سوريا في سبتمبر 2026). يُستخدَم هنا معيار
+ * Gemini REST الأصلي (`/v1beta/models/{model}:generateContent`، والمفتاح
+ * كباراميتر `?key=` بالرابط، لا ترويسة Authorization)، وهذا ما يبنيه
+ * [sendRequest]/[buildRequestBody] أدناه.
  * طبقة إضافية فوق [HerbAssistant] المحلي تماماً، لا بديلة عنه: أي فشل هنا
  * (لا إنترنت فعلي، انتهاء مهلة، مفتاح غير صالح، خطأ خادم) يُترجَم دوماً
  * لـ`null` بدل رمي استثناء أو عرض رسالة خطأ، فيعود المتصل
@@ -72,30 +73,29 @@ object OnlineAssistant {
     private const val READ_TIMEOUT_MS = 20_000
 
     // حد أعلى لعدد الأعشاب المُرسَلة كسياق ضمن الطلب الواحد: نافذة سياق
-    // "llama-3.3-70b-versatile" على Groq تتسع لحوالي 131 ألف توكن (كافية
-    // جداً لموسوعة متوسطة الحجم)، لكن تحديد سقف معقول هنا يحمي من طلب ضخم
-    // غير ضروري (تكلفة بيانات على المستخدم، خصوصاً في مناطق إنترنت محدود/
-    // بطيء) في حال كانت الموسوعة كبيرة جداً.
+    // "gemini-flash-latest" تتسع لحوالي مليون توكن (أوسع بكثير من الحاجة
+    // الفعلية)، لكن تحديد سقف معقول هنا يحمي من طلب ضخم غير ضروري (تكلفة
+    // بيانات على المستخدم، خصوصاً في مناطق إنترنت محدود/بطيء) في حال كانت
+    // الموسوعة كبيرة جداً.
     private const val MAX_CONTEXT_HERBS = 150
     private const val MAX_CONTEXT_BLENDS = 60
     private const val MAX_FIELD_CHARS = 600
 
     /**
-     * ═══ خبرة سابقة محفوظة من مزوّد Gemini قبل التبديل لـGroq: ردود سيمو
-     * كانت تُقصّ بمنتصف الجملة عند إجابات طويلة (خصوصاً مقارنة عدة أعشاب —
-     * فوائد + تحذيرات + أضرار + طريقة استخدام لكل عنصر، بالعربية التي
-     * تستهلك توكنات أكثر من الإنجليزية للمعنى نفسه) كلما كان سقف طول الرد
-     * (منفصل كلياً عن سعة نافذة السياق، راجع [MAX_CONTEXT_HERBS] أعلاه)
-     * ضيقاً جداً ═══
-     * لتفادي تكرار نفس الخلل هنا مع Groq: [MAX_OUTPUT_TOKENS] مضبوط على
-     * 8192 (يُرسَل كـ"max_tokens" في [buildRequestBody] — حقل Groq/OpenAI
-     * القياسي لطول الرد نفسه)، هامش واسع يكفي لمقارنة مفصَّلة بين عدة عناصر
-     * معاً بالعربية بارتياح. وكخط دفاع أخير إن استُهلك حتى هذا السقف بإجابة
-     * ضخمة جداً، [extractReplyText] أدناه يتحقق من finish_reason ويُلحق
-     * ملاحظة صريحة بنهاية النص المقتطَع بدل عرضه كأنه رد كامل عادي بلا أي
-     * إشارة — فرق بين "إجابة تبدو غريبة الانتهاء بلا تفسير" و"إجابة تشرح
-     * صراحة أنها اختُصرت". يُطبَّق هذا على مسار الدردشة الفعلي [answer] وعلى
-     * [testConnectionVerbose] معاً.
+     * ═══ خبرة سابقة محفوظة: ردود سيمو كانت تُقصّ بمنتصف الجملة عند إجابات
+     * طويلة (خصوصاً مقارنة عدة أعشاب — فوائد + تحذيرات + أضرار + طريقة
+     * استخدام لكل عنصر، بالعربية التي تستهلك توكنات أكثر من الإنجليزية
+     * للمعنى نفسه) كلما كان سقف طول الرد (منفصل كلياً عن سعة نافذة السياق،
+     * راجع [MAX_CONTEXT_HERBS] أعلاه) ضيقاً جداً ═══
+     * لتفادي تكرار نفس الخلل: [MAX_OUTPUT_TOKENS] مضبوط على 8192 (يُرسَل
+     * كـ"maxOutputTokens" ضمن "generationConfig" في [buildRequestBody] —
+     * حقل Gemini القياسي لطول الرد نفسه)، هامش واسع يكفي لمقارنة مفصَّلة بين
+     * عدة عناصر معاً بالعربية بارتياح. وكخط دفاع أخير إن استُهلك حتى هذا
+     * السقف بإجابة ضخمة جداً، [extractReplyText] أدناه يتحقق من finishReason
+     * ويُلحق ملاحظة صريحة بنهاية النص المقتطَع بدل عرضه كأنه رد كامل عادي
+     * بلا أي إشارة — فرق بين "إجابة تبدو غريبة الانتهاء بلا تفسير" و"إجابة
+     * تشرح صراحة أنها اختُصرت". يُطبَّق هذا على مسار الدردشة الفعلي [answer]
+     * وعلى [testConnectionVerbose] معاً.
      */
     private const val MAX_OUTPUT_TOKENS = 8192
 
@@ -154,14 +154,14 @@ object OnlineAssistant {
      */
     private fun normalizedBaseUrl(): String {
         val cleaned = AiConfig.onlineBaseUrl.replace(Regex("\\s+"), "").trimEnd('/')
-        if (cleaned.isBlank()) return "https://api.groq.com/openai/v1"
+        if (cleaned.isBlank()) return "https://generativelanguage.googleapis.com"
         return if (cleaned.startsWith("http://", ignoreCase = true) ||
             cleaned.startsWith("https://", ignoreCase = true)
         ) cleaned else "https://$cleaned"
     }
 
     /**
-     * ينفّذ طلب الاتصال الفعلي بـGroq (مباشرة أو عبر بروكسي المطوّر) ويعيد
+     * ينفّذ طلب الاتصال الفعلي بـGemini (مباشرة أو عبر بروكسي المطوّر) ويعيد
      * نص الرد الخام، أو يرمي استثناءً واضحاً عند أي فشل (رابط غير صالح، رد
      * غير ناجح من الخادم، انقطاع شبكة...). لا يُستخدم مباشرة من واجهة
      * الدردشة — [answer] يغلّفه بصمت، و[testConnectionVerbose] يعرض تفاصيل
@@ -175,17 +175,20 @@ object OnlineAssistant {
     ): String {
         val apiKey = AiConfig.onlineApiKey.trim()
         val model = AiConfig.onlineModel.trim().ifBlank { AiConfig.defaultOnlineModel }
-        require(apiKey.isNotBlank()) { "مفتاح Groq API فارغ" }
+        require(apiKey.isNotBlank()) { "مفتاح Gemini API فارغ" }
         var connection: HttpURLConnection? = null
         try {
             // إن ترك المطوّر [AiConfig.onlineBaseUrl] فارغاً: اتصال مباشر بخوادم
-            // Groq كما هو مضبوط افتراضياً. إن وضع عنوان بروكسي خاص به (مثال:
-            // خادم Cloudflare Worker ينفّذ إعادة توجيه شفافة لنفس المسار)،
-            // يُستبدَل به فقط الجزء الأساسي من الرابط بينما يبقى المسار
-            // (`/chat/completions`) كما هو تماماً — فيكفي أن يكون البروكسي
-            // "مرآة" بسيطة تُعيد توجيه أي طلب يصلها بنفس المسار والترويسات
-            // إلى api.groq.com الحقيقي وتُعيد الرد كما هو.
-            val endpoint = URL("${normalizedBaseUrl()}/chat/completions")
+            // Gemini (generativelanguage.googleapis.com) كما هو مضبوط افتراضياً.
+            // إن وضع عنوان بروكسي خاص به (مثال: خادم Cloudflare Worker ينفّذ
+            // إعادة توجيه شفافة لنفس المسار)، يُستبدَل به فقط الجزء الأساسي من
+            // الرابط بينما يبقى المسار (`/v1beta/models/{model}:generateContent`)
+            // كما هو تماماً — فيكفي أن يكون البروكسي "مرآة" بسيطة تُعيد توجيه
+            // أي طلب يصلها بنفس المسار والباراميترات إلى Google الحقيقي وتُعيد
+            // الرد كما هو.
+            // ترميز المفتاح ضمن الرابط (URL-encode) احتياطاً لأي حرف خاص فيه.
+            val encodedKey = java.net.URLEncoder.encode(apiKey, "UTF-8")
+            val endpoint = URL("${normalizedBaseUrl()}/v1beta/models/$model:generateContent?key=$encodedKey")
             val body = buildRequestBody(question, herbs, blends, allowCompare, model)
             connection = (endpoint.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -193,10 +196,9 @@ object OnlineAssistant {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                // Groq (وكل واجهة متوافقة مع معيار OpenAI) تتوقع المفتاح
-                // كترويسة Authorization: Bearer، لا كباراميتر ?key= بالرابط
-                // كما كان الحال مع Gemini سابقاً.
-                setRequestProperty("Authorization", "Bearer $apiKey")
+                // معيار Gemini REST الأصلي يتوقع المفتاح كباراميتر ?key= بالرابط
+                // (أُلحِق أعلاه ضمن endpoint)، لا كترويسة Authorization: Bearer
+                // كما كان الحال مع Groq.
             }
             connection.outputStream.use { out ->
                 OutputStreamWriter(out, StandardCharsets.UTF_8).use { it.write(body.toString()) }
@@ -266,28 +268,43 @@ object OnlineAssistant {
             herbs.take(MAX_CONTEXT_HERBS).forEach { h -> append(herbContextBlock(h)) }
             blends.take(MAX_CONTEXT_BLENDS).forEach { b -> append(blendContextBlock(b)) }
         }
-        // Groq (وأي واجهة متوافقة مع معيار OpenAI) تستخدم صيغة "chat/completions"
-        // القياسية: قائمة "messages" بأدوار (system/user)، لا "system_instruction"
-        // و"contents" منفصلين كما كانت صيغة Gemini الخاصة. "max_tokens" هو
-        // حقل طول الرد القياسي (راجع توثيق [MAX_OUTPUT_TOKENS] أعلاه)، وهذا
-        // النموذج الافتراضي (llama-3.3-70b-versatile) بلا "تفكير" داخلي خفي
-        // يلتهم من نفس الحصة كما كان يحدث مع Gemini — فلا حاجة لأي إعداد
-        // مكافئ لـ"thinkingBudget" هنا. لا يوجد أيضاً حقل مكافئ لـ
-        // "safetySettings" الخاص بـGemini ضمن معيار OpenAI القياسي؛ إن قطع
-        // خادم Groq أي رد بسبب مرشِّحات المحتوى الخاصة به، يظهر ذلك عبر
-        // finish_reason="content_filter" الذي يلتقطه [extractReplyText] أدناه
-        // بنفس آلية التقاط finish_reason="length" (اقتطاع بسبب طول الرد).
+        // معيار Gemini REST الأصلي يفصل توجيه النظام ("system_instruction") عن
+        // محتوى المحادثة ("contents" — قائمة أدوار "user"/"model"، كل عنصر
+        // بصيغة "parts": [{"text": ...}])، لا قائمة "messages" الموحّدة
+        // كمعيار OpenAI. "maxOutputTokens" و"temperature" يقعان ضمن كائن
+        // فرعي "generationConfig" (راجع توثيق [MAX_OUTPUT_TOKENS] أعلاه) بدل
+        // حقول علوية مباشرة. النموذج الافتراضي ("gemini-flash-latest") لا
+        // "تفكير" داخلي خفي يلتهم من نفس حصة الرد هنا، فلا حاجة لأي إعداد
+        // "thinkingConfig" إضافي. لم تُضَف "safetySettings" هنا عمداً (تُبقي
+        // سلوك مرشِّحات Google الافتراضية)؛ إن قطع Gemini أي رد بسبب ذلك،
+        // يظهر عبر finishReason="SAFETY" الذي يلتقطه [extractReplyText]
+        // أدناه بنفس آلية التقاط finishReason="MAX_TOKENS" (اقتطاع بسبب طول
+        // الرد).
         return JSONObject().apply {
-            put("model", model)
             put(
-                "messages",
-                JSONArray().apply {
-                    put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-                    put(JSONObject().apply { put("role", "user"); put("content", question) })
+                "system_instruction",
+                JSONObject().apply {
+                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", systemPrompt) }) })
                 }
             )
-            put("temperature", 0.4)
-            put("max_tokens", MAX_OUTPUT_TOKENS)
+            put(
+                "contents",
+                JSONArray().apply {
+                    put(
+                        JSONObject().apply {
+                            put("role", "user")
+                            put("parts", JSONArray().apply { put(JSONObject().apply { put("text", question) }) })
+                        }
+                    )
+                }
+            )
+            put(
+                "generationConfig",
+                JSONObject().apply {
+                    put("temperature", 0.4)
+                    put("maxOutputTokens", MAX_OUTPUT_TOKENS)
+                }
+            )
         }
     }
 
@@ -315,25 +332,27 @@ object OnlineAssistant {
 
     /**
      * راجع توثيق [MAX_OUTPUT_TOKENS] في [buildRequestBody] أعلاه: يتحقق هنا
-     * من finish_reason (حقل Groq/OpenAI القياسي، بدل finishReason الخاص
-     * بـGemini سابقاً) لأول اختيار (choice) — أي قيمة غير "stop" الطبيعية
-     * (أبرزها "length" و"content_filter") تعني أن الرد اقتُطع فعلياً قبل
-     * اكتماله، فتُلحَق ملاحظة صريحة ومختلفة لكل سبب بدل عرض النص الجزئي
-     * وكأنه اكتمل بشكل طبيعي بلا أي تفسير.
+     * من finishReason (حقل Gemini القياسي) لأول عنصر (candidate) — أي قيمة
+     * غير "STOP" الطبيعية (أبرزها "MAX_TOKENS" و"SAFETY") تعني أن الرد
+     * اقتُطع فعلياً قبل اكتماله، فتُلحَق ملاحظة صريحة ومختلفة لكل سبب بدل
+     * عرض النص الجزئي وكأنه اكتمل بشكل طبيعي بلا أي تفسير.
      */
     private fun extractReplyText(rawJson: String): String? = try {
         val root = JSONObject(rawJson)
-        val choices = root.optJSONArray("choices")
-        if (choices == null || choices.length() == 0) null
+        val candidates = root.optJSONArray("candidates")
+        if (candidates == null || candidates.length() == 0) null
         else {
-            val choice = choices.getJSONObject(0)
-            val text = choice.optJSONObject("message")?.optString("content")
+            val candidate = candidates.getJSONObject(0)
+            val parts = candidate.optJSONObject("content")?.optJSONArray("parts")
+            val text = if (parts != null && parts.length() > 0) {
+                buildString { for (i in 0 until parts.length()) append(parts.getJSONObject(i).optString("text")) }
+            } else null
             if (text.isNullOrBlank()) null
             else {
                 val sb = StringBuilder(text)
-                when (choice.optString("finish_reason")) {
-                    "length" -> sb.append("\n\n[الرد طويل جداً واقتُطع هنا — جرّب صياغة أضيق للسؤال]")
-                    "content_filter" -> sb.append("\n\n[توقّف الرد هنا بسبب مرشّحات الخادم — جرّب إعادة صياغة السؤال]")
+                when (candidate.optString("finishReason")) {
+                    "MAX_TOKENS" -> sb.append("\n\n[الرد طويل جداً واقتُطع هنا — جرّب صياغة أضيق للسؤال]")
+                    "SAFETY" -> sb.append("\n\n[توقّف الرد هنا بسبب مرشّحات الخادم — جرّب إعادة صياغة السؤال]")
                 }
                 sb.toString().ifBlank { null }
             }
