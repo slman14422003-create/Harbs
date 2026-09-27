@@ -191,7 +191,12 @@ android {
 
 dependencies {
     // --- Compose ---
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    // ملاحظة: BOM 2026.08.00 وما بعده يثبّت مكتبات Compose على إصدار 1.12.x
+    // التي تفرض compileSdk 37 (غير متوفرة بعد عبر sdkmanager - راجع
+    // compileSdk أعلى الملف). لذا نبقى مؤقتًا على 2026.06.01، آخر إصدار BOM
+    // متوافق مع compileSdk 36. حدّث الاثنين معًا (compileSdk + BOM) متى صار
+    // android-37 متاحًا فعليًا.
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
