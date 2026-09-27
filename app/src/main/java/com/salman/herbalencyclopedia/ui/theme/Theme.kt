@@ -70,37 +70,36 @@ private fun lightSchemeFor(hue: Color, sec: Color, ter: Color, neutral: Boolean)
         tertiary = t(ter, 0.45f, 0.50f), onTertiary = Color.White,
         tertiaryContainer = t(ter, 0.25f, 0.94f),
         onTertiaryContainer = t(ter, 0.40f, 0.32f),
-        background = t(hue, 0.08f, 0.97f),
+        // إصلاح تباين/عمق: الفرق بين background/surface وبين طبقات
+        // surfaceContainer* كان ضيقاً جداً (فرق V لا يتجاوز 0.05) مع تشبّع
+        // منخفض (0.08-0.28) لكل الطبقات. على أسطح فاتحة قريبة من الأبيض
+        // هذا الفرق لا يكاد يُلاحَظ على شاشة هاتف صغيرة، فتبدو البطاقات
+        // "ذائبة" في الخلفية بلا حدود واضحة، وتبدو كل اللوحات اللونية
+        // شبه متطابقة لأن التشبّع القليل لا يترك أثراً ملحوظاً على خلفية
+        // فاتحة أصلاً. الحل هنا: تشبّع أعلى بوضوح على كل طبقة (لون حقيقي
+        // بدل درجة رمادية تقريباً) مع خطوة V أكبر بين كل طبقة والتي تليها،
+        // فتُقرأ البطاقات كطبقات منفصلة فعلياً ويتمايز كل ثيم عن الآخر
+        // بصرياً. onSurface/onBackground (V=0.16) بلا تغيير — الفارق مع
+        // أي من هذه القيم (V=0.72 فما فوق) هائل أصلاً فلا خطر على وضوح النص.
+        background = t(hue, 0.10f, 0.97f),
         onBackground = t(hue, 0.20f, 0.16f),
-        surface = t(hue, 0.08f, 0.97f),
+        surface = t(hue, 0.10f, 0.97f),
         onSurface = t(hue, 0.20f, 0.16f),
-        surfaceVariant = t(hue, 0.14f, 0.90f),
+        surfaceVariant = t(hue, 0.20f, 0.88f),
         onSurfaceVariant = t(hue, 0.20f, 0.34f),
-        surfaceDim = t(hue, 0.12f, 0.84f),
-        surfaceBright = t(hue, 0.08f, 0.97f),
-        // كانت هذه Color.White صريح بلا أي علاقة بـ tone(): أبيض خالص بلا
-        // أي أثر للون اللوحة المختارة، بينما كل بقية الأسطح تتدرّج بنفس
-        // الصيغة الموحّدة t(hue, ...). النتيجة كانت أخفّ سطح بالتطبيق
-        // (البطاقات الأعلى ارتفاعاً، صفحات الإدخال...) يبدو "مبتوراً" عن
-        // بقية التدرّج اللوني — يقفز فجأة لأبيض محايد بدل الاستمرار بنفس
-        // نفَس اللون الخفيف الذي تراه بقية الأسطح، وهو تحديداً إحساس
-        // "الألوان مو ظابطة" في الوضع النهاري. نفس صيغة t() هنا بسطوع
-        // أعلى قليلاً من surfaceContainerLow يُبقيه أفتح سطح فعلاً لكن
-        // متّسقاً مع بقية التدرّج (وحياديّاً تماماً تلقائياً مع خيار "بدون
-        // تلوين" بفضل نفس آلية t() لا حاجة لأي استثناء إضافي).
-        surfaceContainerLowest = t(hue, 0.05f, 0.995f),
-        surfaceContainerLow = t(hue, 0.09f, 0.95f),
-        surfaceContainer = t(hue, 0.12f, 0.92f),
-        // تشبّع أعلى قليلاً هنا تحديداً (0.15→0.24 / 0.18→0.28) بدل بقية
-        // الأسطح: هذان أكثر سطحين "بارزين" استخداماً (بطاقات مرتفعة،
-        // الشريط العلوي/السفلي الزجاجي...)، فحصّتهما من هوية اللوحة اللونية
-        // كانت الأخفّ من كل الأسطح رغم كونها الأكثر ظهوراً — وهذا تحديداً
-        // ما يجعل عناصر الزجاج تبدو رمادية عامة بدل متجانسة مع لون الثيم.
-        // القيمة V لم تتغيّر (لا أثر على تباين النص فوقها).
-        surfaceContainerHigh = t(hue, 0.24f, 0.88f),
-        surfaceContainerHighest = t(hue, 0.28f, 0.84f),
-        outline = t(hue, 0.12f, 0.50f),
-        outlineVariant = t(hue, 0.12f, 0.78f),
+        surfaceDim = t(hue, 0.18f, 0.80f),
+        surfaceBright = t(hue, 0.10f, 0.98f),
+        surfaceContainerLowest = t(hue, 0.08f, 0.99f),
+        surfaceContainerLow = t(hue, 0.16f, 0.93f),
+        surfaceContainer = t(hue, 0.22f, 0.87f),
+        // تشبّع أعلى وخطوة V أكبر هنا تحديداً بدل بقية الأسطح: هذان أكثر
+        // سطحين "بارزين" استخداماً (بطاقات مرتفعة، الشريط العلوي/السفلي
+        // الزجاجي...)، فيجب أن يظهر الفرق بينهما وبين surfaceContainer
+        // العادي بوضوح، لا فقط بينهما وبين الخلفية.
+        surfaceContainerHigh = t(hue, 0.34f, 0.79f),
+        surfaceContainerHighest = t(hue, 0.40f, 0.72f),
+        outline = t(hue, 0.18f, 0.50f),
+        outlineVariant = t(hue, 0.18f, 0.72f),
         inverseSurface = t(hue, 0.15f, 0.20f),
         inverseOnSurface = t(hue, 0.06f, 0.97f),
         inversePrimary = t(hue, 0.45f, 0.80f),
@@ -124,26 +123,33 @@ private fun darkSchemeFor(hue: Color, sec: Color, ter: Color, neutral: Boolean):
         tertiary = t(ter, 0.35f, 0.78f), onTertiary = t(ter, 0.40f, 0.16f),
         tertiaryContainer = t(ter, 0.32f, 0.30f),
         onTertiaryContainer = t(ter, 0.25f, 0.90f),
-        // خلفية داكنة بدرجة تشبّع منخفضة كي تُريح العين، مع فارق سطوع كبير
-        // (0.14 مقابل 0.94) يضمن وضوح النص فوقها بلا إجهاد.
-        background = t(hue, 0.16f, 0.14f),
+        // إصلاح تباين/عمق (نفس مشكلة الوضع الفاتح أعلاه، لكن أثرها أوضح
+        // هنا): بتشبّع منخفض (0.16-0.30) وفرق V ضيق بين الطبقات (0.14 إلى
+        // 0.30 فقط، بخطوات ~0.04-0.07)، أي لون يفقد هويته عند سطوع منخفض
+        // كهذا ويبدو بنياً/رمادياً عاماً بغضّ النظر عن اللوحة المختارة فعلياً
+        // — بالضبط سبب شعور "كل الثيمات متشابهة وبلا عمق" في الوضع الداكن.
+        // تشبّع أعلى بوضوح (0.28-0.40) يُبقي الهوية اللونية مقروءة حتى في
+        // العتمة، وخطوة V أكبر (~0.06-0.08) بين كل طبقة تجعل البطاقات تبرز
+        // فعلياً عن الخلفية بدل الذوبان فيها. onBackground/onSurface
+        // (V=0.94) بلا تغيير فالفارق مع أي من هذه القيم يبقى كبيراً جداً.
+        background = t(hue, 0.34f, 0.13f),
         onBackground = t(hue, 0.08f, 0.94f),
-        surface = t(hue, 0.16f, 0.14f),
+        surface = t(hue, 0.34f, 0.13f),
         onSurface = t(hue, 0.08f, 0.94f),
-        surfaceVariant = t(hue, 0.20f, 0.26f),
+        surfaceVariant = t(hue, 0.32f, 0.28f),
         onSurfaceVariant = t(hue, 0.10f, 0.80f),
-        surfaceDim = t(hue, 0.16f, 0.14f),
-        surfaceBright = t(hue, 0.14f, 0.36f),
-        surfaceContainerLowest = t(hue, 0.18f, 0.10f),
-        surfaceContainerLow = t(hue, 0.17f, 0.18f),
-        surfaceContainer = t(hue, 0.18f, 0.21f),
-        // نفس ملاحظة النسخة الفاتحة أعلاه: تشبّع أعلى لهذين السطحين
-        // تحديداً فقط (البطاقات المرتفعة والأشرطة الزجاجية)، بلا أي تغيير
-        // على V فلا يتأثر تباين النص فوقهما.
-        surfaceContainerHigh = t(hue, 0.28f, 0.25f),
-        surfaceContainerHighest = t(hue, 0.30f, 0.30f),
-        outline = t(hue, 0.12f, 0.60f),
-        outlineVariant = t(hue, 0.16f, 0.32f),
+        surfaceDim = t(hue, 0.34f, 0.13f),
+        surfaceBright = t(hue, 0.24f, 0.42f),
+        surfaceContainerLowest = t(hue, 0.36f, 0.09f),
+        surfaceContainerLow = t(hue, 0.30f, 0.17f),
+        surfaceContainer = t(hue, 0.30f, 0.24f),
+        // نفس ملاحظة النسخة الفاتحة أعلاه: تشبّع وخطوة V أعلى لهذين
+        // السطحين تحديداً (البطاقات المرتفعة والأشرطة الزجاجية) عن
+        // surfaceContainer العادي، فتبرز كأكثر سطحين "بارزين" فعلياً.
+        surfaceContainerHigh = t(hue, 0.36f, 0.31f),
+        surfaceContainerHighest = t(hue, 0.40f, 0.37f),
+        outline = t(hue, 0.20f, 0.60f),
+        outlineVariant = t(hue, 0.24f, 0.34f),
         inverseSurface = t(hue, 0.08f, 0.94f),
         inverseOnSurface = t(hue, 0.16f, 0.18f),
         inversePrimary = t(hue, 0.60f, 0.45f),
