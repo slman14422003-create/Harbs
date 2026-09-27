@@ -8,6 +8,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import com.salman.herbalencyclopedia.ui.theme.AppMotion
+import com.salman.herbalencyclopedia.ui.theme.rememberSmoothMotionAllowed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,22 +46,40 @@ import com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode
  * من [LocalPerformanceMode] وتُستبعد بالكامل في الوضع الاقتصادي — بلا أي
  * تكلفة رسم إضافية، تماماً بنفس مبدأ LiquidGlassSurface.
  *
+ * ═══ إصلاح: التوهّج اللانهائي لا يراعي معدّل التحديث الفعلي ═══
+ * نبض التوهّج كان مرتبطاً فقط بـ[LocalPerformanceMode] (اختيار المستخدم)،
+ * بخلاف كل حركة متصلة أخرى بالتطبيق (staggeredEntrance، entranceFade،
+ * فقاعة "سيمو يكتب…"، انتقالات التنقّل بين الشاشات) التي تحترم أيضاً
+ * [rememberSmoothMotionAllowed] — أي تتوقف تلقائياً حين يكون معدّل التحديث
+ * الفعلي الحالي أقل من 60Hz (شاشة LTPO خفّضت المعدل توفيراً للطاقة، أو
+ * توفير الطاقة/التحكّم الحراري أرجعا الوضع الفعلي لاقتصادي عبر
+ * rememberEffectivePerformanceMode) حتى لو كان اختيار المستخدم "أداء
+ * عالٍ" لا يزال قائماً. خلفية طافية خلف كل شاشة بالتطبيق تقريباً كانت
+ * تبقى الاستثناء الوحيد الذي يتجاهل هذا — نُوحّدها الآن مع بقية التطبيق.
+ * لون التوهّج الثابت (0.16f) لم يتغيّر: هو نفس القيمة السابقة لوضع "بلا
+ * حركة".
+ *
+ * ونفس مبدأ الحركات الأخرى بمنحنى [AppMotion.Smooth] الموحّد للتطبيق بدل
+ * منحنى Compose الافتراضي الذي كان يُستخدم هنا فقط (tween(4200) بلا
+ * easing صريح).
+ *
  * كل شاشة يجب أن تجعل containerColor الخاص بـ Scaffold شفافاً
  * (Color.Transparent) كي تظهر هذه الخلفية من خلفها بدل حجبها.
  */
 @Composable
 fun AmbientBackground(modifier: Modifier = Modifier) {
     val highQuality = LocalPerformanceMode.current.isHighQuality
+    val smoothMotionAllowed = rememberSmoothMotionAllowed()
     val scheme = MaterialTheme.colorScheme
     val primary = scheme.primary
     val tertiary = scheme.tertiary
 
-    val glowAlpha = if (highQuality) {
+    val glowAlpha = if (smoothMotionAllowed) {
         val transition = rememberInfiniteTransition(label = "ambientGlow")
         val animated by transition.animateFloat(
             initialValue = 0.20f,
             targetValue = 0.32f,
-            animationSpec = infiniteRepeatable(tween(4200), RepeatMode.Reverse),
+            animationSpec = infiniteRepeatable(tween(4200, easing = AppMotion.Smooth), RepeatMode.Reverse),
             label = "ambientGlowAlpha"
         )
         animated
