@@ -99,16 +99,31 @@ fun AllHerbsScreen(
                 // الأيقونة وتُعطَّل الضغطات المتكررة (isRefreshing) بنفس
                 // منطق PullToRefreshBox أعلاه.
                 actions = {
-                    val infiniteTransition = rememberInfiniteTransition(label = "refreshRotation")
-                    val rotation by infiniteTransition.animateFloat(
-                        initialValue = 0f,
-                        targetValue = 360f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(900, easing = LinearEasing),
-                            repeatMode = RepeatMode.Restart
-                        ),
-                        label = "refreshRotationValue"
-                    )
+                    // ═══ إصلاح: دوران أيقونة التحديث كان يعمل بلا توقف دوماً ═══
+                    // rememberInfiniteTransition + animateFloat كانا يُستدعيان هنا
+                    // بلا أي شرط، أي أن هذه الحركة اللانهائية تبدأ فوراً عند أول
+                    // تركيب لهذه الشاشة وتستمر طوال بقاء الشاشة في الذاكرة (حتى
+                    // بعيداً عن الشاشة عبر NavHost) — بصرف النظر تماماً عن قيمة
+                    // isRefreshing؛ Modifier.rotate(rotation) وحده كان يُطبَّق
+                    // شرطياً، لا الحركة نفسها. أي: كل مستخدم يفتح "كل الأعشاب"
+                    // كان يشغّل إطاراً إضافياً معاد رسمه ~60 مرة/ثانية للأبد، بلا
+                    // أي أثر مرئي معظم الوقت (الأيقونة ثابتة فعلياً) — استهلاك
+                    // معالج وبطارية بلا داعٍ إطلاقاً، وعلى الأجهزة الضعيفة تحديداً
+                    // هذا فارق ملموس. الآن يُنشأ الدوران فقط أثناء isRefreshing
+                    // الفعلي، فتنعدم تكلفة أي حركة حين لا يوجد تحديث جارٍ.
+                    val rotation = if (isRefreshing) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "refreshRotation")
+                        val animated by infiniteTransition.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 360f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(900, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart
+                            ),
+                            label = "refreshRotationValue"
+                        )
+                        animated
+                    } else 0f
                     GlassIconButton(
                         onClick = onRefresh,
                         enabled = !isRefreshing
