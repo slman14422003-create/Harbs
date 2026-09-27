@@ -1,6 +1,7 @@
 package com.salman.herbalencyclopedia.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -99,12 +100,23 @@ fun CategoryCard(
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // إصلاح تباين/عمق: تدرّج 0.24→0.10 كان يذوب تقريباً في خلفية
+            // البطاقة (surfaceContainer) بعد أن أصبحت هي نفسها أغمق قليلاً/
+            // أكثر تشبّعاً (انظر Theme.kt)، فبدا مربّع الأيقونة كبقعة لون
+            // خافتة بلا حضور بصري واضح رغم أن accent نفسه لون قوي مائة
+            // بالمئة. رفع طرفي التدرّج (0.55→0.28) يجعل المربّع "بطاقة لون"
+            // فعلية تُميَّز فوراً عن خلفية الصف، مع حدّ خفيف بلون accent
+            // نفسه يفصلها بصرياً عن السطح تحتها بدل الاعتماد على التدرّج وحده.
             Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(
-                    Brush.linearGradient(
-                        listOf(accent.copy(alpha = 0.24f), accent.copy(alpha = 0.10f))
+                Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.28f))
+                        )
                     )
-                ),
+                    .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(iconFor(category), contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
@@ -120,10 +132,14 @@ fun CategoryCard(
             )
             Spacer(Modifier.width(8.dp))
             // شارة صغيرة بلون التصنيف بدل نص عادي أسفل العنوان، لتمييز
-            // العدد بصرياً وملء الفراغ على يمين الصفّ.
+            // العدد بصرياً وملء الفراغ على يمين الصفّ. نفس إصلاح التباين
+            // أعلاه: 0.14 كانت شبه غير مرئية كخلفية مستقلة عن النص نفسه؛
+            // 0.22 مع حدّ خفيف يعطي الشارة حدوداً واضحة كعنصر منفصل بدل
+            // بقعة لون باهتة خلف الرقم فقط.
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = accent.copy(alpha = 0.14f)
+                color = accent.copy(alpha = 0.22f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.35f))
             ) {
                 Text(
                     "$herbCount",
