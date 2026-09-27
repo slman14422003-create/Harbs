@@ -64,10 +64,12 @@ jobs:
           # yes ينتهي بـ SIGPIPE بمجرد إغلاق sdkmanager لمدخلاته، فقد يعطي
           # كود خروج غير صفري رغم نجاح قبول التراخيص فعليًا - نتجاهله هنا
           # عمدًا ونتحقق من النجاح الحقيقي عبر خطوة sdkmanager --install التالية.
-          yes | "$SDKMANAGER" --licenses > /tmp/sdkmanager-licenses.log 2>&1 || true
+          # --channel=3 يضم كل القنوات (stable/beta/dev/canary) - android-37
+          # حديث جدًا وقد لا يظهر بعد ضمن القناة stable الافتراضية فقط.
+          yes | "$SDKMANAGER" --licenses --channel=3 > /tmp/sdkmanager-licenses.log 2>&1 || true
           tail -n 30 /tmp/sdkmanager-licenses.log || true
 
-          "$SDKMANAGER" --install 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0'
+          "$SDKMANAGER" --install --channel=3 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
