@@ -43,7 +43,31 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
+          # لا نترك هذا الأكشن يوافق على التراخيص أو يثبّت الحزم؛ إصدارات
+          # cmdline-tools الحديثة تطرح أسئلة ترخيص أكثر من الـ 10 الثابتة
+          # التي يرسلها هذا الأكشن، فيفشل "sdkmanager --licenses" بخطأ
+          # exit code 1. نقوم بالخطوتين يدويًا في الخطوة التالية بدل ذلك.
+          accept-android-sdk-licenses: false
+          packages: ''
+
+      - name: Accept SDK licenses and install packages
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 2 -type f -name sdkmanager -path '*/bin/*' | sort -V | tail -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+
+          # yes ينتهي بـ SIGPIPE بمجرد إغلاق sdkmanager لمدخلاته، فقد يعطي
+          # كود خروج غير صفري رغم نجاح قبول التراخيص فعليًا - نتجاهله هنا
+          # عمدًا ونتحقق من النجاح الحقيقي عبر خطوة sdkmanager --install التالية.
+          yes | "$SDKMANAGER" --licenses > /tmp/sdkmanager-licenses.log 2>&1 || true
+          tail -n 30 /tmp/sdkmanager-licenses.log || true
+
+          "$SDKMANAGER" --install 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
