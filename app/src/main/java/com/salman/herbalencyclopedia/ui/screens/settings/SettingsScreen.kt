@@ -53,6 +53,7 @@ import com.salman.herbalencyclopedia.ui.UpdateCheckState
 import com.salman.herbalencyclopedia.ui.components.GlassIconButton
 import com.salman.herbalencyclopedia.ui.components.GlassTopBar
 import com.salman.herbalencyclopedia.ui.components.LocalBottomBarInset
+import com.salman.herbalencyclopedia.ui.theme.AppMotion
 import com.salman.herbalencyclopedia.ui.theme.PerformanceMode
 import com.salman.herbalencyclopedia.ui.theme.ThemePalette
 import com.salman.herbalencyclopedia.ui.util.AppLanguage
@@ -861,7 +862,10 @@ private fun UpdateRow(
 
         AnimatedContent(
             targetState = updateState,
-            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
+            // إصلاح: كان بلا easing صريح (منحنى Compose الافتراضي)، بخلاف
+            // منحنى [AppMotion.Smooth] الموحّد المستخدم بكل حركات التطبيق
+            // الأخرى — الآن موحّدة معها.
+            transitionSpec = { fadeIn(tween(220, easing = AppMotion.Smooth)) togetherWith fadeOut(tween(150, easing = AppMotion.Smooth)) },
             label = "updateCheckState"
         ) { state ->
             when (state) {
@@ -962,7 +966,8 @@ private fun UpdateRow(
                         Spacer(Modifier.height(12.dp))
                         AnimatedContent(
                             targetState = downloadState,
-                            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
+                            // نفس التوحيد أعلاه: منحنى AppMotion.Smooth بدل الافتراضي.
+                            transitionSpec = { fadeIn(tween(220, easing = AppMotion.Smooth)) togetherWith fadeOut(tween(150, easing = AppMotion.Smooth)) },
                             label = "updateDownloadState"
                         ) { dState ->
                             when (dState) {
