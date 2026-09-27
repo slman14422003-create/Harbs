@@ -73,12 +73,12 @@ val releaseSignatureSha256: String =
 
 android {
     namespace = "com.salman.herbalencyclopedia"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.salman.herbalencyclopedia"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("APP_VERSION_NAME") ?: "1.0"
 
@@ -191,7 +191,7 @@ android {
 
 dependencies {
     // --- Compose ---
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
