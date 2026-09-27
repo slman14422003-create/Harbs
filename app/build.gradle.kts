@@ -73,12 +73,12 @@ val releaseSignatureSha256: String =
 
 android {
     namespace = "com.salman.herbalencyclopedia"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.salman.herbalencyclopedia"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 36
         versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("APP_VERSION_NAME") ?: "1.0"
 
