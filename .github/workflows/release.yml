@@ -43,7 +43,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -112,18 +112,30 @@ jobs:
             printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KS_PATH"
             keytool -list -keystore "$KS_PATH" -storepass "$KEYSTORE_PASSWORD" >/dev/null
 
+            # بصمة شهادة التوقيع (SHA-256/SHA-1) محسوبة مباشرة من نفس الـ
+            # keystore السرّي أعلاه - لا سرّ إضافي مطلوب. تُغذّي متغيّر البناء
+            # RELEASE_SIGNATURE_SHA256 (فحص إعادة التوقيع في SecurityUtils.kt)
+            # وتُطبَع كمرجع لضبط Firebase/Google Sign-In/Play Console App Signing.
+            CERT_INFO=$(keytool -list -v -keystore "$KS_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS")
+            SIG_SHA256=$(echo "$CERT_INFO" | awk -F': ' '/SHA256:/{gsub(":","",$2); print $2; exit}')
+            SIG_SHA1=$(echo "$CERT_INFO" | awk -F': ' '/SHA1:/{gsub(":","",$2); print $2; exit}')
+
             echo "signed=true" >> "$GITHUB_OUTPUT"
             echo "store_file=$KS_PATH" >> "$GITHUB_OUTPUT"
             echo "store_password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
             echo "key_alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
             echo "key_password=$KEY_PASSWORD" >> "$GITHUB_OUTPUT"
+            echo "sig_sha256=$SIG_SHA256" >> "$GITHUB_OUTPUT"
             echo "Release signing secrets found; building signed artifacts."
+            echo "::notice::Release certificate SHA-256: $SIG_SHA256"
+            echo "::notice::Release certificate SHA-1: $SIG_SHA1"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "store_file=" >> "$GITHUB_OUTPUT"
             echo "store_password=" >> "$GITHUB_OUTPUT"
             echo "key_alias=" >> "$GITHUB_OUTPUT"
             echo "key_password=" >> "$GITHUB_OUTPUT"
+            echo "sig_sha256=" >> "$GITHUB_OUTPUT"
             echo "::warning::Release signing secrets are not configured. Building unsigned artifacts for CI/testing only. Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD for a Play-ready signed build."
           fi
 
@@ -135,6 +147,7 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ steps.keystore.outputs.store_password }}
           RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.key_alias }}
           RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.key_password }}
+          RELEASE_SIGNATURE_SHA256: ${{ steps.keystore.outputs.sig_sha256 }}
         run: |
           # نكهة public فقط - نسخة full لا تُبنى ولا تُنشَر هنا إطلاقًا
           # (راجع full.yml المنفصل لها).
@@ -176,6 +189,31 @@ jobs:
           echo "Found AABs:"
           echo "$AAB_PATHS"
 
+      - name: Verify APK/AAB signature (v2/v3 scheme + certificate check)
+        if: ${{ steps.keystore.outputs.signed == 'true' }}
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          while IFS= read -r apk; do
+            [ -z "$apk" ] && continue
+            echo "== التحقق من التوقيع: $apk =="
+            "$APKSIGNER" verify --print-certs -v "$apk"
+          done <<< "${{ steps.outputs.outputs.apk_paths }}"
+
+      - name: Generate SHA-256 checksums for release artifacts
+        id: checksums
+        run: |
+          set -euo pipefail
+          {
+            echo "checksums<<EOF"
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              sha256sum "$f"
+            done <<< "${{ steps.outputs.outputs.apk_paths }}
+          ${{ steps.outputs.outputs.aab_paths }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload APK artifact (for direct download)
         uses: actions/upload-artifact@v7
         with:
@@ -202,6 +240,12 @@ jobs:
             - رقم الإصدار: ${{ steps.appver.outputs.version_code }}
             - نسخة public (للمستخدم العادي) فقط.
             - إذا لم تُضبط أسرار التوقيع، فهذا البناء غير موقّع ومخصص للاختبار فقط.
+            - بصمة شهادة التوقيع (SHA-256): `${{ steps.keystore.outputs.sig_sha256 }}`
+
+            **بصمات SHA-256 لملفات هذا الإصدار (للتحقق من سلامتها بعد التنزيل):**
+            ```
+            ${{ steps.checksums.outputs.checksums }}
+            ```
           generate_release_notes: true
           files: ${{ steps.outputs.outputs.apk_paths }}
           fail_on_unmatched_files: true
