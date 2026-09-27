@@ -52,10 +52,23 @@ jobs:
       - name: Accept SDK licenses and install packages
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -path '*/bin/*' | sort -V | tail -1)
+          # الأكشن android-actions/setup-android يضيف مجلد cmdline-tools/<إصدار
+          # جديد نُزِّل للتو> إلى PATH صراحة - هذا هو المصدر الموثوق للنسخة
+          # الصحيحة، لا البحث اليدوي. البحث بـ find + sort -V كان يختار خطأً
+          # مجلد "latest" القديم المثبَّت مسبقًا على الـ runner (يحوي مستودعًا/
+          # تراخيص غير ذات صلة إطلاقًا بأندرويد) لأن "sort -V" يضع كلمة
+          # "latest" أعلى من أي رقم إصدار. نعتمد أولًا على PATH، ونستثني صراحة
+          # مجلد latest من أي احتياط يدوي بديل.
+          SDKMANAGER="$(command -v sdkmanager || true)"
           if [ -z "$SDKMANAGER" ]; then
-            echo "::error::sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+            SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -path '*/bin/*' | grep -v '/cmdline-tools/latest/' | sort -V | tail -1)
+            if [ -z "$SDKMANAGER" ]; then
+              SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -path '*/bin/*' | sort -V | tail -1)
+            fi
+          fi
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found"
             exit 1
           fi
           echo "Using sdkmanager: $SDKMANAGER"
@@ -63,12 +76,12 @@ jobs:
           # yes ينتهي بـ SIGPIPE بمجرد إغلاق sdkmanager لمدخلاته، فقد يعطي
           # كود خروج غير صفري رغم نجاح قبول التراخيص فعليًا - نتجاهله هنا
           # عمدًا ونتحقق من النجاح الحقيقي عبر خطوة sdkmanager --install التالية.
-          # --channel=3 يضم كل القنوات (stable/beta/dev/canary) - android-37
-          # حديث جدًا وقد لا يظهر بعد ضمن القناة stable الافتراضية فقط.
-          yes | "$SDKMANAGER" --licenses --channel=3 > /tmp/sdkmanager-licenses.log 2>&1 || true
+          yes | "$SDKMANAGER" --licenses > /tmp/sdkmanager-licenses.log 2>&1 || true
           tail -n 30 /tmp/sdkmanager-licenses.log || true
 
-          "$SDKMANAGER" --install --channel=3 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0'
+          # ثابتون على أندرويد 16 (API 36) للاستقرار - حزمة android-37 غير
+          # متوفرة بعد عبر مستودع sdkmanager بأي قناة.
+          "$SDKMANAGER" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -196,7 +209,7 @@ jobs:
         if: ${{ steps.keystore.outputs.signed == 'true' }}
         run: |
           set -euo pipefail
-          APKSIGNER="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           "$APKSIGNER" verify --print-certs -v "${{ steps.outputs.outputs.apk_path }}"
 
       - name: Generate SHA-256 checksum for the APK
