@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.salman.herbalencyclopedia.ui.theme.LocalPerformanceMode
+import com.salman.herbalencyclopedia.ui.theme.rememberSmoothMotionAllowed
 
 /**
  * "الزجاج السائل" (Liquid Glass): سطح زجاجي بطبقات حقيقية بدل تدرّج شفاف
@@ -221,7 +222,17 @@ fun LiquidGlassSurface(
                 )
         )
 
-        if (highQuality && sheen) {
+        // ═══ إصلاح: شعاع اللمعان لا يراعي معدّل التحديث الفعلي ═══
+        // كان الشرط هنا `highQuality && sheen` فقط، أي أن هذه الحركة
+        // اللانهائية (rememberInfiniteTransition داخل GlassSheen) تستمر
+        // حتى لو كانت الشاشة تعمل حالياً بمعدل تحديث منخفض فعلياً (أقل من
+        // 60Hz) رغم اختيار المستخدم "أداء عالٍ" — بخلاف كل حركة متصلة أخرى
+        // بالتطبيق (staggeredEntrance، التوهّج المحيطي، فقاعة "سيمو
+        // يكتب…"...) التي تحترم [rememberSmoothMotionAllowed] بدقة. حركة
+        // لمعان متصلة على شاشة 20/40Hz تظهر متقطّعة (خطوات مضيئة واضحة)
+        // بلا أي فائدة بصرية تُذكر، فالأصح إيقافها كلياً في تلك الحالة
+        // تحديداً (نفس ما تفعله بقية الحركات) بدل ترك الاستثناء الوحيد.
+        if (sheen && rememberSmoothMotionAllowed()) {
             GlassSheen(modifier = Modifier.matchParentSize())
         }
 
