@@ -309,12 +309,13 @@ class PreferencesRepository(private val context: Context) {
 
     // ── الوضع الذكي عبر الإنترنت (Gemini المجاني) ────────────────────────
 
-    // القيمة المخبوزة (BuildConfig، من app/ai.properties وقت البناء) هي
-    // الخيار الاحتياطي فقط حين لا يوجد أي اختيار صريح محفوظ في DataStore.
-    // بهذا: (1) نسخة full تبقى كما كانت تماماً إن ضبط المطوّر القيم يدوياً
-    // من أدوات المطور (لها الأولوية دوماً)، و(2) نسخة public — التي لا
-    // تملك شاشة أدوات المطور أصلاً فلم يكن ممكناً ضبط أي قيمة فيها من قبل
-    // — تحصل الآن على القيمة المخبوزة تلقائياً فيعمل "سيمو المتصل" دون أي
+    // القيمة المخبوزة (BuildConfig، من app/ai.properties وقت البناء —
+    // geminiApiKey/geminiBaseUrl/geminiModel الثلاثة معاً) هي الخيار
+    // الاحتياطي فقط حين لا يوجد أي اختيار صريح محفوظ في DataStore. بهذا:
+    // (1) نسخة full تبقى كما كانت تماماً إن ضبط المطوّر القيم يدوياً من
+    // أدوات المطور (لها الأولوية دوماً)، و(2) نسخة public — التي لا تملك
+    // شاشة أدوات المطور أصلاً فلم يكن ممكناً ضبط أي قيمة فيها من قبل —
+    // تحصل الآن على القيم المخبوزة تلقائياً فيعمل "سيمو المتصل" دون أي
     // خطوة إضافية بعد التثبيت.
     val aiOnlineEnabled: Flow<Boolean> = context.dataStore.data.map {
         it[Keys.AI_ONLINE_ENABLED]
@@ -328,7 +329,8 @@ class PreferencesRepository(private val context: Context) {
             ?: BuildConfig.BAKED_ONLINE_BASE_URL.ifBlank { AiConfig.defaultOnlineBaseUrl }
     }
     val aiOnlineModel: Flow<String> = context.dataStore.data.map {
-        it[Keys.AI_ONLINE_MODEL] ?: AiConfig.defaultOnlineModel
+        it[Keys.AI_ONLINE_MODEL]
+            ?: BuildConfig.BAKED_ONLINE_MODEL.ifBlank { AiConfig.defaultOnlineModel }
     }
 
     suspend fun setAiOnlineEnabled(enabled: Boolean) {
