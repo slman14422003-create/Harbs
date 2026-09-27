@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 2 -type f -name sdkmanager -path '*/bin/*' | sort -V | tail -1)
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -path '*/bin/*' | sort -V | tail -1)
           if [ -z "$SDKMANAGER" ]; then
             echo "::error::sdkmanager not found under $SDK_ROOT/cmdline-tools"
             exit 1
