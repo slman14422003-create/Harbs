@@ -51,6 +51,10 @@ val bakedGeminiBaseUrl: String =
     System.getenv("GEMINI_BASE_URL")
         ?: (aiProperties["geminiBaseUrl"] as String?)
         ?: ""
+val bakedGeminiModel: String =
+    System.getenv("GEMINI_MODEL")
+        ?: (aiProperties["geminiModel"] as String?)
+        ?: ""
 
 val hasEnvSigning = !releaseStoreFile.isNullOrBlank() &&
     !releaseStorePassword.isNullOrBlank() &&
@@ -95,6 +99,7 @@ android {
 
         buildConfigField("String", "BAKED_ONLINE_API_KEY", "\"$bakedGeminiApiKey\"")
         buildConfigField("String", "BAKED_ONLINE_BASE_URL", "\"$bakedGeminiBaseUrl\"")
+        buildConfigField("String", "BAKED_ONLINE_MODEL", "\"$bakedGeminiModel\"")
     }
 
     signingConfigs {
