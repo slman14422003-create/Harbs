@@ -309,7 +309,7 @@ class UpdateRepository(
         // قد تحتوي صفحة الإصدار على رابطَي .apk (full وpublic معاً)، لذا نجمع
         // كل الروابط الموجودة ثم نمرّرها لنفس منطق [pickApkAsset] المستخدم مع
         // استجابة الـ API، بدل أخذ أول رابط .apk يظهر في الصفحة كما كان سابقاً.
-        val apkAssets = Regex("""href="(/${Regex.escape(repo)}/releases/download/[^"]+?\.apk)"""")
+        val apkAssets = Regex("""href="(/${Regex.escape(repo)}/releases/download/[^"]+?\.apk)${'"'}""")
             .findAll(html)
             .map { it.groupValues[1].replace("&amp;", "&") }
             .map { path -> path.substringAfterLast('/') to "https://github.com$path" }
