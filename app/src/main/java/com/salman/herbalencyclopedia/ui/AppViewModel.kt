@@ -483,16 +483,31 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
 
-        // ── مصدر البيانات: كاش محلي فوراً، ثم مزامنة شبكية مرة كل ٢٤ ساعة فقط ──
-        // كان التطبيق يفتح مستمع Firestore حيّ (addSnapshotListener) في كل مرة
-        // يُشغَّل فيها، لكل مستخدم - أي قراءة مدفوعة لكل وثيقة من كل تثبيت مع
-        // كل فتح للتطبيق. بحصة القراءات المجانية اليومية المحدودة، فتح ٥٠
-        // مستخدماً للتطبيق بنفس الوقت (خصوصاً أول مرة كل واحد منهم) يستهلك
-        // الحصة كاملة بسرعة. الآن: نعرض آخر نسخة محفوظة محلياً (DataStore -
-        // راجع PreferencesRepository.loadCachedCatalog) فوراً بلا أي اتصال
-        // شبكي، ولا نتصل بـ Firestore فعلياً (get() لمرة واحدة، وليس مستمعاً
-        // حياً) إلا إذا مرّ أكثر من CATALOG_MAX_AGE_MS (٢٤ ساعة) منذ آخر
-        // مزامنة ناجحة لهذا الجهاز تحديداً - أول تشغيل، أو يوم جديد.
+        // ── مصدر البيانات: كاش محلي فوراً، ثم مزامنة شبكية تلقائية في كل فتح ──
+        // نعرض آخر نسخة محفوظة محلياً (DataStore - راجع
+        // PreferencesRepository.loadCachedCatalog) فوراً بلا أي اتصال شبكي إن
+        // وُجدت، ثم نزامن مع Firestore في الخلفية.
+        //
+        // *** إصلاح: أول تثبيت يحتاج ضغط "إعادة المحاولة" يدوياً - السبب
+        // الفعلي المُبلَّغ عنه ***
+        // كانت المزامنة التلقائية هنا (بلا كاش بعد) تستخدم دوماً
+        // fromServer=false أي Source.DEFAULT، بينما زر "إعادة المحاولة"
+        // اليدوي (AppViewModel.refresh) يستخدم fromServer=true أي
+        // Source.SERVER مباشرة - وهذا الفرق الوحيد بين المسارين. عملياً كان
+        // أول اتصال بـFirestore بعد التثبيت مباشرة (كاش محلي فارغ تماماً،
+        // ومصادقة/اتصال لم يستقرّا بعد) يفشل مع Source.DEFAULT بينما تكرار
+        // نفس الطلب لاحقاً عبر Source.SERVER (زر إعادة المحاولة) ينجح، فيبدو
+        // للمستخدم أن الضغط اليدوي هو ما "شغّل" الجلب. الآن أول مزامنة على
+        // الإطلاق لهذا الجهاز (cached == null) تفرض Source.SERVER مباشرة -
+        // تماماً كزر إعادة المحاولة - فتنجح تلقائياً من أول تثبيت بلا أي
+        // تدخل يدوي.
+        //
+        // *** طلب: مزامنة تلقائية في كل فتح للتطبيق، لا كل ٢٤ ساعة فقط ***
+        // كانت هذه المزامنة الشبكية مشروطة بمرور أكثر من يوم منذ آخر نجاح
+        // (لتوفير حصة قراءات Firestore). الآن كل فتح للتطبيق يزامن تلقائياً
+        // في الخلفية (بلا مؤشر تحميل كامل الشاشة إن وُجد كاش محلي يُعرض
+        // فوراً بدلاً منه) بصرف النظر عن مدة مرور آخر مزامنة، فتصل أي إضافة/
+        // تعديل جديد بمجرد فتح التطبيق لا بعد يوم كامل.
         viewModelScope.launch {
             val cached = runCatching { container.preferencesRepository.loadCachedCatalog() }.getOrNull()
             if (cached != null) {
@@ -501,11 +516,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 _rawBlends.value = cached.blends
                 _uiState.value = _uiState.value.copy(isLoading = false, error = null)
             }
-            val isStale = cached == null ||
-                System.currentTimeMillis() - cached.lastSyncAt > PreferencesRepository.CATALOG_MAX_AGE_MS
-            if (isStale) {
-                syncCatalogFromServer(showLoading = cached == null)
-            }
+            syncCatalogFromServer(showLoading = cached == null, fromServer = cached == null)
         }
 
         // المزامنة الحيّة (لحظية عبر الأجهزة) تبقى فقط أثناء جلسة الأدمن، لأنه
