@@ -1,300 +1,1878 @@
-package com.salman.herbalencyclopedia.data.repository
+package com.salman.herbalencyclopedia.data.ai
 
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.MetadataChanges
-import com.google.firebase.firestore.Source
 import com.salman.herbalencyclopedia.data.model.Blend
-import com.salman.herbalencyclopedia.data.model.Category
 import com.salman.herbalencyclopedia.data.model.Herb
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.retryWhen
-import kotlinx.coroutines.tasks.await
+import java.security.MessageDigest
+import kotlin.math.ln
+import kotlin.math.sqrt
 
 /**
- * Talks to the same Firestore collections as the web app:
- * "herbs" and "categories".
- *
- * Sync model:
- * - [observeHerbs] / [observeCategories] keep a *live* Firestore listener open
- *   (`addSnapshotListener`) so any change made here, from another device, or
- *   from the web app's admin panel is pushed to this app in real time -
- *   including the app's own local writes, which are reflected instantly from
- *   Firestore's local cache before the server round-trip even completes
- *   (optimistic UI), then reconciled automatically when the server confirms.
- * - [fetchHerbs] / [fetchCategories] remain available as one-shot reads
- *   (used for the manual "retry/refresh" action and for the admin tools that
- *   need a definite snapshot, like [restoreBackup] verification).
- * - Offline persistence is enabled with a *bounded* cache size (see
- *   [PERSISTENT_CACHE_BYTES]) so the full catalog (including base64 image
- *   data) still stays available offline and all local writes made offline
- *   still queue up and sync automatically once the connection returns, but
- *   Firestore's own garbage collector now trims the least-recently-used
- *   documents once the cache grows past the cap instead of retaining every
- *   historical snapshot forever. An unlimited cache was the main reason the
- *   app's on-disk footprint kept climbing well past the actual catalog size
- *   the longer the app stayed installed and synced. This setting is applied
- *   once in [com.salman.herbalencyclopedia.HerbalApp.onCreate] - *not* here -
- *   because Firestore rejects any settings change after the shared
- *   FirebaseFirestore instance has already been touched by anything else
- *   (e.g. SemoLearningRepository, which uses the same instance with no
- *   custom settings); doing it in Application.onCreate guarantees it always
- *   runs first, regardless of which repository happens to be used first.
- * - [observeCollection] auto-retries with exponential backoff on listener
- *   errors instead of permanently ending the live sync (see its retryWhen).
+ * إعدادات قابلة للتعديل من "أدوات المطور" داخل التطبيق (AdminToolsScreen)
+ * دون الحاجة لإعادة بناء التطبيق: عتبات التشابه وكلمات الإيقاف الإضافية.
+ * القيم تُحمَّل من PreferencesRepository عند بدء التطبيق وتُطبَّق هنا مباشرة،
+ * وأي تعديل من شاشة الأدوات يُحدّثها فوراً وحياً في نفس الجلسة (بلا حاجة
+ * لإعادة تشغيل) لأن كل الشاشات تقرأ من هذا الكائن.
  */
-class HerbRepository(
-    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
-) {
+object AiConfig {
+    /** بُعد تجميع النقاط المتشابهة من أعشاب مختلفة في نقطة مشتركة واحدة (0..1). */
+    var similarityThreshold: Double = 0.34
+        set(value) { field = value.coerceIn(0.05, 0.95) }
 
-    // ---------------------------------------------------------------------
-    // Live (real-time) sync
-    // ---------------------------------------------------------------------
+    /** حد قبول نتيجة في البحث الحر عن سؤال المستخدم (0..1). قيمة أقل = إجابات أكثر لكن أقل دقة. */
+    var searchThreshold: Double = 0.12
+        set(value) { field = value.coerceIn(0.02, 0.9) }
 
-    /** Emits the full herb list every time Firestore's data changes, locally or on the server. */
-    fun observeHerbs(): Flow<List<Herb>> = observeCollection("herbs", Herb::class.java)
+    /** كلمات إيقاف إضافية يضيفها المطوّر (تُستبعد من التحليل، بصيغة مُطبَّعة أو خام). */
+    var extraStopWords: Set<String> = emptySet()
 
-    /** Emits the full category list every time Firestore's data changes, locally or on the server. */
-    fun observeCategories(): Flow<List<Category>> = observeCollection("categories", Category::class.java)
+    /**
+     * مرادفات يعلّمها المطوّر لسيمو: كل مُدخل هو "كلمة جديدة → الكلمة القياسية
+     * التي يجب أن يفهمها سيمو بدلاً منها" (مثال: "ينفع" → "فائدة"). تُستخدم
+     * في كل عمليات تحليل النص (المقارنة والبحث الحر وأمثلة التدريب أدناه)،
+     * فتوسّع فهم سيمو للعبارات المرادفة بلا حاجة لتغيير أي كود.
+     */
+    var synonyms: Map<String, String> = emptyMap()
 
-    /** Emits the full blends ("الخلطات") list every time Firestore's data changes, locally or on the server. */
-    fun observeBlends(): Flow<List<Blend>> = observeCollection("blends", Blend::class.java)
+    /**
+     * "حالات مدرَّبة" يضيفها المطوّر يدوياً: سؤال نموذجي مع الرد المطلوب
+     * بالضبط. عند سؤال المستخدم شيئاً مشابهاً بدرجة كافية لأحد هذه الأمثلة
+     * (حسب [trainedMatchThreshold])، يرد سيمو بالنص المدرَّب مباشرة بدل
+     * الاعتماد على المنطق العام — وهذه هي آلية "تطوير النماذج وفهم الحالات"
+     * اليدوية: تعليم مباشر بلا إعادة بناء التطبيق.
+     */
+    var trainedExamples: List<TrainedExample> = emptyList()
 
-    private fun <T> observeCollection(collection: String, clazz: Class<T>): Flow<List<T>> = callbackFlow {
-        val registration = db.collection(collection)
-            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    trySend(snapshot.toObjects(clazz))
+    /** حد التشابه (0..1) الذي يجب أن تبلغه رسالة المستخدم مع مثال مدرَّب ليُستخدم رده مباشرة. */
+    var trainedMatchThreshold: Double = 0.45
+        set(value) { field = value.coerceIn(0.1, 0.95) }
+
+    /**
+     * حالات "تعلّمها سيمو بنفسه" من واقع الاستخدام: عندما يجيب سيمو بحرية
+     * (بحث حر ضمن بيانات الموسوعة) ويُقيّم المستخدم الرد بـ 👍 في شاشة
+     * الدردشة، تُحفَظ نقطة السؤال↔الرد هنا تلقائياً — فتصبح إجابته على أسئلة
+     * مشابهة لاحقاً فورية وواثقة دون أي تدخل من المطوّر. هذا هو المعنى
+     * العملي لعبارة "نموذج يعتمد على الموسوعة ويطوّر نفسه بنفسه": كل حالة
+     * متعلَّمة مصدرها إجابة استُخرجت أصلاً من نصوص الموسوعة، ومصدر الثقة بها
+     * هو تقييم صريح من مستخدم حقيقي، وليس تخميناً. تبقى منفصلة عن
+     * [trainedExamples] (تدريب المطوّر اليدوي المحمي دوماً)، وقابلة للمراجعة
+     * أو الحذف أو "الترقية" لتدريب يدوي دائم من أدوات المطور.
+     */
+    var autoLearnedExamples: List<TrainedExample> = emptyList()
+
+    /** تفعيل/تعطيل التعلّم الذاتي من تقييمات المستخدمين (👍/👎) في شاشة الدردشة. */
+    var autoLearnEnabled: Boolean = true
+
+    /**
+     * الوضع الذكي عبر الإنترنت: سيمو يبقى محلياً بالكامل كما كان تماماً بلا
+     * أي تغيير في السلوك عند تعطيل هذا الخيار أو عند انعدام اتصال الإنترنت
+     * فعلياً (راجع [OnlineAssistant] وSemoAssistantScreen — الفحص يحدث *قبل*
+     * أي محاولة اتصال، فلا يوجد أي فرق محسوس محلياً سواء كان هذا الخيار
+     * مفعَّلاً أم لا حين لا تتوفر شبكة). عند تفعيله وتوفر مفتاح Groq API
+     * صالح ووجود اتصال إنترنت فعلي، تُرسَل الأسئلة التي تحتاج بحثاً فعلياً
+     * (لا الترحيب/الشكر/الحالات المدرَّبة، تلك تبقى فورية محلياً دوماً) إلى
+     * نموذج مجاني عبر Groq.
+     *
+     * ═══ تبديل خلل حقيقي أُبلغ عنه: مزوّد Gemini (عبر بروكسي Cloudflare
+     * Worker) توقّف بعد نفاد الحصة المجانية اليومية للووركر نفسه (رسالة
+     * Cloudflare: "you have used up your daily free allocation of 10,000
+     * neurons")، والتحويل الاحتياطي للاتصال المباشر بـGemini فشل هو الآخر
+     * (خطأ HTTP 4xx) ═══
+     * السبب: الاعتماد على مزوّد واحد فقط (وبروكسي وسيط له حصته الخاصة
+     * المنفصلة) يعني أن نفاد أي من الحصتين يوقف "سيمو المتصل" بالكامل،
+     * بصرف النظر عن صلاحية مفتاح المطوّر نفسه. الإصلاح: التحوّل لـGroq —
+     * مزوّد آخر مجاني بالكامل (بلا بطاقة ائتمان)، بواجهة متوافقة مع معيار
+     * OpenAI (أبسط وأكثر استقراراً من صيغة Gemini الخاصة)، وحصة يومية
+     * منفصلة تماماً عن أي بروكسي قديم. راجع [OnlineAssistant] للتفاصيل
+     * الكاملة لبناء الطلب. حقل [onlineBaseUrl] أدناه يبقى كما هو من ناحية
+     * الوظيفة (بروكسي/مرآة اختياري)، فلا حاجة لأي تغيير على أي خادم بروكسي
+     * منشور مسبقاً — فقط يُترك فارغاً الآن للاتصال المباشر بـGroq.
+     */
+    var onlineEnabled: Boolean = false
+
+    /** مفتاح Groq API (من console.groq.com/keys، مجاني بلا بطاقة ائتمان). يُدخله المطوّر من أدوات المطور. */
+    var onlineApiKey: String = ""
+
+    /**
+     * عنوان أساس بديل (بروكسي/مرآة) يُستبدَل به `https://api.groq.com/openai/v1`
+     * عند الاتصال بـGroq — يُترك فارغاً افتراضياً (الاتصال المباشر بخوادم
+     * Groq). يُستخدم فقط إن كان الاتصال المباشر محجوباً فعلياً من شبكة
+     * المستخدم؛ عندها يضع المطوّر هنا عنوان خادم بروكسي خاص به (Cloudflare
+     * Worker مثلاً) يُعيد توجيه نفس المسار (`/chat/completions`) لخوادم Groq
+     * الحقيقية دون أي تعديل على الجسم أو الرد، فيبقى كل منطق
+     * [OnlineAssistant] كما هو. راجع التعليق أعلى [OnlineAssistant.answer]
+     * لتفاصيل بناء الرابط الكامل.
+     */
+    var onlineBaseUrl: String = ""
+
+    /**
+     * مُعرِّف نموذج Groq المُستخدَم. الافتراضي "llama-3.3-70b-versatile" —
+     * نموذج بلا "تفكير" داخلي (خلافاً لبعض نماذج Groq الأخرى مثل عائلة
+     * gpt-oss)، فتذهب كامل حصة [OnlineAssistant.MAX_OUTPUT_TOKENS] لنص
+     * الإجابة المرئي مباشرة بلا أي مفاجأة اقتطاع مشابهة لما حدث سابقاً مع
+     * Gemini. قابل للتغيير من أدوات المطور لاسم نموذج آخر من قائمة Groq
+     * (console.groq.com/docs/models) إن لزم.
+     */
+    var onlineModel: String = "llama-3.3-70b-versatile"
+
+    val defaultSimilarityThreshold = 0.34
+    val defaultSearchThreshold = 0.12
+    val defaultTrainedThreshold = 0.45
+    val defaultAutoLearnEnabled = true
+    val defaultOnlineEnabled = false
+    val defaultOnlineModel = "llama-3.3-70b-versatile"
+    val defaultOnlineBaseUrl = ""
+
+    fun resetToDefaults() {
+        similarityThreshold = defaultSimilarityThreshold
+        searchThreshold = defaultSearchThreshold
+        extraStopWords = emptySet()
+        synonyms = emptyMap()
+        trainedExamples = emptyList()
+        trainedMatchThreshold = defaultTrainedThreshold
+        autoLearnedExamples = emptyList()
+        autoLearnEnabled = defaultAutoLearnEnabled
+        // لا يُصفَّر مفتاح/تفعيل الوضع الذكي عبر الإنترنت هنا عمداً: هذا
+        // "إعادة ضبط" لعتبات المطابقة المحلية تحديداً (كما كان قبل هذه
+        // الإضافة)، بينما إعدادات الاتصال بالإنترنت لها مفتاح تصفير مستقل
+        // (AdminToolsScreen) حتى لا يفقد المطوّر مفتاحه بالخطأ عند إعادة
+        // ضبط عتبات غير متعلقة إطلاقاً بالاتصال بالإنترنت.
+    }
+}
+
+/**
+ * قدرة جديدة: "إدراك" سيمو لتصنيفات الموسوعة (Category). حتى الآن كان سيمو
+ * يقرأ فقط حقول العشبة النصية الستة (الاسم/الفوائد/الاستخدام/التحذيرات/
+ * الأضرار/الملاحظات) ولا يعرف بوجود فئات إطلاقاً رغم أنها جزء أصيل من بنية
+ * الموسوعة (تُعرض لها شاشتها الخاصة CategoryHerbsScreen تماماً كالأعشاب).
+ * بنفس نمط [AiConfig] (كائن مركزي حي يُحدَّث من خارج هذا الملف دون تغيير
+ * توقيع أي دالة أو شاشة) تُحدِّث [com.salman.herbalencyclopedia.ui.AppViewModel]
+ * هذه الخريطة (معرّف الفئة ← اسمها) كلما وصلت فئات جديدة من Firestore، فيصبح
+ * اسم فئة العشبة جزءاً فعلياً من نصوص العشبة القابلة للبحث والفهرسة أدناه
+ * (انظر [HerbAssistant.searchableFields] و[HerbAssistant.corpusIndexFor])
+ * بلا أي حاجة لتمرير قائمة فئات عبر كل دالة/شاشة تستخدم سيمو.
+ */
+object HerbCategoryLookup {
+    var categoryNames: Map<String, String> = emptyMap()
+}
+
+/** حالة تدريب واحدة: سؤال نموذجي والرد المخصّص الذي يجب أن يعطيه سيمو له. */
+data class TrainedExample(val pattern: String, val response: String)
+
+/**
+ * سيمو — المساعد الذكي للموسوعة. يعمل بالكامل داخل الجهاز، بلا اتصال
+ * إنترنت، بلا مفتاح API، وبلا أي تكلفة أو إعداد. يقرأ نصوص الأعشاب الموجودة
+ * أصلاً في الموسوعة (الفوائد، الاستخدام، التحذيرات، الأضرار، الملاحظات)،
+ * يحلّلها، يجيب بحرية على أي سؤال، ولا يبني مقارنة منظّمة بين أكثر من عشبة
+ * إلا عندما يُطلب منه ذلك صراحة (باختيار عشبتين أو ذكرهما بالاسم في السؤال).
+ *
+ * "تدريبه" يحدث على ثلاثة مستويات:
+ * 1) يدوياً من أدوات المطور (مرادفات + حالات مدرَّبة، انظر [AiConfig]).
+ * 2) قاموس عربي عام مرفق محلياً مع التطبيق ([DictionaryLexicon]، مبني من
+ *    Rabih Dictionary وArabic WordNet) يوسّع فهم الكلمات والمرادفات العامة
+ *    بلا أي تدخل يدوي وبلا إنترنت — تفصيل ذلك في توثيق [DictionaryLexicon].
+ * 3) ذاتياً أثناء الاستخدام الفعلي: [CorpusIndex] يُبنى تلقائياً من نصوص
+ *    الموسوعة نفسها ليكتشف أوزان الكلمات وعلاقاتها الضمنية دون أي تدخل
+ *    يدوي، و[recordFeedback] يحوّل تقييمات المستخدمين (👍) على إجابات
+ *    البحث الحر إلى حالات مدرَّبة تلقائياً — أي أن سيمو يعتمد بالكامل على
+ *    بيانات الموسوعة، ثم يراكم فوقها خبرة من استخدامه الفعلي. هذه الخبرة
+ *    ليست محصورة بجهاز واحد: [learningKey] و[mergeLearnedExamples] يدعمان
+ *    مزامنتها بين كل الأجهزة عبر SemoLearningRepository (Firestore)، فما
+ *    يتعلّمه سيمو من مستخدم على جهاز يصل تلقائياً لبقية الأجهزة، بدل أن
+ *    يحتاج كل جهاز لتعلّم نفس الشيء بنفسه من الصفر.
+ * لا يوجد هنا نموذج شبكة عصبية يحتاج تدريباً فعلياً؛ هذا "تعلّم" رمزي بحت
+ * (إحصائي + تغذية راجعة) مناسب لتشغيل محلي بالكامل دون إنترنت أو معالجة ثقيلة.
+ *
+ * إضافتان جديدتان: 1) [isFollowUpQuestion] تمكّن شاشة الدردشة من "ذاكرة
+ * محادثة" خفيفة — متابعة الحديث عن نفس العشبة عبر أسئلة متتالية دون تكرار
+ * اسمها في كل مرة (انظر توثيقها). 2) نية "خطة" جديدة ([buildPlanAnswer])
+ * تركّب رداً عملياً واحداً من عدة حقول معاً (استخدام + هدف + تحذير) بدل
+ * الاكتفاء بعرض حقل واحد، لمن يسأل "كيف أبدأ" أو "أعطني روتيناً".
+ */
+object HerbAssistant {
+
+    // ── أدوات معالجة نصوص عربية بسيطة ──────────────────────────────────
+
+    private val baseStopWords = setOf(
+        "من", "في", "على", "الى", "إلى", "عن", "مع", "هذا", "هذه", "ذلك", "تلك",
+        "التي", "الذي", "و", "أو", "او", "ثم", "قد", "لا", "لم", "لن", "كان",
+        "يكون", "تكون", "بعض", "كل", "أي", "اي", "ما", "هل", "أن", "ان", "كما",
+        "حيث", "بين", "بعد", "قبل", "عند", "أيضا", "ايضا", "جدا", "جداً",
+        "يمكن", "يجب", "يفضل", "غير", "دون", "بدون", "لها", "له", "بها", "به",
+        // قدرة جديدة: أدوات استفهام عامية شائعة جداً (خليجي/مصري/شامي/مغاربي)
+        // لا تحمل بذاتها أي دلالة موضوعية (نظير "ما"/"هل" الفصيحة أعلاه)،
+        // فإضافتها لكلمات الإيقاف تمنعها من "تخفيف" مقاييس التشابه في
+        // [rawContainmentRatio]/[weightedSimilarity] لمجرد عدم مطابقتها أي
+        // كلمة من نصوص الموسوعة — تماماً كما لا تُخفِّف "ما"/"هل" الفصيحتان
+        // أصلاً. لا تُستخدَم [wordsOf] في فحوص النيّة (تلك تفحص qNorm الكامل
+        // مباشرة) فإزالتها هنا لا يؤثر على كشف "استخدام"/"اقتراح" وغيرها.
+        "كيف", "شو", "ايش", "إيش", "وش", "شنو", "ليش", "ليه", "لماذا", "علاش",
+        "وين", "فين", "امتى", "متى", "قديش", "كام", "ازاي", "إزاي", "شلون",
+        "كيفاش", "ايهم", "أيهم"
+    )
+
+    private val stopWords: Set<String>
+        get() = if (AiConfig.extraStopWords.isEmpty()) baseStopWords
+                else baseStopWords + AiConfig.extraStopWords.map { normalize(it) }
+
+    private fun normalize(text: String): String {
+        var t = text
+        t = t.replace(Regex("[\\u064B-\\u0652]"), "") // إزالة التشكيل
+        t = t.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+        t = t.replace('ى', 'ي').replace('ة', 'ه')
+        t = t.replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
+        return t.trim().lowercase()
+    }
+
+    private fun wordsOf(text: String): Set<String> {
+        val base = normalize(text).split(Regex("\\s+"))
+            .filter { it.length > 1 && it !in stopWords }
+            .toSet()
+        return applySynonyms(DialectNormalizer.expand(base))
+    }
+
+    /**
+     * قدرة جديدة: طبقة "فهم لهجات" مدمجة بالتطبيق نفسه (لا تحتاج أي إعداد
+     * يدوي من المطوّر، بعكس [AiConfig.synonyms] القابلة للتعديل من أدوات
+     * المطور) — تغطي كلمات عامية شائعة جداً بالعربية الدارجة (خليجي/شامي/
+     * مصري) لمفاهيم صحية عامة متكررة (جيد/سيّئ/يفيد/يؤلم...)، فيفهمها سيمو
+     * فور التثبيت بلا أي تدخل. منفصلة عمداً عن [HealthTopicSynonyms] (تلك
+     * مجموعات مواضيع كاملة تتوسّع فيما بينها بحثاً عن هدف صحي) وعن
+     * [AiConfig.synonyms] (تلك يضيفها المطوّر يدوياً حسب حاجته) — هذه كلمات
+     * مفردة عامة تُستبدل بمرادفها الفصيح القياسي واحدة تلو الأخرى، لتوسيع
+     * "إدراك" سيمو للصياغات العامية بلا حصر ذلك بقوالب التحية/الشكر فقط.
+     */
+    private object DialectNormalizer {
+        private val rawMap = mapOf(
+            "دوا" to "علاج", "الدوا" to "العلاج", "دوى" to "علاج",
+            "بيقطع" to "يوقف", "بيوقف" to "يوقف", "قاطع" to "موقف",
+            "بينشف" to "يجفف", "منيح" to "جيد", "منيحة" to "جيدة",
+            "زين" to "جيد", "كويس" to "جيد", "كويسة" to "جيدة",
+            "بيهدي" to "يهدئ", "بيريح" to "يريح", "مريح" to "مهدئ",
+            "وجعة" to "ألم", "توجعني" to "يؤلمني", "بيوجع" to "يؤلم",
+            "بينفع" to "يفيد", "ينفع" to "يفيد", "نافع" to "مفيد",
+            "مضر" to "ضار", "بيضر" to "يضر", "ضرر" to "ضار",
+            "حبة" to "حبوب", "دقة" to "مسحوق", "مطحون" to "مسحوق",
+            "بيسمن" to "يزيد الوزن", "بينحف" to "ينقص الوزن",
+            // توسيع "فهم مصطلحات الفائدة": قدرة جديدة تغطي صياغات إضافية
+            // شائعة لنفس معنى "فائدة/يفيد" لم تكن مغطاة سابقاً (فصحى أو
+            // عامية)، فيفهمها سيمو حتى لو لم يذكر السائل كلمة "فائدة" أو
+            // "فوائد" حرفياً — انظر أيضاً [benefitsIntentWords] أدناه حيث
+            // تُستخدم صيغتها القياسية بعد هذا التطبيع.
+            "يشفي" to "يفيد", "بيشفي" to "يفيد", "شافي" to "مفيد", "شافية" to "مفيدة",
+            "خواص" to "فوائد", "خاصية" to "فائدة", "منافع" to "فوائد", "منفعة" to "فائدة",
+            "تنفع" to "يفيد", "عالج" to "علاج",
+            // قدرة جديدة: توسيع إضافي لتغطية أعراض/مصطلحات عامية شائعة جداً
+            // في أسئلة صحية حقيقية (دوخة، انتفاخ، حرقة، تعب...) لم تكن
+            // مغطاة سابقاً، فتُطبَّع لمرادفها الفصيح القياسي المستخدم فعلاً
+            // في نصوص الموسوعة و/أو في مجموعات [HealthTopicSynonyms] أدناه.
+            "دايخ" to "دوار", "دايخة" to "دوار", "دوخة" to "دوار", "بيدوخني" to "دوار",
+            "نفخة" to "انتفاخ", "منفوخ" to "منتفخ", "بينفخ" to "ينفخ",
+            "قرقرة" to "غازات", "بيقرقر" to "غازات",
+            "حرقان" to "حرقة", "بيحرق" to "حارق",
+            "تعبان" to "متعب", "تعبانة" to "متعبة", "خمول" to "كسل",
+            "بيلين" to "ملين", "بيهيج" to "يحفز", "بيسهل" to "مسهل", "بيقبض" to "قابض"
+        )
+        private val map: Map<String, String> by lazy {
+            rawMap.mapKeys { normalize(it.key) }.mapValues { normalize(it.value) }
+        }
+        fun apply(word: String): String = map[word] ?: word
+        fun expand(words: Set<String>): Set<String> = words.map { apply(it) }.toSet()
+    }
+
+    /**
+     * يستبدل كل كلمة بمرادفها القياسي إن وُجد في [AiConfig.synonyms] (بعد
+     * تطبيع الطرفين)، بحيث تُحسب "ينفع" و"يفيد" مثلاً ككلمة واحدة أثناء أي
+     * مقارنة أو بحث — هذا هو أثر "تعليم سيمو كلمات جديدة" يدوياً على أرض الواقع.
+     */
+    private fun applySynonyms(words: Set<String>): Set<String> {
+        if (AiConfig.synonyms.isEmpty()) return words
+        val table = AiConfig.synonyms.entries.associate { (k, v) -> normalize(k) to normalize(v) }
+        if (table.isEmpty()) return words
+        return words.map { table[it] ?: it }.toSet()
+    }
+
+    /** يقسّم فقرة حرة إلى نقاط قصيرة قابلة للمقارنة والعرض كعناصر منفصلة. */
+    /**
+     * إصلاح خلل حقيقي أُبلغ عنه ("حتى الفواصل والنقط مش نظامي"): كانت أي
+     * نقطة "." أو فاصلة "," تُقسِّم النص دوماً، حتى عندما تكون جزءاً من رقم
+     * عشري أو جرعة فعلية — مثال حقيقي: "خذ 2.5 غرام يومياً" كانت تتحوّل إلى
+     * نقطتين منفصلتين مشوَّهتين ("خذ 2" و"5 غرام يومياً")، فتضيع الجرعة
+     * الحقيقية تماماً. الإصلاح: "." أو "," يُقسِّمان النص فقط عندما لا يكون
+     * أي منهما محاطاً برقم مباشرة من الجهتين (عبر lookaround)، فيبقى "2.5"
+     * أو "1,200" سليماً كوحدة واحدة، بينما تستمر نهاية الجملة العادية
+     * بالتقسيم الصحيح كما كانت.
+     */
+    private fun splitPoints(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        return text.split(Regex("[،\\n؛;]|(?<!\\d)[.,](?!\\d)|\\s-\\s"))
+            .map { it.trim().trim('-', ' ') }
+            .filter { it.length > 2 }
+    }
+
+    private fun jaccard(a: Set<String>, b: Set<String>): Double {
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        val inter = a.intersect(b).size.toDouble()
+        val union = a.union(b).size.toDouble()
+        return if (union == 0.0) 0.0 else inter / union
+    }
+
+    private fun containsAny(normalizedText: String, terms: List<String>): Boolean =
+        terms.any { normalizedText.contains(normalize(it)) }
+
+    /**
+     * إصلاح خلل حقيقي: هل يطابق [qNorm] إحدى عبارات [phrases] كـ**كلمات
+     * مستقلة كاملة**، لا كسلسلة فرعية داخل كلمة أطول (بعكس [containsAny])؟
+     * ويُشترط أيضاً أن يكون السؤال كله قصيراً (≤ [maxWords]) حتى لا تُخطَف
+     * جملة طويلة فيها نية حقيقية (مقارنة/سؤال مفصَّل) لمجرد ورود كلمة قصيرة
+     * منها بالمصادفة (مثال حقيقي أُبلغ عنه: "hi" ضمن اسم علمي لاتيني لعشبة
+     * مثل Thymus أو chamomilla كانت تُخطَف كتحية عبر [containsAny] القديم).
+     */
+    private fun isShortExactPhraseMatch(qNorm: String, phrases: List<String>, maxWords: Int): Boolean {
+        val words = qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.isEmpty() || words.size > maxWords) return false
+        val wordSet = words.toSet()
+        return phrases.any { phrase ->
+            val phraseWords = normalize(phrase).split(Regex("\\s+")).filter { it.isNotBlank() }
+            phraseWords.isNotEmpty() && phraseWords.all { it in wordSet }
+        }
+    }
+
+    private val pureGreetingPhrases = listOf(
+        "مرحبا", "مرحباً", "مرحبتين", "اهلا", "أهلا", "هلا", "هلا بيك", "هلا فيك",
+        "السلام عليكم", "hello", "hi", "hey"
+    )
+
+    /** انظر توثيق [isShortExactPhraseMatch] أعلاه — هذه أداة الاستدعاء المخصَّصة للترحيب تحديداً. */
+    private fun isPureGreeting(qNorm: String): Boolean = isShortExactPhraseMatch(qNorm, pureGreetingPhrases, maxWords = 5)
+
+    private fun herbNames(herbs: Collection<Herb>): String = herbs.joinToString(" و") { it.name }
+
+    // ── قدرة جديدة: فهم النفي ────────────────────────────────────────────
+
+    private val negationTriggers = setOf("لا", "ما", "مو", "مب", "مش", "بدون", "غير", "عدا", "إلا")
+
+    /**
+     * هل ذُكر [term] (عادة اسم عشبة) بصيغة منفية داخل السؤال؟ نفي "حقيقي" =
+     * وجود أداة نفي ضمن ٣ كلمات قبل ورود أول كلمة من [term] مباشرة، لا نفي
+     * عشوائي بأي مكان من الجملة — مثال واقعي: "اقترح عشبة للنوم بس مو
+     * البابونج" ينفي "البابونج" تحديداً لا "النوم". يُستخدم لاستبعاد عشبة
+     * ذكر المستخدم صراحة أنه لا يريدها من نتائج الاقتراح، بدل تجاهل النفي
+     * كلياً وترشيحها له رغم ذلك.
+     */
+    private fun isNegatedMention(qNorm: String, term: String): Boolean {
+        val termNorm = normalize(term)
+        if (termNorm.isBlank()) return false
+        val words = qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val firstTermWord = termNorm.split(Regex("\\s+")).firstOrNull { it.isNotBlank() } ?: return false
+        val idx = words.indexOfFirst { it == firstTermWord || it.contains(firstTermWord) || firstTermWord.contains(it) }
+        if (idx < 0) return false
+        val windowStart = (idx - 3).coerceAtLeast(0)
+        return (windowStart until idx).any { words[it] in negationTriggers }
+    }
+
+    // ── قدرة جديدة: تلميحات عمرية/مدة صريحة بالسؤال ──────────────────────
+
+    private val childMentionWords = listOf("طفل", "أطفال", "اطفال", "رضيع", "رضع", "صغير", "صغيرة")
+
+    /**
+     * قدرة جديدة: التقاط تلميحات "عمرية/مدة استخدام" صريحة بالسؤال (طفل/
+     * رضيع، عمر برقم محدَّد، أو مدة كأسبوع/أشهر) — تفاصيل نادراً ما تحويها
+     * الموسوعة بدقة كافية لأي عمر/مدة بعينها. بدل تجاهلها كلياً وعرض جواب
+     * عام وكأنه يغطيها، تُضاف ملاحظة صريحة بنهاية الجواب تنبّه أن هذا
+     * التفصيل بالذات يستحق تأكيداً من مختص، لا افتراض أن الجواب العام يكفي.
+     * `null` إن لم يذكر السؤال أي تلميح من هذا النوع، فلا تُضاف أي ملاحظة.
+     */
+    private fun contextHint(question: String): String? {
+        val qNorm = normalize(question)
+        val hasChild = containsAny(qNorm, childMentionWords)
+        val hasAgeNumber = Regex("\\d+\\s*(سنة|سنين|شهر|اشهر|أشهر)").containsMatchIn(qNorm)
+        val hasDuration = containsAny(qNorm, listOf("اسبوع", "أسبوع", "اسابيع", "أسابيع", "شهرين", "أشهر", "اشهر"))
+        return when {
+            hasChild || hasAgeNumber ->
+                "📌 لاحظت إنك بتسأل عن حالة عمرية محدَّدة (طفل/عمر معيّن) — بيانات الموسوعة عامة وغير مفصَّلة حسب العمر، فاستشارة طبيب أو صيدلاني هون أهم من العادة."
+            hasDuration ->
+                "📌 لاحظت إنك ذكرت مدة استخدام محدَّدة — الموسوعة لا تحدد مدة استخدام آمنة بدقة، يُفضَّل تأكيدها من مختص قبل الالتزام بها."
+            else -> null
+        }
+    }
+
+    /** يُلحق [contextHint] بنهاية الجواب إن وُجد تلميح فعلاً، وإلا يُعاد النص كما هو دون أي تعديل. */
+    private fun withContextHint(text: String, question: String): String {
+        val hint = contextHint(question) ?: return text
+        return "$text\n\n$hint"
+    }
+
+
+    // ── فهرس "مفهوم تلقائياً" من نصوص الموسوعة نفسها ────────────────────
+
+    /**
+     * فهرس يُبنى تلقائياً من نصوص الموسوعة نفسها (لا يحتاج أي تدخل يدوي)
+     * ليمنح سيمو فهماً أعمق من مجرد تقاطع كلمات بسيط:
+     *
+     * 1) وزن كل كلمة (IDF تقريبي): كلمة نادرة الورود عبر كل نقاط الموسوعة
+     *    (اسم عرَض أو استخدام مميّز) تعني أكثر من كلمة شائعة جداً (كـ"يساعد")،
+     *    فتُعطى وزناً أعلى عند حساب التشابه بين سؤال المستخدم ونص الموسوعة.
+     * 2) علاقات ضمنية بين الكلمات: كلمتان تتكرران معاً كثيراً نسبياً داخل
+     *    نفس النقطة عبر أعشاب مختلفة تُعتبر "مرتبطتين" تلقائياً (نسخة مبسّطة
+     *    من مقياس PMI)، فيتوسّع فهم سؤال المستخدم بها دون أي مرادف يُضاف
+     *    يدوياً من المطوّر — تعلّم توزيعي بحت من بيانات الموسوعة ذاتها.
+     *
+     * يُعاد بناؤه فقط عند تغيّر قائمة الأعشاب أو الخلطات المرجعة (انظر
+     * [corpusIndexFor]).
+     *
+     * يُبنى الآن من قائمة نصوص خام مسطّحة ([fieldTexts]) بدل قائمة أعشاب
+     * مباشرة، بحيث يمكن تغذيته بنصوص الأعشاب *والخلطات* معاً — وهذا هو ما
+     * يجعل "فهم" سيمو (أوزان الكلمات وعلاقاتها الضمنية) يشمل كل الموسوعة
+     * فعلياً بدل الاقتصار على الأعشاب وحدها.
+     */
+    private class CorpusIndex(fieldTexts: List<String>) {
+        private val idf: Map<String, Double>
+        private val related: Map<String, List<String>>
+
+        init {
+            val points = mutableListOf<Set<String>>()
+            fieldTexts.forEach { field ->
+                splitPoints(field).forEach { p ->
+                    val w = wordsOf(p)
+                    if (w.isNotEmpty()) points += w
                 }
             }
-        awaitClose { registration.remove() }
-    }.retryWhen { cause, attempt ->
-        // كان أي خطأ بالمستمع (انقطاع لحظي، انتهاء صلاحية توكن، ...) يُنهي
-        // المزامنة الحيّة نهائياً إلى أن يُعاد فتح التطبيق يدوياً. الآن
-        // نعيد الاشتراك تلقائياً بتأخير تصاعدي (1s ثم 2s ثم 4s... سقف 30s)
-        // بدل الاستسلام من أول خطأ - نفس المصدر (uiState.error) يبقى
-        // يعرض الرسالة المناسبة للمستخدم أثناء إعادة المحاولة بالخلفية.
-        //
-        // *** إصلاح: كانت `true` مطلقة هنا - أي إعادة محاولة أبدية كل ٣٠
-        // ثانية حتى على أخطاء دائمة لن تتغيّر أبداً بإعادة المحاولة (كرفض
-        // صلاحيات PERMISSION_DENIED لمجموعة لا تسمح بها قواعد الأمان، أو
-        // مستخدم غير مسجّل دخول أصلاً بينما القاعدة تتطلب ذلك). في هذه
-        // الحالات كان المستمع يستهلك موارد/طلبات بلا أي أمل بالنجاح مستقبلاً،
-        // بينما يبقى مصدره الظاهري (uiState.error عبر startAdminLiveSync
-        // مثلاً) عالقاً على "جارٍ إعادة المحاولة" دائماً بدل رسالة خطأ واضحة
-        // نهائية. الآن نتوقف فوراً (نرمي الاستثناء كما هو) على أي خطأ غير
-        // مؤقت حسب [isTransientError] - نفس المعيار المستخدم أصلاً في
-        // [com.salman.herbalencyclopedia.ui.AppViewModel.syncCatalogFromServer]
-        // لقرار مطابق تماماً على القراءة لمرة واحدة. ***
-        if (!isTransientError(cause)) return@retryWhen false
-        val delayMs = (1000L shl attempt.toInt().coerceAtMost(5)).coerceAtMost(30_000L)
-        delay(delayMs)
-        true
+            val docCount = points.size.coerceAtLeast(1)
+            val df = mutableMapOf<String, Int>()
+            points.forEach { pts -> pts.forEach { w -> df[w] = (df[w] ?: 0) + 1 } }
+            idf = df.mapValues { (_, d) -> ln(docCount.toDouble() / d.toDouble() + 1.0) }
+
+            val coOccur = mutableMapOf<Pair<String, String>, Int>()
+            points.forEach { pts ->
+                val list = pts.toList()
+                for (i in list.indices) for (j in i + 1 until list.size) {
+                    val a = list[i]; val b = list[j]
+                    val key = if (a < b) a to b else b to a
+                    coOccur[key] = (coOccur[key] ?: 0) + 1
+                }
+            }
+            val relatedMap = mutableMapOf<String, MutableList<Pair<String, Double>>>()
+            coOccur.forEach { (pair, count) ->
+                if (count < 2) return@forEach // تحوّطاً من تطابق عابر لمرة واحدة
+                val (a, b) = pair
+                val score = count.toDouble() / sqrt((df[a] ?: 1).toDouble() * (df[b] ?: 1).toDouble())
+                if (score >= 0.5) {
+                    relatedMap.getOrPut(a) { mutableListOf() } += b to score
+                    relatedMap.getOrPut(b) { mutableListOf() } += a to score
+                }
+            }
+            related = relatedMap.mapValues { (_, l) -> l.sortedByDescending { it.second }.take(3).map { it.first } }
+        }
+
+        fun weightOf(word: String): Double = idf[word] ?: 1.0
+
+        /**
+         * إصلاح خلل حقيقي أُبلغ عنه ("المرادفات وكأنها ما تُستخدم"): كلمة
+         * موسَّعة من [DictionaryLexicon] (قاموس عام ٣٣٠ ألف مدخل) لا تظهر
+         * إطلاقاً في نص هذه الموسوعة تحديداً لا يمكنها أبداً مطابقة أي نقطة
+         * فعلياً (كل [wordsOf] لنقاط الموسوعة مبنية من نفس مفردات هذه
+         * الموسوعة حصراً) — فكل ما تفعله كلمة كهذه هو تضخيم مقام
+         * [weightedSimilarity]/[queryCoverage] (عبر الوزن الافتراضي ١.٠
+         * أعلاه) بلا أي فرصة إطلاقاً للمساهمة بالبسط، أي "تخفيف" صافٍ
+         * للنتيجة بلا أي احتمال فائدة — وهذا بالضبط ما كان يجعل التوسيع
+         * بمرادفات القاموس الخارجي عديم الأثر عملياً بل ضاراً أحياناً، رغم
+         * كونه "مُفعَّلاً" فعلاً بالكود. [filterKnown] تُبقي فقط الكلمات
+         * الموجودة فعلاً بمفردات هذه الموسوعة (فرصة مطابقة حقيقية)، فيُزال
+         * كل هذا التخفيف بلا أي خسارة في الاحتمالات الممكنة أصلاً.
+         */
+        fun filterKnown(words: Set<String>): Set<String> = words.filter { idf.containsKey(it) }.toSet()
+
+        /** يوسّع كلمات السؤال بالعلاقات المكتشَفة تلقائياً (إضافة فهم ضمني، لا حذف). */
+        fun expand(words: Set<String>): Set<String> =
+            if (words.isEmpty()) words else words + words.flatMap { related[it].orEmpty() }
     }
 
-    // ---------------------------------------------------------------------
-    // One-shot reads
-    // ---------------------------------------------------------------------
+    // ── تدريب سيمو الافتتاحي: أكثر من 500 صياغة محادثة جاهزة ────────────
 
-    suspend fun fetchHerbs(fromServer: Boolean = false): List<Herb> =
-        db.collection("herbs").get(if (fromServer) Source.SERVER else Source.DEFAULT)
-            .await().toObjects(Herb::class.java)
-
-    suspend fun fetchCategories(fromServer: Boolean = false): List<Category> =
-        db.collection("categories").get(if (fromServer) Source.SERVER else Source.DEFAULT)
-            .await().toObjects(Category::class.java)
-
-    suspend fun fetchBlends(fromServer: Boolean = false): List<Blend> =
-        db.collection("blends").get(if (fromServer) Source.SERVER else Source.DEFAULT)
-            .await().toObjects(Blend::class.java)
-
-    // ---------------------------------------------------------------------
-    // Writes
-    // ---------------------------------------------------------------------
-
-    suspend fun addHerb(herb: Herb) {
-        val data: HashMap<String, Any?> = hashMapOf(
-            "name" to herb.name.trim(),
-            "category_id" to herb.categoryId,
-            "benefits" to herb.benefits.trim().ifBlank { "—" },
-            "warnings" to herb.warnings.trim().ifBlank { "—" },
-            "harms" to herb.harms.trim().ifBlank { "—" },
-            "usage" to herb.usage.trim().ifBlank { "—" },
-            "notes" to herb.notes.trim().ifBlank { "—" },
-            "image_url" to herb.imageUrl,
-            "created_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+    /**
+     * "تدريب سيمو الافتتاحي" — أكثر من 500 صياغة عربية/عامية مختلفة (تحية،
+     * شكر، وداع، سؤال عن الحال، هوية سيمو، قدراته، اعتذار، مجاملة، ورد
+     * بسيط بنعم/لا) يتعرّف عليها سيمو مباشرة فور تثبيت التطبيق، دون أي حاجة
+     * لبحث حر في الموسوعة ودون أي تدخل من المطوّر بعد التثبيت — هذا هو
+     * "تدريبه على أكثر من 500 سؤال" كما طُلب، منفصل تماماً عن
+     * [AiConfig.trainedExamples] (تدريب المطوّر اليدوي القابل للتعديل من
+     * أدوات المطور) و[AiConfig.autoLearnedExamples] (تعلّمه الذاتي من
+     * تقييمات المستخدمين). الصياغات تُبنى من حاصل ضرب (كلمات أساسية ×
+     * لواحق شائعة) بدل كتابة كل صياغة يدوياً، فتغطّي مئات الاحتمالات
+     * الواقعية التي يكتبها المستخدم فعلاً بأقل قدر من التكرار في الكود.
+     */
+    private object ConversationalSeed {
+        private data class Category(
+            val words: List<String>,
+            val suffixes: List<String>,
+            val responses: List<String>,
+            /** مطابقة تامة فقط (بلا startsWith) — للعبارات القصيرة جداً القابلة للالتباس مثل "لا". */
+            val exactOnly: Boolean = false
         )
-        db.collection("herbs").add(data).await()
-    }
 
-    suspend fun updateHerb(herb: Herb) {
-        val data: HashMap<String, Any?> = hashMapOf(
-            "name" to herb.name.trim(),
-            "category_id" to herb.categoryId,
-            "benefits" to herb.benefits.trim().ifBlank { "—" },
-            "warnings" to herb.warnings.trim().ifBlank { "—" },
-            "harms" to herb.harms.trim().ifBlank { "—" },
-            "usage" to herb.usage.trim().ifBlank { "—" },
-            "notes" to herb.notes.trim().ifBlank { "—" },
-            "image_url" to herb.imageUrl,
-            "updated_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-        )
-        db.collection("herbs").document(herb.id).update(data).await()
-    }
-
-    suspend fun deleteHerb(id: String) {
-        db.collection("herbs").document(id).delete().await()
-    }
-
-    // ---------------------------------------------------------------------
-    // Blends ("الخلطات") — same admin-only write model as herbs above.
-    // ---------------------------------------------------------------------
-
-    suspend fun addBlend(blend: Blend) {
-        val data: HashMap<String, Any?> = hashMapOf(
-            "name" to blend.name.trim(),
-            "herb_ids" to blend.herbIds,
-            "benefits" to blend.benefits.trim().ifBlank { "—" },
-            "usage" to blend.usage.trim().ifBlank { "—" },
-            "warnings" to blend.warnings.trim().ifBlank { "—" },
-            "notes" to blend.notes.trim().ifBlank { "—" },
-            "image_url" to blend.imageUrl,
-            "created_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-        )
-        db.collection("blends").add(data).await()
-    }
-
-    suspend fun updateBlend(blend: Blend) {
-        val data: HashMap<String, Any?> = hashMapOf(
-            "name" to blend.name.trim(),
-            "herb_ids" to blend.herbIds,
-            "benefits" to blend.benefits.trim().ifBlank { "—" },
-            "usage" to blend.usage.trim().ifBlank { "—" },
-            "warnings" to blend.warnings.trim().ifBlank { "—" },
-            "notes" to blend.notes.trim().ifBlank { "—" },
-            "image_url" to blend.imageUrl,
-            "updated_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-        )
-        db.collection("blends").document(blend.id).update(data).await()
-    }
-
-    suspend fun deleteBlend(id: String) {
-        db.collection("blends").document(id).delete().await()
-    }
-
-    suspend fun addCategory(name: String) {
-        db.collection("categories").add(
-            hashMapOf(
-                "name" to name.trim(),
-                "created_at" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        private val greeting = Category(
+            words = listOf(
+                "مرحبا", "مرحباً", "مرحبتين", "هلا", "هلا بيك", "هلا فيك", "أهلا", "اهلا",
+                "أهلا وسهلا", "اهلا وسهلا", "اهلين", "يا هلا", "صباح الخير", "صباح النور",
+                "مساء الخير", "مساء النور", "السلام عليكم", "وعليكم السلام", "هاي", "هالو",
+                "hello", "hi", "hey", "يا سيمو",
+                // إضافة: صياغات مصرية/مغاربية شائعة لم تكن مغطاة سابقاً.
+                "ازيك", "ازيك يا سيمو", "عامل ايه", "عاملة ايه", "ايه الأخبار",
+                "أهلا بيك", "أهلا وسهلا بيك", "سلامو عليكم", "واش راك", "لاباس"
+            ),
+            suffixes = listOf("", " سيمو", " يا سيمو", " كيف الحال", "؟", " فيك خير", " يا صديقي"),
+            responses = listOf(
+                "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
+                "هلا فيك 🌿 سيمو حاضر، جاهز أساعدك بأي سؤال عن الأعشاب في الموسوعة."
             )
-        ).await()
-    }
+        )
 
-    suspend fun updateCategory(id: String, name: String) {
-        db.collection("categories").document(id).update("name", name.trim()).await()
-    }
+        private val thanks = Category(
+            words = listOf(
+                "شكرا", "شكراً", "شكرا الك", "شكرا كتير", "يعطيك العافية", "يعطيك الف عافية",
+                "تسلم", "تسلم ايدك", "تسلمي", "الله يعطيك العافية", "مشكور", "مشكورة",
+                "ممنون", "ممنونة", "جزاك الله خير", "تسلملي", "الله يخليك", "يسلمو"
+            ),
+            suffixes = listOf("", " سيمو", " كتير", " جدا", " يا سيمو", "!"),
+            responses = listOf(
+                "عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.",
+                "العفو 🌱 سعيد إني قدرت أساعدك، تحت أمرك بأي وقت."
+            )
+        )
 
-    suspend fun deleteCategory(id: String) {
-        db.collection("categories").document(id).delete().await()
-    }
+        private val farewell = Category(
+            words = listOf(
+                "مع السلامة", "باي", "وداعا", "الى اللقاء", "إلى اللقاء", "تصبح على خير",
+                "تصبحين على خير", "نهارك سعيد", "بشوفك", "نلتقي لاحقا", "سلام", "bye",
+                "يلا باي", "يالله باي", "الله معك", "بالتوفيق"
+            ),
+            suffixes = listOf("", " سيمو", " يا سيمو", "!"),
+            responses = listOf(
+                "مع السلامة 🌿 ارجع أي وقت تحتاج فيه سيمو لسؤال عن الأعشاب.",
+                "إلى اللقاء 🌱 سيمو موجود دائماً هنا لما تحتاجني."
+            )
+        )
 
-    suspend fun deleteAllHerbs() {
-        val docs = db.collection("herbs").get(Source.SERVER).await().documents
-        docs.chunked(450).forEach { chunk ->
-            val batch = db.batch(); chunk.forEach { batch.delete(it.reference) }; batch.commit().await()
+        private val wellbeing = Category(
+            words = listOf(
+                "كيفك", "كيف حالك", "شلونك", "شو اخبارك", "اخبارك ايه",
+                "كيف الصحة", "كيفك اليوم", "انت منيح", "شو مسوي", "ايش الأخبار", "شخبارك",
+                // إضافة: مزيد من صياغات الحال العامية (مصري/مغاربي).
+                "ازيك يا سيمو عامل ايه", "احوالك ايه", "كيف داير", "واش نتا لاباس",
+                "كيفك انت", "شخبار سيمو"
+            ),
+            suffixes = listOf("", " سيمو", " يا سيمو", "؟"),
+            responses = listOf(
+                "الحمد لله تمام 🌿 أنا سيمو وجاهز دائماً، كيف أقدر أساعدك اليوم بموضوع الأعشاب؟",
+                "بخير وجاهز أساعدك 🌱 شو الموضوع اللي حابب تسألني عنه؟"
+            )
+        )
+
+        private val identity = Category(
+            words = listOf(
+                "من انت", "مين انت", "شو اسمك", "ما اسمك", "انت مين", "عرفني فيك",
+                "احكيلي عنك", "مين سيمو", "who are you", "what is your name",
+                // إضافة: مزيد من صياغات التعريف بالهوية.
+                "عرفني بنفسك", "انت مين بالظبط", "وش انت", "ايش انت", "انت شو"
+            ),
+            suffixes = listOf("", "؟", " سيمو"),
+            responses = listOf(
+                "أنا سيمو 🌿، المساعد الذكي لموسوعة الأعشاب. أعمل بالكامل على جهازك دون إنترنت، وأجيبك من بيانات الأعشاب الموجودة في الموسوعة عن الفوائد والاستخدام والتحذيرات."
+            )
+        )
+
+        private val capability = Category(
+            words = listOf(
+                "شو تقدر تعمل", "ماذا تستطيع ان تفعل", "ايش بتعرف تعمل", "شو بتعرف",
+                "ما هي قدراتك", "كيف تساعدني", "بماذا تساعدني", "وش تسوي",
+                "ماذا تفعل", "what can you do"
+            ),
+            suffixes = listOf("", "؟", " سيمو"),
+            responses = listOf(
+                "أقدر أجاوبك عن فوائد أي عشبة في الموسوعة، طريقة استخدامها، تحذيراتها وأضرارها، وأقدر كمان أقارن بين أكثر من عشبة إذا طلبت ذلك صراحة — جرّب اسألني عن اسم عشبة مباشرة."
+            )
+        )
+
+        private val apology = Category(
+            words = listOf(
+                "اسف", "آسف", "اسفة", "آسفة", "معذرة", "سامحني", "عفوا", "سوري", "sorry",
+                "معلش", "معليش"
+            ),
+            suffixes = listOf("", " سيمو", "!"),
+            responses = listOf("ولا يهمك 🌿 لا داعي للاعتذار، خبرني كيف أقدر أساعدك.")
+        )
+
+        private val compliment = Category(
+            words = listOf(
+                "برافو", "احسنت", "رائع", "ممتاز", "تمام", "حلو", "perfect", "nice",
+                "great job", "كفو", "روعة", "جميل"
+            ),
+            suffixes = listOf("", " سيمو", "!"),
+            responses = listOf("شكراً لكلامك الطيب 🌿 سعيد إني أفدتك، تحت أمرك بأي سؤال ثاني.")
+        )
+
+        private val smalltalk = Category(
+            words = listOf("نعم", "ايوة", "أيوة", "تمام", "اوك", "ok", "لا", "لأ", "مافي شي", "خلاص"),
+            suffixes = listOf(""),
+            responses = listOf("تمام 🌿 خبرني إذا حابب تسأل عن عشبة معيّنة أو أي موضوع بالموسوعة."),
+            exactOnly = true
+        )
+
+        private val all = listOf(
+            greeting, thanks, farewell, wellbeing, identity, capability, apology, compliment, smalltalk
+        )
+
+        /** صياغة واحدة مسطّحة: النص، ردّه، وهل مطابقتها تامة فقط (بلا استثناء). */
+        private data class Flat(val phrase: String, val response: String, val exactOnly: Boolean)
+
+        /** كل الصياغات مسطّحة، تُبنى مرة واحدة فقط عند أول استخدام. */
+        private val flattened: List<Flat> by lazy {
+            val out = mutableListOf<Flat>()
+            all.forEach { cat ->
+                cat.words.forEach { w ->
+                    cat.suffixes.forEach { s ->
+                        val phrase = (w + s).trim()
+                        if (phrase.isNotBlank()) {
+                            val idx = phrase.hashCode().let { if (it < 0) -it else it } % cat.responses.size
+                            out += Flat(phrase, cat.responses[idx], cat.exactOnly)
+                        }
+                    }
+                }
+            }
+            out
+        }
+
+        /** عدد الصياغات المدرَّبة فعلياً (لأغراض العرض/التوثيق فقط). */
+        val phrasingCount: Int get() = flattened.size
+
+        /**
+         * يطابق سؤال المستخدم (بعد التطبيع) بأطول صياغة مدرَّبة مطابقة تماماً،
+         * أو تكون الصياغة بداية للسؤال مع فارق طفيف جداً بعدها (٣ أحرف كحد
+         * أقصى، لالتقاط علامات ترقيم أو مسافات) — بحيث لا تُخطف أسئلة حقيقية
+         * عن الأعشاب تحتوي بالصدفة على جزء من عبارة تحية قصيرة. الصياغات
+         * القصيرة الملتبسة (مثل "لا") تتطلب مطابقة تامة فقط.
+         */
+        fun match(question: String): String? {
+            val qNorm = normalize(question)
+            if (qNorm.isBlank()) return null
+            var best: Flat? = null
+            var bestLen = -1
+            for (flat in flattened) {
+                val pNorm = normalize(flat.phrase)
+                if (pNorm.isEmpty()) continue
+                val isMatch = qNorm == pNorm ||
+                    (!flat.exactOnly && qNorm.startsWith(pNorm) && qNorm.length - pNorm.length <= 3)
+                if (isMatch && pNorm.length > bestLen) {
+                    best = flat
+                    bestLen = pNorm.length
+                }
+            }
+            return best?.response
         }
     }
 
-    suspend fun deleteAllData() {
-        deleteAllHerbs()
-        val docs = db.collection("categories").get(Source.SERVER).await().documents
-        docs.chunked(450).forEach { chunk ->
-            val batch = db.batch(); chunk.forEach { batch.delete(it.reference) }; batch.commit().await()
+    // ── مجموعات مرادفات مواضيع صحية شائعة (مشكلة "التنحيف") ─────────────
+
+    /**
+     * مشكلة حقيقية أُبلغ عنها: سؤال عن "التنحيف" (أو اقتراح عشبة له) كان لا
+     * يُطابق أي عشبة تقريباً، رغم وجود بيانات فعلية في الموسوعة تتحدث عن
+     * الموضوع نفسه بكلمات أخرى (إنقاص الوزن، حرق الدهون، الرجيم، السمنة...).
+     * السبب: لا [ArabicLexicon] (تجذير لغوي بحت، لا علاقة صرفية بين
+     * "تنحيف" و"دهون" مثلاً) ولا [DictionaryLexicon] العام (قاموس لغوي
+     * عام، لا يربط بالضرورة بين كل المرادفات العامية/الصحية الشائعة لموضوع
+     * بعينه) يغطّيان هذا النوع من "الترادف الموضوعي" (كلمات مختلفة الجذر
+     * تماماً لكنها تدل على نفس الموضوع الصحي عملياً).
+     *
+     * هذا الحل مخصَّص: مجموعات كلمات يدوية لكل موضوع، أي كلمة في المجموعة
+     * تُوسَّع لتشمل *كل* كلمات مجموعتها عند التحليل — تماماً كمرادفات
+     * [AiConfig.synonyms] لكن مبنية داخل الكود كتغطية أساسية جاهزة فور
+     * التثبيت، بلا حاجة لأي إعداد يدوي من المطوّر. يمكن إضافة مجموعات
+     * جديدة لأي موضوع آخر يتكرر فشل مطابقته لاحقاً بنفس الطريقة.
+     *
+     * مشكلة ثانية أُبلغ عنها لاحقاً وأصلحتها هذه النسخة: سؤال عن عشبة
+     * "لتخفيف الألم" كان يعيد نتائج عن *إنقاص الوزن* بدل الألم! السبب:
+     * كلمة "تخفيف" وحدها كانت ضمن مجموعة التنحيف أعلاه (بقصد تغطية "تخفيف
+     * الوزن")، لكنها كلمة عامة جداً تُستخدم في عشرات السياقات الأخرى
+     * (تخفيف الألم، تخفيف التوتر...)؛ فبمجرد ورودها في أي سؤال — أياً كان
+     * موضوعه — كانت تُوسَّع تلقائياً لتشمل كل كلمات مجموعة الوزن (دهون،
+     * سمنة، رجيم...) فتُغرق نتيجة البحث الحقيقية بنتائج تنحيف لا علاقة لها
+     * بالسؤال. نفس الخطر كان قائماً مع "حرق" (يتقاطع مع "حرقة" المعدة بعد
+     * التجذير). الحل: إبقاء كلمات كل مجموعة مقصورة على ألفاظ خاصة فعلاً
+     * بموضوعها (لا أفعال/كلمات عامة تتقاطع مع مواضيع أخرى)، مع إضافة
+     * مجموعة مخصّصة لموضوع "الألم" نفسه بدل الاعتماد على كلمة عامة ناقصة.
+     *
+     * إلى جانب الوزن والألم، تغطّي المجموعات أدناه الآن أكثر المواضيع
+     * الصحية شيوعاً في أسئلة اقتراح عشبة (نوم، هضم، مناعة/تنفس، توتر، ضغط/
+     * قلب/سكري، كبد/كلى، بشرة/شعر، دورة شهرية) بنفس المبدأ بالضبط: ألفاظ
+     * محدَّدة غير عامة لكل موضوع، لا أفعال/كلمات فضفاضة قد تتقاطع مع مواضيع
+     * أخرى. هذا لا يضمن تغطية كل سؤال ممكن (يعتمد فعلياً على ما تحويه نصوص
+     * الموسوعة نفسها)، لكنه يوسّع فعلياً نطاق "الفهم الموضوعي" الذي كان
+     * مقتصراً على التنحيف فقط.
+     */
+    private object HealthTopicSynonyms {
+        // كل مجموعة الآن معنونة (label ← كلماتها) بدل مجموعة كلمات مجهولة —
+        // العنوان يُستخدم لاحقاً في [buildSuggestionAnswer] ليصرّح سيمو
+        // صراحةً بالموضوع الذي "فهمه" من السؤال (مثل "إنقاص الوزن") بدل
+        // الاكتفاء بعرض نتائج مطابقة بلا أي إشارة لفهم الهدف الفعلي.
+        private val rawClusters: List<Pair<String, Set<String>>> = listOf(
+            // التنحيف/إنقاص الوزن — المجموعة التي عالجت المشكلة المُبلَغ عنها
+            // أولاً. "تخفيف" و"حرق" أُزيلتا عمداً (عامّتان جداً، انظر التوثيق
+            // أعلاه)؛ "دهون/سمنة/الوزن..." كافية وحدها لتفعيل الموضوع.
+            "إنقاص الوزن" to setOf(
+                "تنحيف", "تخسيس", "رجيم", "دايت", "حمية", "انقاص", "إنقاص",
+                "الوزن", "وزن", "دهون", "الدهون", "سمنة", "السمنة", "نحافة",
+                "خسارة", "كرش", "الكرش"
+            ),
+            // الألم/الوجع — المجموعة التي عالجت مشكلة "تخفيف الألم" المُبلَغ
+            // عنها (كانت تُخطف بمجموعة الوزن أعلاه بسبب كلمة "تخفيف" العامة).
+            "تخفيف الألم" to setOf(
+                "الم", "ألم", "الألم", "اوجاع", "أوجاع", "الأوجاع", "وجع", "الوجع",
+                "وجعة", "مغص", "تشنج", "تشنجات", "مسكن", "مسكنات", "تسكين",
+                "يسكن", "صداع", "الصداع"
+            ),
+            // النوم/الأرق.
+            "تحسين النوم" to setOf(
+                "نوم", "النوم", "أرق", "ارق", "الأرق", "سهر", "السهر", "مهدئ",
+                "مهدئات", "منوم", "منومات"
+            ),
+            // الهضم والجهاز الهضمي.
+            "الهضم" to setOf(
+                "هضم", "الهضم", "غازات", "الغازات", "انتفاخ", "الانتفاخ",
+                "قولون", "القولون", "امساك", "الامساك", "إمساك", "اسهال",
+                "الاسهال", "إسهال", "غثيان", "الغثيان", "قيء", "القيء", "استفراغ"
+            ),
+            // المناعة ونزلات البرد والجهاز التنفسي.
+            "تقوية المناعة" to setOf(
+                "مناعة", "المناعة", "برد", "البرد", "زكام", "الزكام",
+                "انفلونزا", "الانفلونزا", "رشح", "الرشح", "سعال", "كحة", "الكحة",
+                "ربو", "الربو", "تنفس", "التنفس", "بلغم", "البلغم", "احتقان", "الاحتقان"
+            ),
+            // التوتر والقلق.
+            "تهدئة التوتر والقلق" to setOf(
+                "توتر", "التوتر", "قلق", "القلق", "عصبية", "العصبية",
+                "اعصاب", "الأعصاب", "استرخاء"
+            ),
+            // ضغط الدم والقلب والسكري.
+            "ضغط الدم والقلب والسكري" to setOf(
+                "ضغط", "الضغط", "قلب", "القلب", "كولسترول", "الكولسترول",
+                "سكري", "السكري", "سكر", "السكر", "شرايين", "الشرايين"
+            ),
+            // الكبد والكلى وتنقية الجسم.
+            "الكبد والكلى" to setOf(
+                "كبد", "الكبد", "كلى", "الكلى", "كلية", "الكلية", "سموم",
+                "السموم", "تنقية", "تسمم"
+            ),
+            // البشرة والشعر.
+            "البشرة والشعر" to setOf(
+                "بشرة", "البشرة", "جلد", "الجلد", "حبوب", "الحبوب", "اكزيما",
+                "الاكزيما", "حكة", "الحكة", "شعر", "الشعر", "تساقط",
+                "قشرة", "القشرة"
+            ),
+            // الدورة الشهرية والصحة الإنجابية.
+            "الدورة الشهرية" to setOf(
+                "طمث", "الطمث", "حيض", "الحيض", "رحم", "الرحم",
+                "خصوبة", "الخصوبة", "هرمونات", "الهرمونات"
+            )
+        )
+
+        private val clusters: List<Pair<String, Set<String>>> by lazy {
+            rawClusters.map { (label, words) -> label to words.map { normalize(it) }.toSet() }
+        }
+
+        private val lookup: Map<String, Set<String>> by lazy {
+            val map = mutableMapOf<String, MutableSet<String>>()
+            clusters.forEach { (_, cluster) -> cluster.forEach { word -> map.getOrPut(word) { mutableSetOf() }.addAll(cluster) } }
+            map
+        }
+
+        /** كل كلمات كل المجموعات مسطّحة — تُستخدم لتفعيل نية سؤال محدَّد (مثل فروع فائدة/اقتراح). */
+        val allWords: List<String> by lazy { clusters.flatMap { it.second } }
+
+        /** يوسّع كلمات السؤال بمرادفات مجموعتها الموضوعية إن وُجدت (إضافة فهم، لا حذف). */
+        fun expand(words: Set<String>): Set<String> =
+            if (words.isEmpty()) words else words + words.flatMap { lookup[it].orEmpty() }
+
+        /** يعيد مجموعة الموضوع كاملة إن ذكر نص السؤال (المُطبَّع) أي كلمة منها، وإلا null. */
+        /**
+         * إصلاح خلل حقيقي أُبلغ عنه ("سؤال فوائد عام بيرجع نص مقصوص"): كانت
+         * المطابقة هنا بـ qNorm.contains(word) — أي تطابق جزء من كلمة، لا
+         * كلمة كاملة مستقلة. كلمة "الم" (من "ألم" بعد تطبيع الهمزة) موجودة
+         * حرفياً كجزء من عشرات الكلمات العربية الشائعة جداً التي تبدأ بـ"ال"
+         * التعريف متبوعة بحرف ميم — مثل "الماء"، "المعتاد"، "الملعقة"،
+         * "المفيد" — فكان أي ذكر عرضي لكلمة كهذه بالسؤال يُفعِّل موضوع
+         * "تخفيف الألم" خطأً، فيُقصر رد الفوائد على النقاط "المرتبطة" بهذا
+         * الموضوع الوهمي بدل عرض كل الفوائد المسجّلة. الإصلاح: تقسيم السؤال
+         * إلى كلمات مستقلة أولاً (كما تفعل [wordsOf] وغيرها في الملف) ثم
+         * مطابقة كل كلمة *كاملة* مع كلمات المجموعة، لا كسلسلة فرعية.
+         */
+        private fun wordTokensOf(qNorm: String): Set<String> =
+            qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }.toSet()
+
+        fun clusterMentionedIn(qNorm: String): Set<String>? {
+            val qWords = wordTokensOf(qNorm)
+            if (qWords.isEmpty()) return null
+            return clusters.firstOrNull { (_, cluster) -> cluster.any { it in qWords } }?.second
+        }
+
+        /**
+         * عنوان الموضوع الصحي (بالعربية الفصحى، جاهز للعرض مباشرة في رد
+         * سيمو) إن ذكر السؤال أي كلمة من مجموعته، وإلا null. يُستخدم في
+         * [buildSuggestionAnswer] ليصرّح سيمو بالهدف الذي فهمه من مرادفات
+         * السؤال (مثل "تنحيف" أو "دايت" أو "كرش" ← "إنقاص الوزن") بدل رد
+         * عام لا يوضّح أنه فهم المرادف فعلاً.
+         */
+        fun labelMentionedIn(qNorm: String): String? {
+            val qWords = wordTokensOf(qNorm)
+            if (qWords.isEmpty()) return null
+            return clusters.firstOrNull { (_, cluster) -> cluster.any { it in qWords } }?.first
         }
     }
 
-    /** Forces a real round-trip to the server (bypassing the local cache) to verify connectivity. */
-    suspend fun testConnection(): Boolean {
-        db.collection("categories").limit(1).get(Source.SERVER).await()
+    /** اسم فئة العشبة (إن وُجدت) عبر [HerbCategoryLookup] — نص فارغ إن لم تُحمَّل الفئات بعد أو لم يكن للعشبة معرّف فئة. */
+    private fun categoryOf(herb: Herb): String = herb.categoryId?.let { HerbCategoryLookup.categoryNames[it] } ?: ""
+
+    /**
+     * ذاكرة تخزين مؤقت لآخر فهرسين مبنيَّين (بدل فهرس واحد فقط سابقاً): سيمو
+     * يُستدعى فعلياً بنمطين مختلفين من نفس قائمة الأعشاب الكاملة ضمن نفس
+     * جلسة الدردشة — أحياناً بلا خلطات ([buildSuggestionAnswer]) وأحياناً
+     * معها ([buildGeneralSearchAnswer]) — وبخانة واحدة فقط كان كل تبديل بين
+     * النمطين عبر رسالتين متتاليتين يُلغي الفهرس المبني للتو ويعيد بناءه من
+     * الصفر (كل نصوص كل الأعشاب) حتى لو لم تتغيّر بيانات الموسوعة إطلاقاً —
+     * إهدار حقيقي للمعالجة والذاكرة المؤقتة (Garbage) على كل رسالة. خانتان
+     * (LRU بسيط) تكفيان لتغطية النمطين معاً فيبقى كلاهما جاهزاً دون إعادة
+     * بناء متكررة، بذاكرة إضافية محدودة جداً (فهرس واحد إضافي فقط، لا أكثر).
+     */
+    private const val corpusIndexCacheCapacity = 2
+    private val corpusIndexCache = object : LinkedHashMap<Pair<List<Herb>, List<Blend>>, CorpusIndex>(
+        corpusIndexCacheCapacity, 0.75f, true
+    ) {
+        override fun removeEldestEntry(eldest: Map.Entry<Pair<List<Herb>, List<Blend>>, CorpusIndex>): Boolean =
+            size > corpusIndexCacheCapacity
+    }
+
+    /**
+     * [blends] اختيارية (افتراضياً فارغة) حتى تبقى بقية الاستخدامات الحالية
+     * (المقارنة بين أعشاب محدَّدة، اقتراح عشبة) كما هي بلا أي تغيير — فهرس
+     * مبني من الأعشاب فقط، وهو السياق الصحيح لها. يُمرَّر [blends] فقط من
+     * البحث الحر العام ([buildGeneralSearchAnswer]) حيث "كل الموسوعة" تشمل
+     * الخلطات أيضاً. المطابقة بمرجع القائمة (لا محتواها) مقصودة: شاشات
+     * التطبيق تُنشئ قائمة جديدة فقط عند تحديث فعلي للبيانات، فمرجع واحد
+     * لنفس القائمة يعني بيانات لم تتغيّر إطلاقاً — نفس منطق الكاش السابق
+     * قبل هذا التعديل، لكن الآن بخانتين بدل خانة واحدة.
+     */
+    private fun corpusIndexFor(herbs: List<Herb>, blends: List<Blend> = emptyList()): CorpusIndex {
+        val key = herbs to blends
+        corpusIndexCache.entries.forEach { (k, v) ->
+            if (k.first === herbs && k.second === blends) return v
+        }
+        // فئة العشبة (اسمها عبر [categoryOf]) تُضاف الآن لنصوص الفهرسة، فيتوسّع
+        // "إدراك" سيمو للموسوعة ليشمل تصنيفاتها لا الحقول الستة فقط — انظر
+        // توثيق [HerbCategoryLookup].
+        val herbTexts = herbs.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.harms, it.notes, categoryOf(it)) }
+        val blendTexts = blends.flatMap { listOf(it.name, it.benefits, it.usage, it.warnings, it.notes) }
+        val built = CorpusIndex(herbTexts + blendTexts)
+        corpusIndexCache[key] = built
+        return built
+    }
+
+    /** تشابه Jaccard موزون بأهمية الكلمات (IDF) بدل عدّها بالتساوي. */
+    private fun weightedSimilarity(index: CorpusIndex, a: Set<String>, b: Set<String>): Double {
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        val union = a union b
+        val unionWeight = union.sumOf { index.weightOf(it) }
+        if (unionWeight == 0.0) return 0.0
+        val interWeight = (a intersect b).sumOf { index.weightOf(it) }
+        return interWeight / unionWeight
+    }
+
+    /**
+     * "تغطية" غير متماثلة: أي نسبة من *وزن كلمات السؤال* (وليس الجملة كاملة)
+     * وُجدت فعلياً ضمن نقطة نص معيّنة. الفارق الجوهري عن [weightedSimilarity]
+     * أعلاه أن المقام هنا هو وزن كلمات *السؤال فقط*، لا وزن كل الكلمات
+     * المجتمعة (سؤال + نقطة) — فنقطة نص طويلة ومفصّلة من الموسوعة (كما هو
+     * شائع في حقل الفوائد) لا تُعاقَب لمجرد طولها طالما أنها تحوي فعلاً
+     * كلمات سؤال المستخدم؛ هذا بالضبط ما كان يجعل أسئلة قصيرة عن مواضيع
+     * مذكورة فعلاً في الموسوعة (مثل "فوائد بذور الكتان" أو "عشبة لتحسين
+     * النوم") لا تظهر أي نتيجة رغم وجود البيانات فعلياً، لأن Jaccard
+     * المتماثل وحده كان يُذيب المطابقة الحقيقية داخل بقية كلمات النقطة
+     * الطويلة. يبقى [weightedSimilarity] كما هو ويُستخدم فقط في مقارنة
+     * نص-بنص بين أعشاب مختلفة ([compareField]/[buildOverview]) حيث الطرفان
+     * متكافئان بالطول عادةً، وهو السياق الصحيح لمقياس متماثل.
+     */
+    private fun queryCoverage(index: CorpusIndex, queryWords: Set<String>, pointWords: Set<String>): Double {
+        if (queryWords.isEmpty() || pointWords.isEmpty()) return 0.0
+        val queryWeight = queryWords.sumOf { index.weightOf(it) }
+        if (queryWeight == 0.0) return 0.0
+        val matchedWeight = (queryWords intersect pointWords).sumOf { index.weightOf(it) }
+        return matchedWeight / queryWeight
+    }
+
+    /** أي نسبة من كلمات السؤال (النصية الخام، بلا وزن) موجودة حرفياً كسلسلة
+     * فرعية داخل نص النقطة المُطبَّع — شبكة أمان أخيرة مستقلة تماماً عن أي
+     * تقطيع كلمات أو قواميس، لضمان أن "البحث الحقيقي بكل البيانات" الذي
+     * يطلبه المستخدم يلتقط حتى الحالات التي يفشل فيها تقطيع الكلمات لأي سبب. */
+    private fun rawContainmentRatio(queryWords: Set<String>, pointNormalized: String): Double {
+        if (queryWords.isEmpty()) return 0.0
+        val matched = queryWords.count { it.length > 1 && pointNormalized.contains(it) }
+        return matched.toDouble() / queryWords.size
+    }
+
+    /**
+     * الدرجة النهائية المستخدمة فعلياً لمطابقة سؤال المستخدم بنقطة نص واحدة
+     * في البحث الحر والاقتراح: أعلى قيمة بين المقاييس الثلاثة أعلاه، بحيث لا
+     * يفوّت سيمو مطابقة حقيقية بسبب ضعف مقياس واحد بعينه في حالة معيّنة.
+     *
+     * [queryWords] يُصفَّى هنا عبر [CorpusIndex.filterKnown] قبل تمريره
+     * لِـ[weightedSimilarity] و[queryCoverage] تحديداً (انظر توثيق
+     * [CorpusIndex.filterKnown] لسبب هذا الإصلاح) — أما [rawContainmentRatio]
+     * فيستمر باستخدام المجموعة الكاملة غير المصفّاة، لأنه يعمل على احتواء
+     * نصّي خام لا على تقاطع مجموعات كلمات، فلا يعاني من نفس مشكلة التخفيف.
+     */
+    private fun matchScore(index: CorpusIndex, queryWords: Set<String>, point: String): Double {
+        val pointWords = wordsOf(point)
+        val knownQueryWords = index.filterKnown(queryWords)
+        return maxOf(
+            weightedSimilarity(index, knownQueryWords, pointWords),
+            queryCoverage(index, knownQueryWords, pointWords),
+            rawContainmentRatio(queryWords, normalize(point))
+        )
+    }
+
+    /**
+     * يقارن سؤال المستخدم بكل "الحالات المدرَّبة" — اليدوية أولاً
+     * ([AiConfig.trainedExamples]، أولوية مطلقة دوماً لأنها من مراجعة
+     * المطوّر مباشرة)، ثم المتعلَّمة ذاتياً ([AiConfig.autoLearnedExamples])
+     * بعتبة أعلى قليلاً تحوّطاً لأنها غير مراجَعة يدوياً. يعيد أقرب رد
+     * مخصّص إن تجاوز التشابه العتبة المناسبة، وإلا يعيد null ليكمل سيمو
+     * بمنطقه العام.
+     *
+     * المطابقة تستخدم الآن [richWordsOf] (تجذير + قاموس مرادفات) بدل كلمات
+     * الجملة الحرفية فقط — سابقاً كانت صياغة مرادفة تماماً لسؤال مدرَّب
+     * (مثل "شو ينفع الزنجبيل" بدل "ما فوائد الزنجبيل") قد لا تُطابق الحالة
+     * المدرَّبة إطلاقاً رغم تطابق المعنى، لأن [jaccard] كان يقارن الكلمات
+     * الحرفية فقط دون أي فهم للمرادفات — وهذا بالضبط ما يجعل "تعلّم سيمو"
+     * الذاتي من التقييمات مفيداً فعلياً لصياغات لاحقة مشابهة معنوياً لا
+     * حرفياً فقط.
+     */
+    private fun matchTrainedExample(question: String): String? {
+        val qWords = richWordsOf(question)
+        if (qWords.isEmpty()) return null
+
+        var bestManual: String? = null
+        var bestManualScore = 0.0
+        exampleWords(AiConfig.trainedExamples).forEach { (example, words) ->
+            val score = jaccard(qWords, words)
+            if (score > bestManualScore) { bestManualScore = score; bestManual = example.response }
+        }
+        if (bestManualScore >= AiConfig.trainedMatchThreshold) return bestManual
+
+        if (!AiConfig.autoLearnEnabled || AiConfig.autoLearnedExamples.isEmpty()) return null
+        var bestAuto: String? = null
+        var bestAutoScore = 0.0
+        exampleWords(AiConfig.autoLearnedExamples).forEach { (example, words) ->
+            val score = jaccard(qWords, words)
+            if (score > bestAutoScore) { bestAutoScore = score; bestAuto = example.response }
+        }
+        val autoThreshold = (AiConfig.trainedMatchThreshold + 0.15).coerceAtMost(0.95)
+        return if (bestAutoScore >= autoThreshold) bestAuto else null
+    }
+
+    // ذاكرتا تخزين مؤقت لكلمات أنماط الحالات المدرَّبة (يدوياً/ذاتياً) بعد
+    // توسيعها بـ[richWordsOf] — إعادة استعلام قاموس المرادفات (قاعدة
+    // SQLite) لكل الأنماط في كل رسالة دردشة مكلفة بلا داعٍ ما دامت قائمة
+    // الأنماط نفسها لم تتغيّر؛ بنفس أسلوب [corpusIndexFor] (تحقّق من مرجع
+    // القائمة نفسها، لا محتواها، لأن كل شاشة تُنشئ قائمة جديدة عند أي تعديل
+    // فعلي من أدوات المطور أو التعلّم الذاتي).
+    private var cachedTrainedRef: List<TrainedExample>? = null
+    private var cachedTrainedWords: List<Pair<TrainedExample, Set<String>>> = emptyList()
+    private var cachedAutoRef: List<TrainedExample>? = null
+    private var cachedAutoWords: List<Pair<TrainedExample, Set<String>>> = emptyList()
+
+    private fun exampleWords(examples: List<TrainedExample>): List<Pair<TrainedExample, Set<String>>> {
+        val isTrained = examples === AiConfig.trainedExamples
+        if (isTrained) {
+            if (cachedTrainedRef === examples) return cachedTrainedWords
+            val built = examples.map { it to richWordsOf(it.pattern) }
+            cachedTrainedRef = examples
+            cachedTrainedWords = built
+            return built
+        }
+        if (cachedAutoRef === examples) return cachedAutoWords
+        val built = examples.map { it to richWordsOf(it.pattern) }
+        cachedAutoRef = examples
+        cachedAutoWords = built
+        return built
+    }
+
+    /** أقصى عدد حالات يحتفظ بها التعلّم الذاتي؛ الأقدم يُستبعد أولاً عند التجاوز. */
+    private const val MAX_AUTO_LEARNED_EXAMPLES = 200
+
+    /**
+     * يسجّل تقييم المستخدم (👍/👎) على إجابة "قابلة للتعلّم" (انظر
+     * [AssistantReply.learnable]) في شاشة الدردشة:
+     * - عند الإعجاب: تُحفظ نقطة السؤال↔الرد كحالة يتعلّمها سيمو تلقائياً،
+     *   بشرط ألا تكون قريبة بما يكفي من حالة متعلَّمة سابقاً (تفادي التكرار)،
+     *   مع سقف أقصى لعدد الحالات ([MAX_AUTO_LEARNED_EXAMPLES]) يُستبعد عنده
+     *   الأقدم أولاً.
+     * - عند عدم الإعجاب: يُزال أي مثال متعلَّم ذاتياً يطابق هذا السؤال بدرجة
+     *   كافية — أي أن سيمو "يتراجع" عن خطأ تعلّمه بنفسه — دون أي تأثير على
+     *   حالات تدريب المطوّر اليدوية، المحمية دوماً من هذا المسار.
+     * فحص "التكرار" هنا يستخدم [richWordsOf] أيضاً (بدل الكلمات الحرفية)
+     * حتى يتّسق مع [matchTrainedExample] تماماً: لا يُحفَظ سؤال كحالة جديدة
+     * إن كانت هناك حالة مرادفة معنوياً محفوظة أصلاً (لا حرفياً مطابقة فقط)،
+     * فلا تتكدّس نسخ شبه مكرَّرة من نفس المعنى بصياغات مختلفة.
+     * يعيد القائمة المحدَّثة مباشرة ليحفظها المستدعي (PreferencesRepository).
+     */
+    fun recordFeedback(question: String, reply: String, helpful: Boolean): List<TrainedExample> {
+        val qWords = richWordsOf(question)
+        if (qWords.isEmpty()) return AiConfig.autoLearnedExamples
+
+        if (!helpful) {
+            val remaining = AiConfig.autoLearnedExamples.filterNot {
+                jaccard(qWords, richWordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
+            }
+            AiConfig.autoLearnedExamples = remaining
+            return remaining
+        }
+
+        if (!AiConfig.autoLearnEnabled) return AiConfig.autoLearnedExamples
+        val alreadyKnown = AiConfig.autoLearnedExamples.any {
+            jaccard(qWords, richWordsOf(it.pattern)) >= AiConfig.trainedMatchThreshold
+        }
+        if (alreadyKnown) return AiConfig.autoLearnedExamples
+
+        val updated = (AiConfig.autoLearnedExamples + TrainedExample(question.trim(), reply))
+            .takeLast(MAX_AUTO_LEARNED_EXAMPLES)
+        AiConfig.autoLearnedExamples = updated
+        return updated
+    }
+
+    // ── مزامنة التعلّم الذاتي بين الأجهزة (انظر SemoLearningRepository) ──
+    // كل ما سبق ([recordFeedback] وقائمة [AiConfig.autoLearnedExamples])
+    // كان يبقى محصوراً محلياً على DataStore الخاص بكل جهاز (انظر
+    // PreferencesRepository) — إن تعلّم سيمو شيئاً من مستخدم على جهاز، لا
+    // يستفيد منه مستخدم آخر على جهاز مختلف إطلاقاً، ويُعاد "تعليمه" نفس
+    // الشيء من الصفر لو صادف نفس السؤال لاحقاً. الدالتان أدناه هما نقطة
+    // الوصل بين هذا التعلّم المحلي وطبقة المزامنة الشبكية (Firestore):
+    // [learningKey] يبني معرّفاً مستقراً يُستخدم مُعرِّف مستند في Firestore،
+    // و[mergeLearnedExamples] يدمج ما وصل من الأجهزة الأخرى ضمن القائمة
+    // المحلية بأمان (بلا تكرار دلالي).
+
+    /**
+     * معرّف ثابت (بصمة SHA-256) لسؤال معيّن، يُستخدم مُعرِّف مستند التعلّم
+     * المشترك في Firestore بدل مُعرِّف عشوائي، حتى تتّحد حالتان بنفس المعنى
+     * الدلالي (لا نفس الحروف بالضبط) من جهازين مختلفين تحت نفس المستند —
+     * فيُصوَّت للحالة القيّمة فعلاً بدل تكديس نسخ شبه مكرَّرة منها بصياغات
+     * مختلفة. يعتمد على نفس التوسيع الدلالي المستخدم في فحص التكرار بـ
+     * [recordFeedback] ([richWordsOf])، مع ترتيب الكلمات أبجدياً كي لا
+     * يغيّر ترتيب كتابتها في السؤال الأصلي المعرّف الناتج.
+     */
+    fun learningKey(question: String): String {
+        val words = richWordsOf(question).sorted().joinToString("|")
+        val source = words.ifEmpty { normalize(question) }
+        val digest = MessageDigest.getInstance("SHA-256").digest(source.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }.take(32)
+    }
+
+    /**
+     * يدمج حالات تعلّم واردة من مصدر آخر (النسخة المشتركة من أجهزة أخرى عبر
+     * Firestore) مع القائمة المحلية الحالية لهذا الجهاز، بنفس فحص التكرار
+     * الدلالي المستخدم في [recordFeedback] (لا تكرار حرفي فقط) — فسؤال ورد
+     * تعلّمه جهاز آخر بصياغة مختلفة عن حالة موجودة أصلاً محلياً لا يُضاف من
+     * جديد. هذا فعلياً ما يجعل جهازاً ثانياً "يعرف" ما تعلّمه جهاز أول من
+     * تقييمات مستخدميه دون أي حاجة لتكرار نفس التعلّم فيه من الصفر. يُبقي
+     * على نفس سقف [MAX_AUTO_LEARNED_EXAMPLES]، مستبعِداً الأقدم أولاً عند
+     * تجاوزه بعد الدمج.
+     */
+    fun mergeLearnedExamples(local: List<TrainedExample>, incoming: List<TrainedExample>): List<TrainedExample> {
+        if (incoming.isEmpty()) return local
+        val merged = local.toMutableList()
+        val mergedWords = merged.map { richWordsOf(it.pattern) }.toMutableList()
+        incoming.forEach { candidate ->
+            val cWords = richWordsOf(candidate.pattern)
+            if (cWords.isEmpty()) return@forEach
+            val alreadyKnown = mergedWords.any { jaccard(it, cWords) >= AiConfig.trainedMatchThreshold }
+            if (!alreadyKnown) {
+                merged += candidate
+                mergedWords += cWords
+            }
+        }
+        if (merged.size == local.size) return local
+        return merged.takeLast(MAX_AUTO_LEARNED_EXAMPLES)
+    }
+
+    // ── المقارنة المنظّمة (يُستخدم في بطاقات المقارنة بالشاشة) ─────────
+
+    /** نقطة مقارنة واحدة (فائدة، تحذير...) مع قائمة الأعشاب التي وردت فيها. */
+    data class ComparisonPoint(val text: String, val herbIds: List<String>)
+
+    /**
+     * يبني مقارنة نقطة-بنقطة لحقل معيّن (مثل الفوائد) عبر الأعشاب المختارة:
+     * يجمع النقاط المتشابهة معنوياً من أعشاب مختلفة في نقطة واحدة مشتركة
+     * (بتشابه موزون بأهمية الكلمات عبر [CorpusIndex] بدل عدّ بسيط)، ويترك
+     * النقاط المنفردة كما هي، بحيث تُعرض النتيجة منظّمة وواضحة.
+     */
+    fun compareField(herbs: List<Herb>, field: (Herb) -> String): List<ComparisonPoint> {
+        val index = corpusIndexFor(herbs)
+        val perHerbPoints = herbs.map { it.id to splitPoints(field(it)) }
+        val usedFlags = perHerbPoints.map { (_, pts) -> BooleanArray(pts.size) }
+        val results = mutableListOf<ComparisonPoint>()
+        val threshold = AiConfig.similarityThreshold
+
+        for (hi in herbs.indices) {
+            val (herbId, points) = perHerbPoints[hi]
+            for (pi in points.indices) {
+                if (usedFlags[hi][pi]) continue
+                usedFlags[hi][pi] = true
+                val point = points[pi]
+                val matched = mutableListOf(herbId)
+                val pw = wordsOf(point)
+                for (hj in herbs.indices) {
+                    if (hj == hi) continue
+                    val (otherId, otherPoints) = perHerbPoints[hj]
+                    // كانت هذه الحلقة تضمّ *كل* نقطة من عشبة hj تتجاوز العتبة،
+                    // لا أفضلها فقط — فتُستهلك (تُعلَّم "مستخدمة") نقاط عدة من
+                    // نفس العشبة لنفس نقطة المرساة رغم أن واحدة فقط تظهر فعلياً
+                    // في matched، فتُفقد النقاط الأخرى من نتيجة المقارنة كلياً
+                    // (لا تظهر لا هنا ولا كمجموعة منفصلة لاحقاً) رغم أنها قد
+                    // كانت الأنسب فعلاً لمرساة أخرى ستُفحص بعدها. نختار الآن
+                    // فقط أفضل نقطة غير مستخدمة (الأعلى تشابهاً) من كل عشبة
+                    // أخرى، فلا تُفقد نقاط بلا داعٍ وتكون كل مجموعة مقارنة
+                    // مبنية على أدقّ تطابق متاح فعلاً.
+                    var bestPj = -1
+                    var bestSim = 0.0
+                    for (pj in otherPoints.indices) {
+                        if (usedFlags[hj][pj]) continue
+                        val sim = weightedSimilarity(index, pw, wordsOf(otherPoints[pj]))
+                        if (sim >= threshold && sim > bestSim) {
+                            bestSim = sim
+                            bestPj = pj
+                        }
+                    }
+                    if (bestPj >= 0) {
+                        usedFlags[hj][bestPj] = true
+                        if (otherId !in matched) matched += otherId
+                    }
+                }
+                results += ComparisonPoint(point, matched)
+            }
+        }
+        return results
+    }
+
+    /**
+     * مقارنة شاملة حقيقية بين الأعشاب المختارة — لا الفوائد فقط كما كانت
+     * سابقاً. مشكلة حقيقية أُبلغ عنها: "لما تسأله عن مقارنة لازم يبني مقارنة
+     * شاملة"، أي يفهم كل ما هو مسجَّل عن العشبتين (فوائد، استخدام، تحذيرات/
+     * أضرار) ويؤلّف منها إجابة واحدة مترابطة، لا يقارن حقلاً واحداً وحده. كل
+     * قسم أدناه يُبنى بنفس منطق [compareField] (تجميع النقاط المتشابهة
+     * معنوياً عبر عشبات مختلفة في نقطة مشتركة)، ثم تُختَم المقارنة بجملة
+     * تركيبية صريحة تفصل بين الجانب الآمن والجانب الأقل أماناً — وهذا هو
+     * الفارق بين "عرض نقاط منسوخة" و"مقارنة مفهومة فعلياً".
+     */
+    fun buildOverview(herbs: List<Herb>): String {
+        if (herbs.size < 2) return ""
+
+        fun cautionsOf(herb: Herb): String =
+            listOf(herb.warnings, herb.harms).filter { it.isNotBlank() && it.trim() != "—" }.joinToString("، ")
+
+        val benefitPoints = compareField(herbs) { it.benefits }
+        val cautionPoints = compareField(herbs, ::cautionsOf)
+        val sharedBenefits = benefitPoints.filter { it.herbIds.size == herbs.size }
+        val sharedCautions = cautionPoints.filter { it.herbIds.size == herbs.size }
+
+        return buildString {
+            append("قارنتُ بين ${herbNames(herbs)} بالاعتماد على كل ما هو مسجَّل عنها في الموسوعة (الفوائد، الاستخدام، والتحذيرات):\n\n")
+
+            append("🌿 الفوائد:\n")
+            if (sharedBenefits.isNotEmpty()) {
+                append("• مشترك بينها: ${sharedBenefits.take(3).joinToString("، ") { it.text }}\n")
+            }
+            herbs.forEach { herb ->
+                val unique = benefitPoints.filter { it.herbIds.size == 1 && it.herbIds.first() == herb.id }
+                if (unique.isNotEmpty()) append("• تنفرد ${herb.name} بـ: ${unique.take(2).joinToString("، ") { it.text }}\n")
+            }
+            if (sharedBenefits.isEmpty() && herbs.all { herb -> benefitPoints.none { herb.id in it.herbIds } }) {
+                append("• لا تتوفر بيانات فوائد كافية بعد للمقارنة بينها.\n")
+            }
+
+            append("\n💊 طريقة الاستخدام:\n")
+            herbs.forEach { herb -> append("• ${herb.name}: ${herb.usage.trim().ifBlank { "لا توجد طريقة استخدام مسجّلة." }}\n") }
+
+            append("\n⚠️ التحذيرات والأضرار:\n")
+            if (sharedCautions.isNotEmpty()) {
+                append("• مشترك بينها: ${sharedCautions.take(2).joinToString("، ") { it.text }}\n")
+            }
+            herbs.forEach { herb ->
+                val unique = cautionPoints.filter { it.herbIds.size == 1 && it.herbIds.first() == herb.id }
+                if (unique.isNotEmpty()) append("• تنفرد ${herb.name} بـ: ${unique.take(2).joinToString("، ") { it.text }}\n")
+            }
+            val counts = herbs.associateWith { splitPoints(it.warnings).size + splitPoints(it.harms).size }
+            val minCount = counts.values.minOrNull() ?: 0
+            val safest = counts.entries.firstOrNull { it.value == minCount }?.key
+            if (safest != null && counts.values.distinct().size > 1) {
+                append("• من ناحية عدد التحذيرات المسجّلة فقط، تبدو ${safest.name} الأقل تحذيرات — لكن هذا لا يعني أنها الأنسب لحالتك؛ استشر مختصاً دوماً.\n")
+            } else if (sharedCautions.isEmpty() && herbs.all { herb -> cautionPoints.none { herb.id in it.herbIds } }) {
+                append("• لا توجد تحذيرات أو أضرار مسجّلة لهذه الأعشاب في الموسوعة.\n")
+            }
+
+            append("\n📌 باختصار: ")
+            if (sharedBenefits.isNotEmpty()) {
+                append("${herbNames(herbs)} متقاربتان في فوائدهما الأساسية، ")
+            } else {
+                append("${herbNames(herbs)} تختلفان أكثر مما تتشابهان من ناحية الفوائد المسجَّلة، ")
+            }
+            if (safest != null && counts.values.distinct().size > 1) {
+                append("وتبدو ${safest.name} الخيار الأخف من ناحية التحذيرات.")
+            } else {
+                append("وتحذيراتهما متقاربة، فالاختيار بينهما يعتمد أكثر على الفائدة المحدَّدة التي تبحث عنها.")
+            }
+        }
+    }
+
+    /**
+     * يبحث عن الأعشاب المذكورة صراحةً باسمها داخل نص السؤال الحر، على
+     * مستويين متتاليين (الأدق أولاً) بدل اشتراط تطابق حرفي تام لاسم العشبة
+     * كاملاً كما كان سابقاً — وهو ما كان يفشل بأي فرق بسيط في الصياغة (مثل
+     * "ال" التعريف، أو ترتيب كلمات مختلف، أو ذكر الاسم ضمن عبارة أطول)
+     * فيُحوّل سؤالاً واضحاً عن عشبة محدَّدة إلى بحث عام غامض ضمن كل الموسوعة:
+     * 1) احتواء حرفي كامل لاسم العشبة ضمن نص السؤال (الأدق، وكما كان سابقاً).
+     * 2) إن لم يوجد ذلك: تطابق *كل* كلمات اسم العشبة، كلمة كلمة (باحتواء كل
+     *    كلمة ضمن الأخرى، فيلتقط تلقائياً فرق "ال" التعريف أو صيغة الجمع/
+     *    المفرد)، ضمن كلمات السؤال — يكفي أن تكون كل كلمات الاسم مذكورة
+     *    بأي صيغة قريبة، ولا يشترط ترتيبها أو تطابقها حرفياً بالكامل.
+     */
+    /**
+     * ═══ إصلاح خلل حقيقي أُبلغ عنه ("سألت عن فوائد الكركديه فرد بأعشاب
+     * غير متعلقة إطلاقاً، رغم أن الكركديه موجود فعلاً بالموسوعة") ═══
+     * السبب الأرجح: كثير من أسماء الأعشاب بالموسوعة مكتوبة مع اسمها
+     * العلمي/الإنجليزي بين قوسين للتوضيح (مثال: "الكركديه (Hibiscus)").
+     * المطابقة أدناه (سواء الاحتواء الحرفي الكامل أو تقسيم الاسم لكلمات)
+     * كانت تتعامل مع اسم العشبة *كاملاً بما فيه القوس الإنجليزي* ككتلة
+     * واحدة يجب أن تتطابق كل كلماتها مع كلمات السؤال — فسؤال عربي بحت لا
+     * يذكر الكلمة الإنجليزية إطلاقاً (وهذا الحال الطبيعي لأي سؤال عربي)
+     * يفشل بمطابقة تلك العشبة تحديداً بصمت تام، فتسقط للبحث الحر العام
+     * الذي قد يُرجع أعشاباً أخرى غير متعلّقة أصلاً بالسؤال. الإصلاح:
+     * [arabicMatchableCore] يحذف أي محتوى بين قوسين (عادة الاسم العلمي/
+     * الإنجليزي) وأي كلمة مكتوبة بحروف لاتينية بالكامل قبل المطابقة، فيبقى
+     * فقط الاسم العربي الفعلي هو ما يُقارَن بكلمات السؤال — يؤثر هذا على
+     * *كل* عشبة بالموسوعة مكتوب اسمها بهذا النمط الشائع، لا الكركديه فقط.
+     */
+    private fun arabicMatchableCore(name: String): String {
+        val withoutParens = name.replace(Regex("[\\(\\[][^)\\]]*[\\)\\]]"), " ")
+        val arabicOnlyTokens = withoutParens.split(Regex("\\s+"))
+            .filterNot { token -> token.isNotEmpty() && token.none { ch -> ch in '\u0600'..'\u06FF' } }
+        return arabicOnlyTokens.joinToString(" ").ifBlank { name }
+    }
+
+    fun relevantHerbs(question: String, allHerbs: List<Herb>): List<Herb> {
+        val qNorm = normalize(question)
+        if (qNorm.isBlank()) return emptyList()
+
+        val literal = allHerbs.filter { herb ->
+            herb.name.isNotBlank() && qNorm.contains(normalize(arabicMatchableCore(herb.name)))
+        }
+        if (literal.isNotEmpty()) return literal
+
+        val qTokens = qNorm.split(Regex("\\s+")).filter { it.length > 1 }
+        if (qTokens.isEmpty()) return emptyList()
+
+        // مشكلة حقيقية أُبلغ عنها ("سيمو يخربط"): مطابقة الاحتواء المتبادل
+        // (qt.contains(nt) || nt.contains(qt)) كانت مقبولة لأي طول كلمة، فكلمة
+        // قصيرة جداً ضمن اسم عشبة (مثل حرفين أو ثلاثة) تتكرر بالصدفة داخل كلمة
+        // عادية غير متعلّقة إطلاقاً بالسؤال (كلمة قصيرة يسهل ورودها كجزء من
+        // كلمات كثيرة) كانت تكفي وحدها لنسب السؤال بالكامل لعشبة لم يقصدها
+        // المستخدم أبداً — فتُبنى الإجابة على سياق العشبة الخطأ بصمت (خطأ لا
+        // يظهر كرسالة "لم أجد"، بل كإجابة تبدو صحيحة لكنها عن الموضوع الخطأ).
+        // الحل: يُشترط الآن طول لا يقل عن ٣ أحرف لقبول الاحتواء الجزئي بين
+        // كلمة من اسم العشبة وكلمة من السؤال؛ الكلمات الأقصر (حرفان) تحتاج
+        // تطابقاً تاماً فقط. هذا يبقي التقاط فروق "ال" التعريف وصيغ الجمع/
+        // المفرد كما هو (الفارق عادة حرف أو حرفان في كلمة لا تزال طويلة بما
+        // يكفي) بينما يمنع تطابقات عابرة لا معنى لها بين كلمتين قصيرتين جداً.
+        return allHerbs.filter { herb ->
+            if (herb.name.isBlank()) return@filter false
+            // راجع توثيق [arabicMatchableCore] أعلاه: نطابق على الاسم
+            // العربي الفعلي فقط، لا الاسم كاملاً بقوسه الإنجليزي إن وُجد.
+            val nameTokens = normalize(arabicMatchableCore(herb.name)).split(Regex("\\s+")).filter { it.length > 1 }
+            if (nameTokens.isEmpty()) return@filter false
+            nameTokens.all { nt ->
+                qTokens.any { qt ->
+                    qt == nt || (nt.length >= 3 && qt.length >= 3 && (qt.contains(nt) || nt.contains(qt)))
+                }
+            }
+        }
+    }
+
+    /**
+     * أسئلة سريعة مقترحة تُعرض كأزرار فوق مربع الدردشة.
+     *
+     * كانت هذه الدالة تُرجع دائماً نفس السؤالين مبنيين على أول عشبتين في
+     * القائمة (`take(2)`) — أي نفس الاقتراحين بالضبط في كل مرة يُفتح فيها
+     * سيمو، بغضّ النظر عن حجم الموسوعة الفعلي، ونفس السؤالين العامّين
+     * الثابتين دوماً. الآن تختار عشبتين عشوائيتين من الموسوعة (فتتنوّع
+     * الاقتراحات بين مرة وأخرى وتُظهر تنوّع الموسوعة الفعلي بدل نفس
+     * العشبتين الأوليين أبداً)، وتختار سؤالين عامّين عشوائياً من مجموعة
+     * أوسع بدل سؤالين ثابتين لا يتغيّران.
+     */
+    private val generalSuggestionPool = listOf(
+        "ما هي الأعشاب الآمنة أثناء الحمل؟",
+        "اقترح عشبة لتحسين النوم",
+        "ما الأعشاب المفيدة لتقوية المناعة؟",
+        "ما الأعشاب التي تساعد على الهضم؟",
+        "أعطني عشبة تخفّف التوتر والقلق",
+        "ما الأعشاب المفيدة لآلام المفاصل؟"
+    )
+
+    fun quickSuggestions(selectedHerbs: List<Herb>, allHerbs: List<Herb> = emptyList()): List<String> = when {
+        selectedHerbs.size >= 2 -> listOf(
+            "ما أبرز الفروقات بينها؟",
+            "أيهما أكثر أماناً؟",
+            "هل يمكن الجمع بينهما؟",
+            "ما طريقة استخدام كل منها؟"
+        )
+        selectedHerbs.size == 1 -> listOf(
+            "ما فوائدها؟",
+            "ما طريقة استخدامها؟",
+            "هل لها تحذيرات؟"
+        )
+        else -> buildList {
+            val sample = allHerbs.filter { it.name.isNotBlank() }.shuffled().take(2)
+            if (sample.isNotEmpty()) add("ما فوائد ${sample[0].name}؟")
+            if (sample.size >= 2) add("قارن بين ${sample[0].name} و ${sample[1].name}")
+            addAll(generalSuggestionPool.shuffled().take(2))
+        }
+    }
+
+    // ── الدردشة الذكية (إجابة حرة على أسئلة المستخدم) ──────────────────
+
+    /**
+     * رد سيمو مع بيان ما إذا كان "قابلاً للتعلّم الذاتي" منه: فقط إجابات
+     * البحث الحر الفعلية (وليست الترحيب/الشكر/إجابة حالة مدرَّبة مسبقاً، إذ
+     * لا معنى لإعادة تعلّم شيء متعلَّم أو ثابت أصلاً) تُعرض معها أزرار تقييم
+     * في شاشة الدردشة، ليقرر المستخدم إن كانت مفيدة فتُحفظ عبر [recordFeedback].
+     */
+    data class AssistantReply(val text: String, val learnable: Boolean)
+
+    /**
+     * هل يحتاج سيمو فعلاً لـ"تفكير وبحث" ملحوظ قبل الإجابة على هذا السؤال؟
+     * تُستخدم في واجهة الدردشة (SemoAssistantScreen) لعرض فقاعة "حسناً، دعني
+     * أفكر وأبحث في الموسوعة 🌿" *قبل* استدعاء [answerDetailed] الثقيل،
+     * فيشعر المستخدم أن سيمو يفكّر فعلاً بدل أن تظهر الإجابة فجأة بلا أي
+     * سياق — تماماً كما يوضّح مساعد جيد خطته قبل تنفيذها.
+     *
+     * بنفس شروط `if` الأولى في [answerDetailed] بالضبط (لا تكرار منطق
+     * مختلف قد ينحرف عنها الاحقاً): سؤال فارغ، أو مطابق لحالة مدرَّبة
+     * (يدوياً أو ذاتياً)، أو تحية/شكر أو أي عبارة محادثة مبدئية أخرى
+     * ([ConversationalSeed]) — كل هذه إجابات فورية جاهزة لا تحتاج أي بحث
+     * فعلي في بيانات الموسوعة، فلا داعي لإظهار "أفكر وأبحث" قبلها. أي
+     * سؤال آخر (مقارنة، أمان، استخدام، فوائد، اقتراح، أو بحث حر) يستدعي
+     * فعلاً مسح بيانات الموسوعة، فيُعرض التفكير قبله.
+     */
+    fun needsThinking(question: String): Boolean {
+        val qNorm = normalize(question)
+        if (qNorm.isBlank()) return false
+        // ═══ إصلاح خلل منطقي حقيقي أُبلغ عنه ═══
+        // كان هذا الشرط يتحقق فقط من الحالات المدرَّبة، فيُعامِل أي سؤال آخر
+        // — بما فيه التحية والشكر والوداع وأسئلة الحال/الهوية/القدرات
+        // ("مرحبا"، "شكراً"، "كيفك"...) — على أنه "يحتاج بحثاً فعلياً"،
+        // فتُرسَل هذه الردود الفورية البسيطة كلها إلى Gemini عبر الإنترنت
+        // بمجرد توفر الوضع الذكي، رغم أنها لا علاقة لها إطلاقاً ببيانات
+        // الموسوعة ولا تحتاج أي بحث فيها فعلياً — وهذا بالضبط ما يجعل *كل*
+        // إجابة، حتى أبسطها، تعتمد على الإنترنت متى كان متصلاً، بينما تعمل
+        // محلياً وبشكل صحيح فقط عند انعدام الاتصال. هذا يخالف تماماً ما
+        // توثّقه [AiConfig.onlineEnabled] وSemoAssistantScreen صراحة: "الردود
+        // الفورية (ترحيب/شكر/حالة مدرَّبة) تبقى محلية دوماً بلا أي استثناء
+        // لأنها أسرع وأدق من أي استدعاء شبكة لها أصلاً" — وكذلك يخالف توثيق
+        // هذه الدالة نفسها أعلاه.
+        //
+        // الإصلاح: مطابقة نفس شروط الرد الفوري الأولى في [answerDetailed]
+        // بالضبط (حالة مدرَّبة ← [ConversationalSeed] ← تحية صافية ← صيغة
+        // شكر قصيرة) — فهذه وحدها تبقى محلية دوماً بصرف النظر عن الاتصال.
+        // فقط ما تبقّى بعدها (مقارنة/أمان/استخدام/فوائد/اقتراح/بحث حر) يُعتبر
+        // بحاجة فعلية للتفكير والبحث، سواء جرى محلياً أم عبر الإنترنت.
+        if (matchTrainedExample(question) != null) return false
+        if (ConversationalSeed.match(question) != null) return false
+        if (isPureGreeting(qNorm)) return false
+        if (isShortExactPhraseMatch(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور"), maxWords = 6)) return false
         return true
     }
 
-    suspend fun restoreBackup(json: String) {
-        val root = org.json.JSONObject(json)
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>>>()
-        val categories = root.optJSONArray("categories") ?: org.json.JSONArray()
-        for (i in 0 until categories.length()) {
-            val o = categories.getJSONObject(i); val id = o.optString("id")
-            if (id.isNotBlank()) operations += db.collection("categories").document(id) to hashMapOf("name" to o.optString("name"), "icon" to o.optString("icon").ifBlank { null })
+    /**
+     * "ذاكرة المحادثة" الخفيفة: هل يبدو هذا السؤال استكمالاً لعشبة/أعشاب
+     * كانت محور الحديث في رسالة سابقة، رغم أن المستخدم لم يذكر اسمها هذه
+     * المرة؟ مثال واقعي: يسأل المستخدم "ما فوائد الزنجبيل؟"، سيمو يجيب،
+     * ثم يسأل المستخدم "طيب شو اضراره؟" دون تكرار اسم الزنجبيل — سؤال
+     * طبيعي جداً من إنسان حقيقي، لكن [relevantHerbs] وحدها (تبحث عن اسم
+     * عشبة حرفياً في نص السؤال) لا تجد شيئاً هنا فتُسقط السؤال لوضع البحث
+     * الحر في كامل الموسوعة، فيضيع "التركيز" على الزنجبيل تحديداً رغم أن
+     * السؤال واضح المعنى لأي قارئ.
+     *
+     * هذه الدالة لا تبني رداً بنفسها ولا تحدّد العشبة المقصودة (تلك مسؤولية
+     * الشاشة التي تحتفظ فعلياً بآخر أعشبة كانت "محور تركيز" الحديث) — فقط
+     * تقرر: هل يستحق هذا السؤال إعادة استخدام ذلك التركيز السابق بدل
+     * اعتباره سؤالاً عاماً جديداً؟ الشرط: وجود كلمة نية واضحة (نفس قوائم
+     * [rankedIntents]: أمان/استخدام/فائدة/مقارنة/دمج/خطة) *وليس* سؤال
+     * اقتراح عام (ذاك يبحث عمداً في كامل الموسوعة لا في عشبة محدَّدة سلفاً،
+     * فلا معنى لتضييقه على التركيز السابق)، مع بقاء السؤال قصيراً نسبياً
+     * (١٢ كلمة كحد أقصى) تحوّطاً من اعتبار سؤال طويل جديد كلياً امتداداً
+     * لحديث سابق لمجرد احتوائه كلمة نية عابرة ضمن موضوع مختلف تماماً.
+     *
+     * قدرة جديدة — تكملة موضوعية بلا كلمة نية صريحة: مشكلة حقيقية كانت
+     * تفوت هنا: سؤال متابعة قصير مثل "طيب وشو عن الحامل؟" أو "بس كم المدة؟"
+     * قد لا يحوي أي كلمة من قوائم النيّات حرفياً، فيُعامَل كسؤال عام جديد
+     * يفقد التركيز السابق رغم وضوح أنه استكمال لنفس الحديث لأي قارئ. الآن،
+     * إن فشل شرط كلمة النية، يُفحَص شرط أخف: سؤال قصير جداً (٨ كلمات كحد
+     * أقصى) يبدأ بأداة "استكمال حديث" شائعة (طيب/وشو/وهل/بس/كمان...) — هذه
+     * الأدوات نادراً ما تبدأ سؤالاً مستقلاً كلياً بلا سياق سابق، فوجودها في
+     * بداية سؤال قصير مؤشر قوي على أنه تكملة لا بداية جديدة.
+     */
+    private val followUpCues = listOf(
+        "طيب", "وشو", "وهل", "بس", "كمان", "وماذا", "وايش", "ومتى", "وكم", "ليش", "وين"
+    )
+
+    fun isFollowUpQuestion(question: String): Boolean {
+        val qNorm = normalize(question)
+        if (qNorm.isBlank()) return false
+        if (isSuggestionIntent(qNorm)) return false
+        val wordCount = qNorm.split(Regex("\\s+")).count { it.isNotBlank() }
+        if (wordCount > 12) return false
+        if (rankedIntents(qNorm).isNotEmpty()) return true
+        return wordCount <= 8 && followUpCues.any { qNorm.startsWith(normalize(it)) }
+    }
+
+    /** توافقاً مع الاستدعاءات القديمة (مثل اختبار أدوات المطور) التي تحتاج النص فقط. */
+    fun answer(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): String =
+        answerDetailed(question, herbs, allowCompare, blends).text
+
+    /**
+     * يجيب على سؤال حر بالاعتماد على بيانات عشبة واحدة أو أكثر. لا يوجد هنا
+     * أي حجب أو تقييد صناعي على المحتوى — المساعد محلي بالكامل ويستخدم فقط
+     * نصوص الموسوعة التي أدخلها المطوّر (يدوياً أو عبر التعلّم الذاتي)، فيجيب
+     * دوماً بأفضل ما يتوفر لديه من معلومات، ويوضّح بصراحة عندما لا تتوفر
+     * بيانات كافية بدل رفض الإجابة.
+     *
+     * [allowCompare] يحدد ما إذا كان مسموحاً تفعيل منطق "المقارنة/الدمج"
+     * المنظّم (يتطلب عشبتين محددتين بوضوح عبر اختيار المستخدم أو ذكرهما
+     * بالاسم في السؤال). عند `false` (مثلاً حين تُمرَّر كل الموسوعة كسياق
+     * افتراضي لعدم وجود أعشاب محددة) يظل سيمو يجيب بحرية، لكن دون أن "يقارن"
+     * تلقائياً بين عشرات الأعشاب التي لم يطلبها أحد — تماماً كما لا يقارن
+     * إلا إذا طُلب منه ذلك صراحة.
+     */
+    fun answerDetailed(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): AssistantReply {
+        val qNorm = normalize(question)
+        if (qNorm.isBlank()) {
+            return AssistantReply("تفضّل، اسأل سيمو عن أي عشبة: فوائدها، طريقة استخدامها، أو تحذيراتها.", false)
         }
-        val herbs = root.optJSONArray("herbs") ?: org.json.JSONArray()
-        for (i in 0 until herbs.length()) {
-            val o = herbs.getJSONObject(i); val id = o.optString("id")
-            if (id.isNotBlank()) operations += db.collection("herbs").document(id) to hashMapOf("name" to o.optString("name"), "category_id" to o.optString("categoryId").ifBlank { null }, "benefits" to o.optString("benefits"), "warnings" to o.optString("warnings"), "harms" to o.optString("harms"), "usage" to o.optString("usage"), "notes" to o.optString("notes"), "image_url" to o.optString("imageUrl").ifBlank { null })
+
+        // أولوية مطلقة للحالات المدرَّبة (يدوياً من المطوّر، أو ذاتياً من
+        // تقييمات المستخدمين السابقة) — إن وُجدت مطابقة كافية، يستخدم سيمو
+        // ردّها مباشرة قبل أي منطق عام آخر. هذا التحقق (وتحقق ConversationalSeed
+        // بعده) يسبقان عمداً فحص "هل تتوفر بيانات أعشاب؟" أدناه: الترحيب
+        // والشكر والسؤال عن الحال وهوية سيمو لا تحتاج أي بيانات أعشاب إطلاقاً،
+        // فكانت تُخطَف سابقاً برسالة "لم أجد معلومات" فقط لأن قائمة الأعشاب
+        // لم تكن قد حُمِّلت بعد من Firestore (أو كانت فارغة لأي سبب مؤقت) —
+        // خلل معماري يجعل سؤالاً بسيطاً مثل "كيفك" يعتمد خطأً على بيانات لا
+        // علاقة لها به إطلاقاً.
+        matchTrainedExample(question)?.let { return AssistantReply(it, false) }
+
+        // تدريب سيمو الافتتاحي (أكثر من 500 صياغة محادثة، انظر [ConversationalSeed])
+        // يأتي بعد تدريب المطوّر مباشرة وقبل أي منطق آخر: يغطي التحية والشكر
+        // والوداع وأسئلة الهوية والقدرات، فلا تحتاج هذه لأي بحث في الموسوعة.
+        ConversationalSeed.match(question)?.let { return AssistantReply(it, false) }
+
+        // من هنا فقط (بعد استبعاد كل ردود المحادثة العامة التي لا تحتاج بيانات)
+        // يصبح فحص توفّر بيانات الموسوعة منطقياً: أي سؤال متبقٍ يحتاج فعلاً
+        // للبحث ضمن نصوص الأعشاب، فإن لم تتوفر بعد نعتذر بوضوح بدل الانهيار.
+        if (herbs.isEmpty() && blends.isEmpty()) {
+            return AssistantReply("لم أجد في الموسوعة معلومات كافية للإجابة على هذا السؤال بعد 🌿", false)
         }
-        operations.chunked(450).forEach { chunk ->
-            val batch = db.batch()
-            chunk.forEach { (ref, data) -> batch.set(ref, data) }
-            batch.commit().await()
+
+        // "محدَّد" = عدد قليل من الأعشاب المستهدفة فعلياً (باختيار المستخدم أو
+        // ذكرها بالاسم) — عندها فقط تُبنى إجابات مفصّلة لكل عشبة على حدة.
+        // إن كان السياق هو كامل الموسوعة (لم يُطلب/يُحدَّد شيء)، يُستخدم
+        // البحث الحر بدل تكرار كل عشبة، تفادياً لإغراق الدردشة بإجابة ضخمة
+        // لم يطلبها أحد — نفس مبدأ "لا مقارنة أو استعراض إلا عند الطلب".
+        val specific = herbs.size <= 3
+
+        // ═══ إصلاح خلل حقيقي أُبلغ عنه: أحياناً يظهر ردّ الترحيب بدل تنفيذ
+        // طلب مقارنة فعلي بين عشبتين ═══
+        // السبب الجذري: [containsAny] فحص "احتواء نص فرعي" حرفي بلا حدود
+        // كلمة، والقائمة تضم "hi" — وأي طلب مقارنة يذكر اسماً علمياً لاتينياً
+        // لعشبة (شائع جداً بهذه الموسوعة تحديداً، انظر لقطة الشاشة المرفقة
+        // بالبلاغ: "Matricaria"، "Origanum majorana") قد يحوي حرفياً "hi"
+        // ضمن كلمة أخرى كلياً (Thymus، chamomilla...) فيُخطَف السؤال كاملاً
+        // كـ"تحية" رغم عدم وجود أي نية ترحيب فعلية فيه — وهذا يفسّر بالضبط
+        // لماذا يظهر الخلل مع أزواج أعشاب معيّنة (البابونج/الزعتر تحديداً
+        // شائعان جداً وأسماؤهما العلمية تحوي "hi") لا مع كل الأزواج، أي
+        // "أحياناً" حرفياً كما وُصف بالبلاغ. الإصلاح: التحية تُعتبر تحية
+        // فقط إذا (أ) كانت كلمة التحية موجودة ككلمة مستقلة كاملة (لا كجزء من
+        // كلمة أطول)، و(ب) كان السؤال كله قصيراً (٥ كلمات كحد أقصى) — سؤال
+        // مقارنة طويل يذكر عشبتين لن يُصنَّف كتحية أبداً حتى لو تضمّن اسماً
+        // علمياً بالمصادفة.
+        if (isPureGreeting(qNorm)) {
+            return AssistantReply(
+                "أهلاً 👋 أنا سيمو، مساعدك الذكي في عالم الأعشاب. اسألني عن أي عشبة تريدها: فوائدها، طريقة استخدامها، تحذيراتها، أو اطلب مني مقارنة بين أكثر من عشبة، وسأجيبك فوراً من بيانات الموسوعة.",
+                false
+            )
+        }
+        if (isShortExactPhraseMatch(qNorm, listOf("شكرا", "شكراً", "تسلم", "يعطيك العافية", "مشكور"), maxWords = 6)) {
+            return AssistantReply("عفواً 🌿 أنا سيمو، دائماً هنا لأي سؤال آخر عن الأعشاب.", false)
+        }
+
+        // ── تصنيف النية "بالنقاط" بدل أول شرط يتحقق بترتيب ثابت ──────────
+        // مشكلة حقيقية أُبلغ عنها ("سؤال تحديد فوائد بيرجع تحذيرات أولاً بلا
+        // داعٍ" — مثال حقيقي: "ما فوائد القطونة او لسان الحمل؟"): بعض أسماء
+        // الأعشاب تحوي بذاتها كلمة من كلمات نية "الأمان" ضمن اسمها العادي
+        // تماماً — "لسان الحمل" (اسم عشبة Plantain، لا علاقة له بالحمل أو
+        // الرضاعة إطلاقاً) يحوي حرفياً كلمة "حمل" ضمن اسمه، وهي نفسها إحدى
+        // كلمات [safetyIntentWords] الخاصة بتحذيرات الحمل/الرضاعة. فسؤال
+        // بسيط مثل هذا كان يُسجَّل له نية "أمان" بمجرد ذكر اسم العشبة نفسه،
+        // بنفس درجة نية "فوائد" (كل منهما كلمة واحدة مطابقة) — وعند التعادل
+        // تسبق "أمان" "فوائد" دوماً بحكم ترتيب [rankedIntents]، فيظهر رد
+        // التحذيرات أولاً رغم أن السؤال لم يذكر الحمل/الرضاعة إطلاقاً، بل
+        // فقط اسم العشبة المطلوبة بالضبط. الإصلاح: تُزال أسماء الأعشاب
+        // المحدَّدة فعلياً من نص السؤال قبل احتساب درجات النيّات — فكلمة
+        // نية تقع ضمن اسم العشبة بذاته لا تُحتسب، بينما تبقى محتسبة بشكل
+        // طبيعي لو ذكرها المستخدم صراحة خارج اسم العشبة (مثال: "ما أضرار
+        // لسان الحمل على الحامل؟" تبقى تُصنَّف أماناً بجدارة، لأن "الحامل"
+        // كلمة إضافية خارج اسم العشبة المُزال).
+        val qNormForIntent = qNormWithoutHerbNames(qNorm, herbs)
+
+        // مشكلة حقيقية أُبلغ عنها ("سؤال يحمل كلمات تخصّ أكثر من نية معاً
+        // مثل "ما أضرار وطريقة استخدام الزنجبيل؟" — تحذير + استخدام معاً، أو
+        // "ايهما أفضل لعلاج الأرق؟" — مقارنة + فائدة معاً) كان يُصنَّف دوماً
+        // حسب أي فرع مكتوب أولاً في الكود، بغضّ النظر عن أن كلمات نية أخرى
+        // قد تكون أوضح فعلياً في نص السؤال. الآن تُحسب درجة كل نية (عدد
+        // كلماتها المفتاحية المطابقة فعلياً)، وتُرتَّب النيّات تنازلياً حسب
+        // هذه الدرجة عبر [rankedIntents] فتُجرَّب الأقوى فعلياً أولاً؛ فإن
+        // فشل "شرطها" الخاص (مثلاً "مقارنة" لكن لا توجد عشبتان فعلياً)،
+        // يُجرَّب ما يليها في الترتيب بدل السقوط مباشرة للبحث الحر العام.
+        // عند تعادل الدرجات يُحافَظ على ترتيب الأولوية الطبي الآمن نفسه
+        // (دمج > أمان > استخدام > مقارنة > فوائد) لأن التحذيرات يجب أن
+        // تسبق الفوائد دوماً — لكن هذا التعادل نفسه صار أدق الآن بعد
+        // استبعاد اسم العشبة من الحساب أعلاه.
+        val ranked = rankedIntents(qNormForIntent)
+
+        // "دمج" و"خطة" حصريتان دوماً كما كانتا: إن تحققت شروطهما تُعطيان
+        // الأولوية المطلقة وتُرجعان فوراً بلا أي دمج مع نيات أخرى، لأن كلتيهما
+        // أصلاً رد مركَّب من عدة حقول معاً (لا معنى لدمجه بحقل منفصل آخر).
+        for (intent in ranked) {
+            when (intent) {
+                "combine" -> if (allowCompare && specific && herbs.size >= 2) {
+                    return AssistantReply(withContextHint(buildCombineAnswer(herbs), question), false)
+                }
+                "plan" -> if (specific) {
+                    return AssistantReply(withContextHint(buildPlanAnswer(herbs), question), false)
+                }
+            }
+        }
+
+        // قدرة جديدة: أسئلة "مركّبة" تحمل أكثر من نية قابلة للدمج معاً (أمان/
+        // استخدام/مقارنة/فائدة) بنفس الجملة — بدل الاكتفاء بأقوى نية وتجاهل
+        // البقية كما كان سابقاً، تُجمَع كل النيات المطابقة فعلياً (بحد أقصى
+        // ٣ لتبقى الإجابة مقروءة) بجواب واحد بعناوين واضحة لكل قسم. إن
+        // طابقت نية واحدة فقط، يبقى السلوك مطابقاً تماماً لما كان سابقاً
+        // (نفس دالة البناء ونفس الصياغة) بلا أي تغيير ملحوظ.
+        val combinable = ranked.filter { it == "safety" || it == "usage" || it == "compare" || it == "benefits" }
+            .filter { intent ->
+                when (intent) {
+                    "compare" -> allowCompare && specific && herbs.size >= 2
+                    else -> specific
+                }
+            }
+        if (combinable.size >= 2) {
+            return AssistantReply(withContextHint(buildCombinedAnswer(combinable.take(3), herbs, qNorm), question), false)
+        }
+        if (combinable.size == 1) {
+            val text = when (combinable.first()) {
+                "safety" -> buildSafetyAnswer(herbs, qNorm)
+                "usage" -> buildUsageAnswer(herbs)
+                "compare" -> buildOverview(herbs)
+                else -> buildBenefitsAnswer(herbs, qNorm)
+            }
+            return AssistantReply(withContextHint(text, question), false)
+        }
+
+        // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
+        // (لا إرفاق ولا ذكر اسم صريح) — عندها "الاقتراح" له معنى فعلياً،
+        // وهو اختيار الأنسب من كامل الموسوعة بدل عشبة واحدة معروفة أصلاً.
+        // إن كانت هناك عشبة محدَّدة، تُعامَل الكلمة كجزء عادي من سؤال عادي
+        // (فتُغطّى أصلاً عبر فروع الفائدة/الاستخدام أعلاه) بدل خطفها هنا.
+        if (!specific && isSuggestionIntent(qNorm)) {
+            val (text, learnable) = buildSuggestionAnswer(question, herbs)
+            return AssistantReply(withContextHint(text, question), learnable)
+        }
+
+        val (text, learnable) = buildGeneralSearchAnswer(question, herbs, blends)
+        return AssistantReply(withContextHint(text, question), learnable)
+    }
+
+    /**
+     * قدرة جديدة: دمج أكثر من نية "قابلة للدمج" (أمان/استخدام/مقارنة/فائدة)
+     * في جواب واحد بعناوين واضحة لكل قسم، بدل إجبار المستخدم على سؤال كل
+     * نية على حدة عندما يسألها فعلياً بنفس الجملة (مثال حقيقي: "ما أضرار
+     * وطريقة استخدام الزنجبيل؟" — تحذير + استخدام معاً بنفس السؤال).
+     */
+    private fun buildCombinedAnswer(intents: List<String>, herbs: List<Herb>, qNorm: String): String {
+        val sectionTitles = mapOf(
+            "safety" to "⚠️ التحذيرات والأضرار",
+            "usage" to "💊 طريقة الاستخدام",
+            "compare" to "🔍 المقارنة",
+            "benefits" to "🌿 الفوائد"
+        )
+        return intents.joinToString("\n\n") { intent ->
+            val title = sectionTitles[intent] ?: intent
+            val body = when (intent) {
+                "safety" -> buildSafetyAnswer(herbs, qNorm)
+                "usage" -> buildUsageAnswer(herbs)
+                "compare" -> buildOverview(herbs)
+                else -> buildBenefitsAnswer(herbs, qNorm)
+            }
+            "$title:\n${body.trim()}"
         }
     }
 
-    companion object {
-        /**
-         * سقف كاش Firestore المحلي (٤٠ ميجابايت) - القيمة الفعلية تُطبَّق من
-         * [com.salman.herbalencyclopedia.HerbalApp.onCreate]، راجع تعليقها
-         * هناك لسبب نقل نقطة التطبيق الفعلية إلى مستوى Application بدل
-         * init{} هذه الفئة. كانت القيمة السابقة CACHE_SIZE_UNLIMITED تعني
-         * عدم وجود أي سقف إطلاقاً، فيستمر الكاش بالتضخم بلا حدود مع كل
-         * مزامنة أو تحديث حتى لصور/مستندات لم تعد تُعرض فعلياً — وهذا هو
-         * السبب الرئيسي لكون حجم التطبيق بعد التثبيت والاستخدام أكبر بكثير
-         * من حجم بيانات الموسوعة الفعلي. بسقف محدود، Firestore يشغّل تنظيفاً
-         * تلقائياً (LRU garbage collection) يحذف أقدم المستندات غير
-         * المستخدمة عند تجاوز هذا الحد، مع إبقاء العمل بلا إنترنت يعمل بشكل
-         * طبيعي تماماً (الموسوعة كاملة أصغر من هذا السقف بمراحل، فتبقى كل
-         * البيانات الفعلية محفوظة محلياً دوماً).
-         */
-        const val PERSISTENT_CACHE_BYTES: Long = 40L * 1024 * 1024
+    private val combineIntentWords = listOf("جمع", "دمج", "معا", "معاً", "سوية", "سويا", "نفس الوقت", "تفاعل", "خلط")
+    private val safetyIntentWords = listOf("خطر", "اضرار", "أضرار", "تحذير", "حامل", "حمل", "رضاعة", "رضاعه", "طفل", "اطفال", "أطفال", "امان", "أمان", "اثار جانبية", "آثار جانبية")
+    private val usageIntentWords = listOf("استخدام", "استعمال", "طريقة", "طريقه", "كيف استخدم", "جرعة", "جرعه", "مقدار")
+    private val compareIntentWords = listOf("فرق", "يختلف", "اختلاف", "افضل", "أفضل", "احسن", "أحسن", "ايهما", "أيهما", "قارن", "مقارنة")
+    // توسيع فهم "نية الفائدة": أُضيفت صيغ فصحى وعامية إضافية (خواص/منافع/
+    // يشفي/شافي...) بجانب الكلمات الأصلية، فتُحتسَب أسئلة مثل "ما خواص
+    // الزنجبيل؟" أو "ايش بيشفي فيه البابونج؟" كنية فائدة أيضاً، لا فقط
+    // صياغة "ما فوائد X؟" الحرفية. راجع أيضاً [DialectNormalizer.rawMap]
+    // حيث تُطبَّع هذه الصيغ العامية إلى مرادفها الفصيح أولاً.
+    private val benefitsIntentWords = listOf(
+        "فائدة", "فائده", "فوائد", "يفيد", "علاج", "يعالج", "مفيد",
+        "خواص", "خاصية", "منافع", "منفعة", "يشفي", "شافي", "شافية", "علاجي", "علاجية"
+    )
+    private val planIntentWords = listOf(
+        "خطة", "خطه", "روتين", "برنامج", "جدول", "كيف ابدا", "كيف أبدأ",
+        "خطة استخدام", "برنامج استخدام", "طريقة يومية", "طريقه يوميه"
+    )
 
-        /**
-         * صحيح إذا كان الاستثناء غالباً مؤقتاً بسبب ضعف/انقطاع الاتصال
-         * (فيستحق إعادة محاولة تلقائية داخلية - راجع
-         * [com.salman.herbalencyclopedia.ui.AppViewModel.syncCatalogFromServer])
-         * لا أخطاء دائمة كرفض الصلاحيات أو عدم تسجيل الدخول، التي لن تتغير
-         * بإعادة المحاولة.
-         */
-        fun isTransientError(e: Throwable): Boolean {
-            val code = (e as? FirebaseFirestoreException)?.code
-            return code == null ||
-                code == FirebaseFirestoreException.Code.UNAVAILABLE ||
-                code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ||
-                code == FirebaseFirestoreException.Code.ABORTED ||
-                code == FirebaseFirestoreException.Code.CANCELLED ||
-                code == FirebaseFirestoreException.Code.UNKNOWN
+    /**
+     * يرتّب أسماء النيّات المحتملة (combine/safety/usage/compare/benefits)
+     * تنازلياً حسب عدد كلماتها المفتاحية المطابقة فعلياً في [qNorm]
+     * (المُطبَّع مسبقاً)، مع استبعاد أي نية لم تُطابَق إطلاقاً (درجتها صفر).
+     * الترتيب الابتدائي في الخريطة (قبل الفرز) هو ترتيب الأولوية الطبي
+     * الآمن نفسه المستخدم سابقاً، و`sortedByDescending` مستقرّ (Stable Sort)
+     * في Kotlin فيحافظ على هذا الترتيب تلقائياً عند تعادل الدرجات — تماماً
+     * كما كان السلوك السابق عند تطابق نية واحدة فقط.
+     */
+    /**
+     * تُزيل من نص السؤال المُطبَّع (qNorm) أي جزء يطابق اسم عشبة من [herbs]
+     * المحدَّدة فعلياً لهذا السؤال — تُستخدَم فقط قبل احتساب درجات النيّات
+     * في [rankedIntents]، كي لا تُحتسَب كلمة نية (مثل "حمل" ضمن اسم عشبة
+     * "لسان الحمل") لمجرد وقوعها داخل اسم العشبة نفسه بدل أن تكون طلباً
+     * فعلياً من المستخدم. راجع التعليق أعلى استدعائها في [answerDetailed].
+     */
+    private fun qNormWithoutHerbNames(qNorm: String, herbs: List<Herb>): String {
+        var result = qNorm
+        herbs.forEach { herb ->
+            val name = normalize(herb.name)
+            if (name.isNotBlank()) result = result.replace(name, " ")
         }
+        return result
+    }
 
-        /** Turns a Firestore/network exception into a short, user-facing Arabic message. */
-        fun describeError(e: Throwable): String {
-            val code = (e as? FirebaseFirestoreException)?.code
-            return when (code) {
-                FirebaseFirestoreException.Code.UNAVAILABLE ->
-                    "لا يوجد اتصال بالإنترنت حالياً. سيتم عرض آخر بيانات محفوظة والمزامنة تلقائياً عند عودة الاتصال."
-                FirebaseFirestoreException.Code.PERMISSION_DENIED ->
-                    "ليست لديك صلاحية الوصول إلى هذه البيانات."
-                FirebaseFirestoreException.Code.UNAUTHENTICATED ->
-                    "يجب تسجيل الدخول أولاً."
-                FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
-                    "انتهت مهلة الاتصال بالخادم. حاول مرة أخرى."
-                else -> e.localizedMessage ?: "حدث خطأ غير متوقع أثناء المزامنة."
+    private fun rankedIntents(qNorm: String): List<String> {
+        val priorityOrder = listOf("combine", "plan", "safety", "usage", "compare", "benefits")
+        val scores = mapOf(
+            "combine" to combineIntentWords.count { qNorm.contains(normalize(it)) },
+            "plan" to planIntentWords.count { qNorm.contains(normalize(it)) },
+            "safety" to safetyIntentWords.count { qNorm.contains(normalize(it)) },
+            "usage" to usageIntentWords.count { qNorm.contains(normalize(it)) },
+            "compare" to compareIntentWords.count { qNorm.contains(normalize(it)) },
+            "benefits" to (benefitsIntentWords + HealthTopicSynonyms.allWords).count { qNorm.contains(normalize(it)) }
+        )
+        return priorityOrder.filter { (scores[it] ?: 0) > 0 }.sortedByDescending { scores[it] ?: 0 }
+    }
+
+    private fun buildCombineAnswer(herbs: List<Herb>): String = buildString {
+        append("لا تحتوي الموسوعة على قاعدة بيانات مخصّصة لتفاعلات الأعشاب مع بعضها، لذا لا يمكنني الجزم بأمان الجمع بين ${herbNames(herbs)}.\n\n")
+        append("أبرز التحذيرات المسجّلة لكل عشبة على حدة:\n")
+        herbs.forEach { herb ->
+            val cautions = (splitPoints(herb.warnings) + splitPoints(herb.harms)).take(2)
+            append("🔸 ${herb.name}: ")
+            append(if (cautions.isNotEmpty()) cautions.joinToString("، ") else "لا توجد تحذيرات مسجّلة")
+            append("\n")
+        }
+        append("\nالأفضل استشارة طبيب أو صيدلاني قبل الجمع بينهما، خصوصاً مع وجود أدوية أو حالة صحية.")
+    }
+
+    private fun buildSafetyAnswer(herbs: List<Herb>, qNorm: String): String {
+        val pregnancyAsked = containsAny(qNorm, listOf("حامل", "حمل", "رضاعة", "رضاعه", "رضع"))
+        return buildString {
+            herbs.forEach { herb ->
+                val points = splitPoints(herb.warnings) + splitPoints(herb.harms)
+                append("🔸 ${herb.name}:\n")
+                if (points.isEmpty()) {
+                    append("لا توجد تحذيرات أو أضرار مسجّلة في الموسوعة لهذه العشبة.\n")
+                } else {
+                    val relevant = if (pregnancyAsked)
+                        points.filter { containsAny(normalize(it), listOf("حامل", "حمل", "رضاعة", "رضاعه", "رضع")) }
+                    else points
+                    val toShow = relevant.ifEmpty { points }.take(3)
+                    toShow.forEach { append("• $it\n") }
+                    if (pregnancyAsked && relevant.isEmpty()) {
+                        append("(لم يُذكر صراحةً الحمل أو الرضاعة، يُستحسن استشارة الطبيب للتأكد)\n")
+                    }
+                }
+            }
+            append("\nهذه المعلومات للاطلاع فقط ولا تُغني عن استشارة مختص.")
+        }
+    }
+
+    private fun buildUsageAnswer(herbs: List<Herb>): String = buildString {
+        herbs.forEach { herb ->
+            append("🔸 ${herb.name}: ")
+            append(herb.usage.ifBlank { "لا توجد طريقة استخدام مسجّلة." })
+            append("\n")
+        }
+    }
+
+    /**
+     * قدرة جديدة: "خطة استخدام" مركَّبة — بدل عرض حقل الاستخدام وحده (كما
+     * في [buildUsageAnswer])، تُركِّب هذه من عدة حقول معاً (استخدام + أبرز
+     * فائدة مستهدَفة + أهم تحذير) رداً واحداً عملياً على هيئة خطوات، يشبه
+     * ما يطلبه مستخدم فعلياً حين يسأل "كيف أبدأ" أو "أعطني روتيناً" بدل
+     * سؤال جزئي عن حقل واحد فقط. يُفعَّل عبر [planIntentWords] ضمن
+     * [rankedIntents]، بنفس مبدأ بقية النيّات (يتطلب عشبة/أعشاب محدَّدة).
+     */
+    private fun buildPlanAnswer(herbs: List<Herb>): String = buildString {
+        append("خطة استرشادية للاستخدام (ليست وصفة طبية):\n\n")
+        herbs.forEach { herb ->
+            append("🔸 ${herb.name}:\n")
+            append("• طريقة الاستخدام: ${herb.usage.ifBlank { "غير مسجّلة في الموسوعة" }}\n")
+            splitPoints(herb.benefits).firstOrNull()?.let { append("• الهدف الأساسي: $it\n") }
+            (splitPoints(herb.warnings) + splitPoints(herb.harms)).firstOrNull()?.let { append("• انتبه: $it\n") }
+            append("• نصيحة عامة: ابدأ بكمية أقل من المعتاد أول مرة وراقب استجابة جسمك قبل الاعتماد عليها ضمن روتين يومي ثابت.\n\n")
+        }
+        append("هذه خطة عامة مبنية على بيانات الموسوعة فقط، ولا تغني عن استشارة طبيب أو أخصائي أعشاب قبل الالتزام بها.")
+    }.trimEnd()
+
+    /**
+     * [qNorm] (افتراضياً فارغ للتوافق مع الاستدعاءات القديمة) يتيح تمييز
+     * النقاط المرتبطة بموضوع محدَّد ذكره السؤال (مثل "تنحيف"/"وزن"، انظر
+     * [HealthTopicSynonyms]) من بين كل فوائد العشبة، بدل عرض النص كاملاً
+     * بلا تمييز حين يسأل المستخدم فعلياً عن غرض بعينه لا عن الفوائد عموماً
+     * — نفس مبدأ فلترة سؤال الحمل/الرضاعة في [buildSafetyAnswer] تماماً.
+     */
+    private fun buildBenefitsAnswer(herbs: List<Herb>, qNorm: String = ""): String {
+        if (herbs.size < 2) {
+            val herb = herbs.first()
+            val points = splitPoints(herb.benefits)
+            if (points.isEmpty()) {
+                return "🔸 ${herb.name}: لا توجد فوائد مسجّلة لهذه العشبة في الموسوعة بعد."
+            }
+            val topic = HealthTopicSynonyms.clusterMentionedIn(qNorm)
+            val relevant = if (topic != null) points.filter { containsAny(normalize(it), topic.toList()) } else emptyList()
+            val topicLabel = if (relevant.isNotEmpty()) HealthTopicSynonyms.labelMentionedIn(qNorm) else null
+            return if (relevant.isNotEmpty()) {
+                val prefix = if (topicLabel != null) "🔸 ${herb.name} (بخصوص $topicLabel):\n" else "🔸 ${herb.name}:\n"
+                prefix + relevant.joinToString("\n") { "• $it" }
+            } else {
+                "🔸 ${herb.name}: ${herb.benefits}"
+            }
+        }
+        val points = compareField(herbs) { it.benefits }
+        val shared = points.filter { it.herbIds.size == herbs.size }
+        return buildString {
+            if (shared.isNotEmpty()) {
+                append("مشترك بين ${herbNames(herbs)}: ${shared.joinToString("، ") { it.text }}\n\n")
+            }
+            herbs.forEach { herb ->
+                val mine = points.filter { it.herbIds.size < herbs.size && herb.id in it.herbIds }
+                if (mine.isNotEmpty()) {
+                    append("🔸 ${herb.name} تنفرد بـ: ${mine.joinToString("، ") { it.text }}\n")
+                }
+            }
+            if (shared.isEmpty() && herbs.all { herb -> points.none { herb.id in it.herbIds } }) {
+                append("لا توجد فوائد مسجّلة لهذه الأعشاب في الموسوعة بعد.")
             }
         }
     }
-}
+
+    // ملاحظة: منطق "أقل الأعشاب تحذيراتٍ" (سابقاً في buildSafetyGlance
+    // منفصلة) صار جزءاً من [buildOverview] نفسها ضمن قسم "التحذيرات
+    // والأضرار" الموحَّد، بدل دالة منفصلة تُستدعى بعدها بلا سياق.
+
+    // ── اقتراح عشبة مناسبة لهدف/عرض معيّن ("اقترح عشبة لتحسين النوم") ───
+
+    /**
+     * كلمات/عبارات "أمر الاقتراح" نفسها — لا تحمل أي دلالة عن الهدف الفعلي
+     * (النوم، الهضم...) وتُستبعد من كلمات المطابقة في [buildSuggestionAnswer]
+     * حتى لا "تُغرق" حساب التشابه بكلمات لا علاقة لها بنص الموسوعة.
+     */
+    private val suggestionFillerWords: Set<String> by lazy {
+        listOf(
+            "اقترح", "اقتراح", "اقترحلي", "رشح", "رشحلي", "رشحي", "انصح", "انصحني",
+            "انصحيني", "أنصحني", "توصية", "اوصي", "أوصي", "توصي", "عشبة", "عشب",
+            "اعشاب", "أعشاب", "نبات", "نبتة", "نباتات"
+        ).map { normalize(it) }.toSet()
+    }
+
+    /**
+     * "عشبة لـ..." (مثل "عشبة لتخفيف الألم") نمط شائع جداً لطلب اقتراح، لكن
+     * مطابقتها كسلسلة نصية بسيطة ("عشبة ل") كانت تُخطئ أيضاً في عبارات لا
+     * علاقة لها بطلب اقتراح إطلاقاً — مثل "هذه عشبة لها فوائد كثيرة" أو
+     * "عشبة له استخدامات قديمة" — لأن "لها"/"له"/"لهم"... كلها تبدأ بـ"ل"
+     * فتُطابق السلسلة الفرعية "عشبة ل" رغم أن "ل" هنا حرف جر لضمير متصل لا
+     * بداية فعل/كلمة تصف الغرض من الاقتراح. هذا التعبير النمطي (Regex) يلتقط
+     * فقط "عشبة ل" (أو "عشب ل") حين لا تكون الكلمة التالية أحد هذه الضمائر
+     * المتصلة الشائعة، فيبقى يلتقط "عشبة لتخفيف الألم"/"عشبة لعلاج السكري"
+     * دون أن يُخطئ في جمل عادية تصف عشبة بدل طلب اقتراح واحدة.
+     */
+    private val suggestionForPattern = Regex("عشبه?\\s+ل(?!ها\\b|له\\b|لهم\\b|لهن\\b|لك\\b|لي\\b|لنا\\b)")
+
+    /** هل يطلب المستخدم اقتراحاً/توصية بعشبة (بدل سؤال مباشر عن عشبة معروفة)؟ */
+    private fun isSuggestionIntent(qNorm: String): Boolean =
+        suggestionForPattern.containsMatchIn(qNorm) || containsAny(
+            qNorm,
+            listOf(
+                "اقترح", "اقتراح", "رشح", "رشحلي", "رشحي", "انصح", "انصحني", "انصحيني",
+                "أنصحني", "توصية", "اوصي", "أوصي", "توصي", "افضل عشبة", "أفضل عشبة",
+                "احسن عشبة", "أحسن عشبة", "عشبة تساعد", "عشبة تفيد",
+                "علاج طبيعي", "حل طبيعي", "دواء طبيعي", "وش تنصح", "وش ينفع", "شو ينفع لل"
+            )
+        )
+
+    /** أفضل نقطة مطابِقة لعشبة واحدة مع درجة تشابهها ومصدر الحقل. */
+    private data class HerbMatch(val text: String, val field: String, val score: Double)
+
+    /**
+     * يبني اقتراحاً مرتَّباً لأفضل الأعشاب المتاحة لهدف/عرض ورد في السؤال،
+     * عبر نفس خط أنابيب "تحليل → بحث → تحليل بيانات → تنظيم" المستخدم في
+     * البحث الحر ([buildGeneralSearchAnswer])، لكن بتجميع على مستوى العشبة
+     * (أفضل نقطة لكل عشبة) بدل عرض نقاط مبعثرة، وبترجيح حقل الفوائد أعلى من
+     * غيره (لأن "الاقتراح" يعني عملياً: أي عشبة تفيد في هذا الغرض تحديداً)،
+     * فتظهر أفضل ٣ أعشاب مرشَّحة مع سبب الترشيح من نص الموسوعة نفسه.
+     */
+    private fun buildSuggestionAnswer(question: String, herbs: List<Herb>): Pair<String, Boolean> {
+        val index = corpusIndexFor(herbs)
+        val qNorm = normalize(question)
+        val qWords = analyzeQuestion(question, index) - suggestionFillerWords
+        if (qWords.isEmpty()) {
+            return "خبرني أكثر عن الهدف أو العرض اللي حابب عشبة تساعدك فيه (مثل: النوم، الهضم، المناعة، التوتر...) وسأبحث لك ضمن الموسوعة 🌿" to false
+        }
+
+        // الهدف/الموضوع الذي "فهمه" سيمو من مرادفات السؤال (إن وُجد)، مثل
+        // "دايت" أو "كرش" ← "إنقاص الوزن" — يُذكر صراحةً في الرد أدناه، حتى
+        // يتأكد المستخدم أن سيمو فهم مقصده الفعلي من المرادف ولم يكتفِ
+        // بمطابقة كلمات حرفية عمياء لا يعرف معناها.
+        val topicLabel = HealthTopicSynonyms.labelMentionedIn(qNorm)
+
+        val fieldWeight = mapOf(
+            "الفوائد" to 1.15, "الاستخدام" to 0.9, "ملاحظات" to 0.85,
+            "التحذيرات" to 0.4, "الأضرار" to 0.4,
+            // وزن منخفض عمداً: هدف "الاقتراح" هو الغرض/العرض (نوم، هضم...)
+            // لا اسم العشبة نفسه، فيبقى حقل الاسم مساعداً فقط (مثلاً عندما
+            // يذكر المستخدم اسماً علمياً ضمن سؤاله) دون أن يطغى على تطابق
+            // الفوائد الفعلي.
+            "الاسم" to 0.5
+        )
+
+        // قدرة جديدة — فهم النفي: "اقترح عشبة للنوم بس مو البابونج" يجب ألا
+        // يرشّح البابونج رغم مطابقته الموضوع، لأن المستخدم استبعده صراحة.
+        // تُستبعد أي عشبة ذُكر اسمها بصيغة منفية قبل بناء المرشَّحين أصلاً،
+        // لا بعد الترش
