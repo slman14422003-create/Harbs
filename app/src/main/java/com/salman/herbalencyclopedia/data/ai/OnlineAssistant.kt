@@ -57,8 +57,9 @@ fun hasActiveInternetConnection(context: Context): Boolean {
  * الوضع الذكي عبر الإنترنت لسيمو: يستخدم نموذج Gemini المجاني من Google
  * (Google AI Studio — بلا بطاقة ائتمان، راجع توثيق [AiConfig.onlineEnabled]
  * لتفاصيل رفع الحظر عنه في سوريا في سبتمبر 2026). يُستخدَم هنا معيار
- * Gemini REST الأصلي (`/v1beta/models/{model}:generateContent`، والمفتاح
- * كباراميتر `?key=` بالرابط، لا ترويسة Authorization)، وهذا ما يبنيه
+ * Gemini REST الأصلي (`/v1beta/models/{model}:generateContent`)، والمفتاح
+ * يُرسَل كترويسة `x-goog-api-key` (راجع توثيق [sendRequest] أدناه لسبب
+ * التحوّل عن باراميتر `?key=` القديم)، وهذا ما يبنيه
  * [sendRequest]/[buildRequestBody] أدناه.
  * طبقة إضافية فوق [HerbAssistant] المحلي تماماً، لا بديلة عنه: أي فشل هنا
  * (لا إنترنت فعلي، انتهاء مهلة، مفتاح غير صالح، خطأ خادم) يُترجَم دوماً
@@ -186,9 +187,7 @@ object OnlineAssistant {
             // كما هو تماماً — فيكفي أن يكون البروكسي "مرآة" بسيطة تُعيد توجيه
             // أي طلب يصلها بنفس المسار والباراميترات إلى Google الحقيقي وتُعيد
             // الرد كما هو.
-            // ترميز المفتاح ضمن الرابط (URL-encode) احتياطاً لأي حرف خاص فيه.
-            val encodedKey = java.net.URLEncoder.encode(apiKey, "UTF-8")
-            val endpoint = URL("${normalizedBaseUrl()}/v1beta/models/$model:generateContent?key=$encodedKey")
+            val endpoint = URL("${normalizedBaseUrl()}/v1beta/models/$model:generateContent")
             val body = buildRequestBody(question, herbs, blends, allowCompare, model)
             connection = (endpoint.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -196,9 +195,25 @@ object OnlineAssistant {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                // معيار Gemini REST الأصلي يتوقع المفتاح كباراميتر ?key= بالرابط
-                // (أُلحِق أعلاه ضمن endpoint)، لا كترويسة Authorization: Bearer
-                // كما كان الحال مع Groq.
+                // ═══ إصلاح خلل حقيقي أُبلغ عنه (سبتمبر 2026): طلبات Gemini كانت
+                // تفشل دوماً بخطأ 401 "Request had invalid authentication
+                // credentials. Expected OAuth 2 access token..." رغم أن المفتاح
+                // صحيح فعلياً ═══
+                // السبب: مفاتيح Gemini API الجديدة الصادرة من AI Studio تُصاغ
+                // الآن بصيغة "AQ." (Auth key) بدل الصيغة القديمة "AIzaSy..."
+                // (Standard key) — وغوغل أوقفت قبول مفاتيح Standard القديمة كلياً
+                // بحلول سبتمبر 2026 (فتصدر AI Studio مفاتيح AQ. حصراً لأي مستخدم
+                // جديد أو مفتاح جديد من الآن فصاعداً). مفاتيح AQ. هذه تُرفَض
+                // تحديداً حين تُرسَل كباراميتر ?key= بالرابط (وهذا ما كان يفعله
+                // هذا الملف سابقاً)، بينما توثيق Google الرسمي الحالي لمفاتيح
+                // Gemini API يبني كل أمثلته الآن على إرسال المفتاح كترويسة HTTP
+                // باسم "x-goog-api-key" بدلاً من ذلك — وهذه الطريقة تعمل مع
+                // الصيغتين معاً (القديمة والجديدة على السواء)، فلا حاجة لتمييز
+                // نوع المفتاح هنا إطلاقاً.
+                // الإصلاح: التحوّل الكامل لترويسة x-goog-api-key، وحذف ?key= من
+                // الرابط نهائياً (لم يعد endpoint أعلاه يتضمنه، ولا حاجة بالتالي
+                // لترميز URL-encode للمفتاح الذي كان يخدم فقط ذلك الباراميتر).
+                setRequestProperty("x-goog-api-key", apiKey)
             }
             connection.outputStream.use { out ->
                 OutputStreamWriter(out, StandardCharsets.UTF_8).use { it.write(body.toString()) }
