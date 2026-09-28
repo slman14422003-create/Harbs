@@ -199,23 +199,48 @@ object HerbAssistant {
         "كيفاش", "ايهم", "أيهم"
     )
 
-    private val stopWords: Set<String>
-        get() = if (AiConfig.extraStopWords.isEmpty()) baseStopWords
-                else baseStopWords + AiConfig.extraStopWords.map { normalize(it) }
+    private val SPACES = Regex("\\s+")
 
-    private fun normalize(text: String): String {
-        var t = text
-        t = t.replace(Regex("[\\u064B-\\u0652]"), "") // إزالة التشكيل
-        t = t.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
-        t = t.replace('ى', 'ي').replace('ة', 'ه')
-        t = t.replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
-        return t.trim().lowercase()
-    }
+    /** كلمات الإيقاف بعد التطبيع مرة واحدة (كانت تُقارَن خاماً بكلمات مُطبَّعة، وتُعاد بناؤها مع كل كلمة). */
+    private val baseStopWordsNorm: Set<String> by lazy { baseStopWords.map { normalize(it) }.toSet() }
+    private var stopCacheRef: Set<String>? = null
+    private var stopCacheValue: Set<String> = emptySet()
+
+    /**
+     * كلمات الإيقاف الفعلية = الأساسية + إضافات المطوّر. كان هذا الـgetter يبني
+     * مجموعة جديدة كاملة *مع كل كلمة* تُفحَص عند وجود كلمة إيقاف إضافية واحدة على
+     * الأقل (لأنه يُستدعى داخل filter لكل كلمة)؛ الآن تُخزَّن النتيجة وتُعاد
+     * بنائها فقط عند تغيّر مرجع [AiConfig.extraStopWords].
+     */
+    private val stopWords: Set<String>
+        get() {
+            val extra = AiConfig.extraStopWords
+            if (extra.isEmpty()) return baseStopWordsNorm
+            if (stopCacheRef === extra) return stopCacheValue
+            val built = baseStopWordsNorm + extra.map { normalize(it) }
+            stopCacheRef = extra
+            stopCacheValue = built
+            return built
+        }
+
+    /**
+     * التطبيع العربي موحَّد الآن في [ArabicLexicon.normalizeText] (نفس القواعد
+     * السابقة + إزالة التطويل وتحويل الأرقام العربية-الهندية لتُلتقط أعمار مثل
+     * "٣ سنوات"، وتوحيد الكاف/الياء الفارسيتين). كانت هذه الدالة تُنشئ ثلاثة
+     * كائنات Regex جديدة في *كل* استدعاء (تجميع النمط من الصفر)، وتُستدعى آلاف
+     * المرات لكل سؤال — سبب رئيسي لبطء "التفكير".
+     */
+    private fun normalize(text: String): String = ArabicLexicon.normalizeText(text)
+
+    private fun tokensOf(normalized: String): List<String> =
+        if (normalized.isEmpty()) emptyList() else normalized.split(SPACES).filter { it.isNotBlank() }
 
     private fun wordsOf(text: String): Set<String> {
-        val base = normalize(text).split(Regex("\\s+"))
-            .filter { it.length > 1 && it !in stopWords }
-            .toSet()
+        val stops = stopWords
+        val base = LinkedHashSet<String>()
+        for (t in tokensOf(normalize(text))) {
+            if (t.length > 1 && t !in stops) base += t
+        }
         return applySynonyms(DialectNormalizer.expand(base))
     }
 
@@ -265,7 +290,15 @@ object HerbAssistant {
             rawMap.mapKeys { normalize(it.key) }.mapValues { normalize(it.value) }
         }
         fun apply(word: String): String = map[word] ?: word
-        fun expand(words: Set<String>): Set<String> = words.map { apply(it) }.toSet()
+        /**
+         * إصلاح: بعض قيم القاموس عبارة من كلمتين ("يزيد الوزن")؛ كانت تُضاف كـ"كلمة"
+         * واحدة تحوي مسافة فلا تُطابق أي شيء أبداً. تُقسَّم الآن إلى كلمات مستقلة.
+         */
+        fun expand(words: Set<String>): Set<String> {
+            val out = LinkedHashSet<String>()
+            for (w in words) for (p in apply(w).split(' ')) if (p.isNotBlank()) out += p
+            return out
+        }
     }
 
     /**
@@ -273,11 +306,24 @@ object HerbAssistant {
      * تطبيع الطرفين)، بحيث تُحسب "ينفع" و"يفيد" مثلاً ككلمة واحدة أثناء أي
      * مقارنة أو بحث — هذا هو أثر "تعليم سيمو كلمات جديدة" يدوياً على أرض الواقع.
      */
+    private var synCacheRef: Map<String, String>? = null
+    private var synCacheTable: Map<String, String> = emptyMap()
+
     private fun applySynonyms(words: Set<String>): Set<String> {
-        if (AiConfig.synonyms.isEmpty()) return words
-        val table = AiConfig.synonyms.entries.associate { (k, v) -> normalize(k) to normalize(v) }
+        val raw = AiConfig.synonyms
+        if (raw.isEmpty()) return words
+        if (synCacheRef !== raw) {
+            synCacheTable = raw.entries.associate { (k, v) -> normalize(k) to normalize(v) }
+            synCacheRef = raw
+        }
+        val table = synCacheTable
         if (table.isEmpty()) return words
-        return words.map { table[it] ?: it }.toSet()
+        val out = LinkedHashSet<String>()
+        for (w in words) {
+            val mapped = table[w] ?: w
+            for (p in mapped.split(' ')) if (p.isNotBlank()) out += p
+        }
+        return out
     }
 
     /** يقسّم فقرة حرة إلى نقاط قصيرة قابلة للمقارنة والعرض كعناصر منفصلة. */
@@ -291,11 +337,19 @@ object HerbAssistant {
      * أو "1,200" سليماً كوحدة واحدة، بينما تستمر نهاية الجملة العادية
      * بالتقسيم الصحيح كما كانت.
      */
+    private val POINT_SPLIT = Regex("[،\\n؛;]|(?<!\\d)[.,](?!\\d)|\\s-\\s")
+    private val splitCache = HashMap<String, List<String>>()
+
+    @Synchronized
     private fun splitPoints(text: String): List<String> {
         if (text.isBlank()) return emptyList()
-        return text.split(Regex("[،\\n؛;]|(?<!\\d)[.,](?!\\d)|\\s-\\s"))
+        splitCache[text]?.let { return it }
+        val result = text.split(POINT_SPLIT)
             .map { it.trim().trim('-', ' ') }
             .filter { it.length > 2 }
+        if (splitCache.size > 20_000) splitCache.clear()
+        splitCache[text] = result
+        return result
     }
 
     private fun jaccard(a: Set<String>, b: Set<String>): Double {
@@ -317,11 +371,11 @@ object HerbAssistant {
      * مثل Thymus أو chamomilla كانت تُخطَف كتحية عبر [containsAny] القديم).
      */
     private fun isShortExactPhraseMatch(qNorm: String, phrases: List<String>, maxWords: Int): Boolean {
-        val words = qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val words = tokensOf(qNorm)
         if (words.isEmpty() || words.size > maxWords) return false
         val wordSet = words.toSet()
         return phrases.any { phrase ->
-            val phraseWords = normalize(phrase).split(Regex("\\s+")).filter { it.isNotBlank() }
+            val phraseWords = tokensOf(normalize(phrase))
             phraseWords.isNotEmpty() && phraseWords.all { it in wordSet }
         }
     }
@@ -338,58 +392,145 @@ object HerbAssistant {
 
     // ── قدرة جديدة: فهم النفي ────────────────────────────────────────────
 
-    private val negationTriggers = setOf("لا", "ما", "مو", "مب", "مش", "بدون", "غير", "عدا", "إلا")
+    /**
+     * أدوات النفي (مُطبَّعة). إصلاحان جوهريان هنا:
+     * 1) كانت القائمة تحوي "ما" — وهي أيضاً أداة استفهام شائعة جداً ("ما فوائد ..."،
+     *    "ما هي أفضل عشبة ...")، فكان أي سؤال يبدأ بـ"ما" ويذكر اسم عشبة خلال ٣
+     *    كلمات يُعامَل كأن المستخدم *استبعد* تلك العشبة! حُذفت.
+     * 2) كانت تحوي "إلا" بهمزتها الخام بينما كلمات السؤال مُطبَّعة ("الا") فلا
+     *    تتطابق أبداً؛ تُطبَّع القائمة كلها الآن مرة واحدة.
+     */
+    private val negationTriggers: Set<String> by lazy {
+        normSet("لا", "مو", "مب", "مش", "بدون", "غير", "عدا", "ماعدا", "إلا", "باستثناء", "استثناء", "ماابي", "ماريد", "مابدي", "بلاش", "تجنب")
+    }
 
     /**
      * هل ذُكر [term] (عادة اسم عشبة) بصيغة منفية داخل السؤال؟ نفي "حقيقي" =
      * وجود أداة نفي ضمن ٣ كلمات قبل ورود أول كلمة من [term] مباشرة، لا نفي
      * عشوائي بأي مكان من الجملة — مثال واقعي: "اقترح عشبة للنوم بس مو
-     * البابونج" ينفي "البابونج" تحديداً لا "النوم". يُستخدم لاستبعاد عشبة
-     * ذكر المستخدم صراحة أنه لا يريدها من نتائج الاقتراح، بدل تجاهل النفي
-     * كلياً وترشيحها له رغم ذلك.
+     * البابونج" ينفي "البابونج" تحديداً لا "النوم". المطابقة الآن كلمة بكلمة
+     * (بأشكالها) لا بالاحتواء الحرفي — كان الاحتواء المتبادل يطابق كلمات قصيرة
+     * كـ"و" مع أي اسم عشبة يحوي هذا الحرف.
      */
     private fun isNegatedMention(qNorm: String, term: String): Boolean {
-        val termNorm = normalize(term)
-        if (termNorm.isBlank()) return false
-        val words = qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }
-        val firstTermWord = termNorm.split(Regex("\\s+")).firstOrNull { it.isNotBlank() } ?: return false
-        val idx = words.indexOfFirst { it == firstTermWord || it.contains(firstTermWord) || firstTermWord.contains(it) }
+        val termCore = normalize(ArabicLexicon.arabicNameCore(term))
+        if (termCore.isBlank()) return false
+        val words = tokensOf(qNorm)
+        val firstName = tokensOf(termCore).map { ArabicLexicon.stripAl(it) }.firstOrNull { it.length >= 3 } ?: return false
+        val idx = words.indexOfFirst { w -> firstName == ArabicLexicon.stripAl(w) || firstName in ArabicLexicon.formsOf(w) }
         if (idx < 0) return false
         val windowStart = (idx - 3).coerceAtLeast(0)
         return (windowStart until idx).any { words[it] in negationTriggers }
     }
 
-    // ── قدرة جديدة: تلميحات عمرية/مدة صريحة بالسؤال ──────────────────────
+    // ── قدرة جديدة: تلميحات سياقية صريحة بالسؤال (عمر/حمل/أدوية/جراحة) ─────
 
-    private val childMentionWords = listOf("طفل", "أطفال", "اطفال", "رضيع", "رضع", "صغير", "صغيرة")
+    private fun normSet(vararg words: String): Set<String> =
+        words.map { normalize(it) }.filter { it.isNotBlank() }.toSet()
+
+    private val childWordSet: Set<String> by lazy {
+        normSet("طفل", "أطفال", "رضيع", "رضع", "صغير", "صغيرة", "ابني", "ابنتي", "بنتي", "ولدي", "طفلي", "طفلتي", "طفلة", "بيبي", "مولود", "مراهق", "مراهقة")
+    }
+    private val pregnancyWordSet: Set<String> by lazy {
+        normSet("حامل", "حمل", "حوامل", "رضاعة", "ارضع", "مرضع", "مرضعة", "حملي")
+    }
+    private val medicationWordSet: Set<String> by lazy {
+        normSet("دواء", "دوا", "أدوية", "ادويتي", "دوائي", "وارفارين", "مميع", "مميعات", "اسبرين", "انسولين", "كورتيزون", "كيماوي", "ليثيوم", "ديجوكسين", "باراسيتامول", "ايبوبروفين", "ميتفورمين", "ستاتين")
+    }
+    private val surgeryWordSet: Set<String> by lazy { normSet("جراحة", "جراحية", "تخدير") }
+    private val durationWordSet: Set<String> by lazy { normSet("اسبوع", "اسبوعين", "اسابيع", "أسابيع", "شهرين", "أشهر", "شهور") }
+    private val ageNumberRe = Regex("\\d+\\s*(سنه|سنوات|سنين|شهر|اشهر|شهور|يوم|ايام)")
+
+    /** كل كلمات السؤال + أشكالها (بلا سوابق/لواحق شائعة) — أساس مطابقة الكلمات المفردة. */
+    private fun formsSetOf(qNorm: String): Set<String> {
+        val toks = tokensOf(qNorm)
+        val out = HashSet<String>(toks.size * 4 + 4)
+        for (t in toks) {
+            out += t
+            out.addAll(ArabicLexicon.formsOf(t))
+        }
+        return out
+    }
 
     /**
-     * قدرة جديدة: التقاط تلميحات "عمرية/مدة استخدام" صريحة بالسؤال (طفل/
-     * رضيع، عمر برقم محدَّد، أو مدة كأسبوع/أشهر) — تفاصيل نادراً ما تحويها
-     * الموسوعة بدقة كافية لأي عمر/مدة بعينها. بدل تجاهلها كلياً وعرض جواب
-     * عام وكأنه يغطيها، تُضاف ملاحظة صريحة بنهاية الجواب تنبّه أن هذا
-     * التفصيل بالذات يستحق تأكيداً من مختص، لا افتراض أن الجواب العام يكفي.
-     * `null` إن لم يذكر السؤال أي تلميح من هذا النوع، فلا تُضاف أي ملاحظة.
+     * التقاط تلميحات "سياقية" صريحة بالسؤال — تفاصيل نادراً ما تحويها الموسوعة
+     * بدقة لكل حالة، فبدل تجاهلها وعرض جواب عام وكأنه يغطيها تُضاف ملاحظة
+     * صريحة بنهاية الجواب. إصلاحات: (1) كان نمط العمر يبحث عن "سنة" بينما نص
+     * السؤال مُطبَّع ("سنه") فلا يلتقط "عمره 5 سنة" أبداً؛ (2) لم تكن تُلتقط
+     * "سنوات" ولا الأرقام العربية-الهندية؛ (3) أُضيفت تلميحات الحمل والأدوية
+     * والجراحة. يُمرَّر هنا نص السؤال بعد إزالة أسماء الأعشاب (كي لا يُحسَب
+     * "لسان الحمل" اسم عشبة كأنه ذكر للحمل).
      */
-    private fun contextHint(question: String): String? {
-        val qNorm = normalize(question)
-        val hasChild = containsAny(qNorm, childMentionWords)
-        val hasAgeNumber = Regex("\\d+\\s*(سنة|سنين|شهر|اشهر|أشهر)").containsMatchIn(qNorm)
-        val hasDuration = containsAny(qNorm, listOf("اسبوع", "أسبوع", "اسابيع", "أسابيع", "شهرين", "أشهر", "اشهر"))
-        return when {
-            hasChild || hasAgeNumber ->
-                "📌 لاحظت إنك بتسأل عن حالة عمرية محدَّدة (طفل/عمر معيّن) — بيانات الموسوعة عامة وغير مفصَّلة حسب العمر، فاستشارة طبيب أو صيدلاني هون أهم من العادة."
-            hasDuration ->
-                "📌 لاحظت إنك ذكرت مدة استخدام محدَّدة — الموسوعة لا تحدد مدة استخدام آمنة بدقة، يُفضَّل تأكيدها من مختص قبل الالتزام بها."
-            else -> null
+    private fun hintsFor(qNorm: String, includePregnancy: Boolean): List<String> {
+        if (qNorm.isBlank()) return emptyList()
+        val forms = formsSetOf(qNorm)
+        val hints = ArrayList<String>(3)
+        val hasChild = childWordSet.any { it in forms }
+        val hasAge = ageNumberRe.containsMatchIn(qNorm)
+        val hasDuration = durationWordSet.any { it in forms }
+        if (hasChild || hasAge) {
+            hints.add("📌 لاحظت إنك بتسأل عن حالة عمرية محدَّدة (طفل/عمر معيّن) — بيانات الموسوعة عامة وغير مفصَّلة حسب العمر، فاستشارة طبيب أو صيدلاني هون أهم من العادة.")
+        } else if (hasDuration) {
+            hints.add("📌 لاحظت إنك ذكرت مدة استخدام محدَّدة — الموسوعة لا تحدد مدة استخدام آمنة بدقة، يُفضَّل تأكيدها من مختص قبل الالتزام بها.")
         }
+        if (includePregnancy && pregnancyWordSet.any { it in forms }) {
+            hints.add("🤰 ذكرتَ الحمل أو الرضاعة — بعض الأعشاب لا تناسبهما، فاستشر طبيبك قبل استخدام أي عشبة خلال هذه الفترة.")
+        }
+        if (medicationWordSet.any { it in forms }) {
+            hints.add("💊 ذكرتَ دواءً أو علاجاً — بعض الأعشاب تتداخل مع الأدوية (خصوصاً أدوية الضغط والسكر والسيولة والقلب)، فاسأل الصيدلاني أو الطبيب قبل الجمع بينهما.")
+        }
+        if (surgeryWordSet.any { it in forms }) {
+            hints.add("🏥 ذكرتَ عملية أو تخديراً — يُنصح بإيقاف كثير من الأعشاب قبلها بمدة، فاسأل طبيبك عن ذلك.")
+        }
+        return hints
     }
 
-    /** يُلحق [contextHint] بنهاية الجواب إن وُجد تلميح فعلاً، وإلا يُعاد النص كما هو دون أي تعديل. */
-    private fun withContextHint(text: String, question: String): String {
-        val hint = contextHint(question) ?: return text
-        return "$text\n\n$hint"
+    /** يُلحق [hintsFor] بنهاية الجواب إن وُجدت تلميحات، وإلا يعيد النص كما هو. */
+    private fun withHints(text: String, qNorm: String, includePregnancy: Boolean = true): String {
+        val hints = hintsFor(qNorm, includePregnancy)
+        return if (hints.isEmpty()) text else text + "\n\n" + hints.joinToString("\n")
     }
+
+    /**
+     * توافقاً مع نقاط الاستدعاء الحالية في [answerDetailed]: يُلحق [hintsFor]
+     * بنهاية الجواب بحسب نص السؤال الخام، بعد حذف أسماء الأعشاب المحدَّدة منه
+     * أولاً (نفس معالجة [qNormForIntent]) — حتى لا يُحتسَب اسم عشبة يحوي بذاته
+     * كلمة حساسة (مثال حقيقي: "لسان الحمل" يحوي كلمة "حمل") كأنه ذكر فعلي
+     * للحمل من المستخدم.
+     */
+    private fun withContextHint(text: String, question: String, herbs: List<Herb> = emptyList()): String =
+        withHints(text, qNormWithoutHerbNames(normalize(question), herbs))
+
+    // ── حالات طوارئ/أزمات: أولوية على أي جواب عن الأعشاب ────────────────
+
+    private val crisisPhrases: List<String> by lazy {
+        listOf(
+            "انتحر", "اقتل نفسي", "اقتل حالي", "اذي نفسي", "اؤذي نفسي", "ابغى اموت", "ابي اموت",
+            "اريد ان اموت", "بدي اموت", "انهي حياتي", "انهاء حياتي", "اخلص من حياتي", "ما ابغى اعيش", "ما اريد اعيش"
+        ).map { normalize(it) }
+    }
+
+    /** رد داعم ومختصر عند ذكر إيذاء النفس/الانتحار — يحلّ محل أي جواب آخر. */
+    private fun crisisReply(qNorm: String): String? {
+        if (crisisPhrases.none { qNorm.contains(it) }) return null
+        return "أنا آسف جداً أنك تشعر بهذا 💚 ما تمرّ به يستحق دعماً حقيقياً، وأنا مجرد مساعد للأعشاب ولا أستطيع أن أكون هذا الدعم.\n\n" +
+            "من فضلك تواصل الآن مع شخص تثق به (فرد من العائلة أو صديق قريب)، وإن كنت في خطر فوري فاتصل بخدمات الطوارئ في بلدك أو توجّه لأقرب مستشفى.\n\n" +
+            "وإن رغبت أن تحكي لي ما يحدث فأنا هنا أسمعك."
+    }
+
+    private val redFlagPhrases: List<String> by lazy {
+        listOf(
+            "الم في الصدر", "الم بالصدر", "الم صدر", "ضيق تنفس", "ضيق في التنفس", "صعوبه في التنفس", "صعوبه تنفس",
+            "اختناق", "فقدان الوعي", "فقدت الوعي", "اغماء", "نزيف شديد", "نزيف حاد", "قيء دم", "تقيا دم", "دم في البراز",
+            "تسمم", "جرعه زايده", "جرعه زائده", "تورم الوجه", "تورم الشفه", "تورم الحلق", "حساسيه شديده", "نوبه صرع", "تشنجات", "جلطه", "سكته"
+        ).map { normalize(it) }
+    }
+
+    /** تنبيه طوارئ يُوضَع أول الجواب عند ذكر أعراض خطيرة — لا يحلّ محله. */
+    private fun redFlagNotice(qNorm: String): String? =
+        if (redFlagPhrases.any { qNorm.contains(it) })
+            "🚨 ما ذكرته قد يدل على حالة طبية طارئة. لا تعتمد على الأعشاب هنا — توجّه لأقرب طوارئ أو اتصل بالإسعاف فوراً."
+        else null
 
 
     // ── فهرس "مفهوم تلقائياً" من نصوص الموسوعة نفسها ────────────────────
@@ -416,13 +557,14 @@ object HerbAssistant {
      */
     private class CorpusIndex(fieldTexts: List<String>) {
         private val idf: Map<String, Double>
+        private val formIdf: Map<String, Double>
         private val related: Map<String, List<String>>
 
         init {
             val points = mutableListOf<Set<String>>()
             fieldTexts.forEach { field ->
                 splitPoints(field).forEach { p ->
-                    val w = wordsOf(p)
+                    val w = pointInfo(p).words
                     if (w.isNotEmpty()) points += w
                 }
             }
@@ -430,6 +572,17 @@ object HerbAssistant {
             val df = mutableMapOf<String, Int>()
             points.forEach { pts -> pts.forEach { w -> df[w] = (df[w] ?: 0) + 1 } }
             idf = df.mapValues { (_, d) -> ln(docCount.toDouble() / d.toDouble() + 1.0) }
+
+            // وزن كل "شكل" (بلا ال/واو/ضمير...) = أعلى وزن لكلمة موسوعة تنتج هذا الشكل،
+            // كي تُعرَف كلمة سؤال مثل "للنوم" أنها موجودة بالموسوعة كـ"النوم".
+            val fi = HashMap<String, Double>(idf.size * 3)
+            for ((w, v) in idf) {
+                for (f in ArabicLexicon.formsOf(w)) {
+                    val cur = fi[f]
+                    if (cur == null || v > cur) fi[f] = v
+                }
+            }
+            formIdf = fi
 
             val coOccur = mutableMapOf<Pair<String, String>, Int>()
             points.forEach { pts ->
@@ -470,6 +623,41 @@ object HerbAssistant {
          * كل هذا التخفيف بلا أي خسارة في الاحتمالات الممكنة أصلاً.
          */
         fun filterKnown(words: Set<String>): Set<String> = words.filter { idf.containsKey(it) }.toSet()
+
+        /** وزن الكلمة إن كانت (أو أحد أشكالها) موجودة فعلاً بمفردات الموسوعة، وإلا null. */
+        fun knownWeightOf(word: String): Double? = idf[word] ?: formIdf[word]
+
+        fun isKnown(word: String): Boolean = idf.containsKey(word) || formIdf.containsKey(word)
+
+        /** الكلمات المرتبطة تلقائياً (PMI) بكلمة معينة — فارغة إن لم توجد. */
+        fun relatedTo(word: String): List<String> = related[word].orEmpty()
+
+        /**
+         * تصحيح إملائي بسيط: أقرب كلمة من مفردات الموسوعة (مسافة تحرير ≤ 1، أو ≤ 2
+         * للكلمات الطويلة، وبنفس الحرف الأول) لكلمة سؤال غير معروفة. عند التعادل
+         * تُفضَّل الكلمة الأشيع (وزن أقل).
+         */
+        fun closestWord(token: String): String? {
+            val t = ArabicLexicon.stripAl(token)
+            if (t.length < 4) return null
+            val limit = if (t.length >= 7) 2 else 1
+            var best: String? = null
+            var bestDist = limit + 1
+            var bestWeight = Double.MAX_VALUE
+            for ((w, weight) in idf) {
+                if (w.length < 4) continue
+                val sw = ArabicLexicon.stripAl(w)
+                if (sw.length < 4 || sw[0] != t[0] || kotlin.math.abs(sw.length - t.length) > limit) continue
+                val d = ArabicLexicon.editDistanceAtMost(t, sw, limit)
+                if (d > limit) continue
+                if (d < bestDist || (d == bestDist && weight < bestWeight)) {
+                    best = w
+                    bestDist = d
+                    bestWeight = weight
+                }
+            }
+            return best
+        }
 
         /** يوسّع كلمات السؤال بالعلاقات المكتشَفة تلقائياً (إضافة فهم ضمني، لا حذف). */
         fun expand(words: Set<String>): Set<String> =
@@ -612,7 +800,7 @@ object HerbAssistant {
         )
 
         /** صياغة واحدة مسطّحة: النص، ردّه، وهل مطابقتها تامة فقط (بلا استثناء). */
-        private data class Flat(val phrase: String, val response: String, val exactOnly: Boolean)
+        private data class Flat(val phrase: String, val response: String, val exactOnly: Boolean, val norm: String)
 
         /** كل الصياغات مسطّحة، تُبنى مرة واحدة فقط عند أول استخدام. */
         private val flattened: List<Flat> by lazy {
@@ -623,7 +811,7 @@ object HerbAssistant {
                         val phrase = (w + s).trim()
                         if (phrase.isNotBlank()) {
                             val idx = phrase.hashCode().let { if (it < 0) -it else it } % cat.responses.size
-                            out += Flat(phrase, cat.responses[idx], cat.exactOnly)
+                            out += Flat(phrase, cat.responses[idx], cat.exactOnly, normalize(phrase))
                         }
                     }
                 }
@@ -647,10 +835,14 @@ object HerbAssistant {
             var best: Flat? = null
             var bestLen = -1
             for (flat in flattened) {
-                val pNorm = normalize(flat.phrase)
+                // كانت normalize(flat.phrase) تُعاد لكل صياغة (~1500) مع كل رسالة، وتُنشئ
+                // 3 كائنات Regex في كل مرة — الآن مُخزَّنة مسبقاً. كذلك تُشترط حدّ كلمة
+                // بعد الصياغة (كان "اسف" يخطف كلمة "اسفل").
+                val pNorm = flat.norm
                 if (pNorm.isEmpty()) continue
                 val isMatch = qNorm == pNorm ||
-                    (!flat.exactOnly && qNorm.startsWith(pNorm) && qNorm.length - pNorm.length <= 3)
+                    (!flat.exactOnly && qNorm.startsWith(pNorm) && qNorm.length - pNorm.length <= 3 &&
+                        qNorm[pNorm.length] == ' ')
                 if (isMatch && pNorm.length > bestLen) {
                     best = flat
                     bestLen = pNorm.length
@@ -717,7 +909,7 @@ object HerbAssistant {
             "تخفيف الألم" to setOf(
                 "الم", "ألم", "الألم", "اوجاع", "أوجاع", "الأوجاع", "وجع", "الوجع",
                 "وجعة", "مغص", "تشنج", "تشنجات", "مسكن", "مسكنات", "تسكين",
-                "يسكن", "صداع", "الصداع"
+                "يسكن", "صداع", "الصداع", "المي", "وجعي", "اوجاعي"
             ),
             // النوم/الأرق.
             "تحسين النوم" to setOf(
@@ -794,8 +986,14 @@ object HerbAssistant {
          * إلى كلمات مستقلة أولاً (كما تفعل [wordsOf] وغيرها في الملف) ثم
          * مطابقة كل كلمة *كاملة* مع كلمات المجموعة، لا كسلسلة فرعية.
          */
-        private fun wordTokensOf(qNorm: String): Set<String> =
-            qNorm.split(Regex("\\s+")).filter { it.isNotBlank() }.toSet()
+        private fun wordTokensOf(qNorm: String): Set<String> {
+            val toks = qNorm.split(SPACES).filter { it.isNotBlank() }
+            val out = LinkedHashSet<String>(toks)
+            // أشكال الكلمة بلا سابقة/لاحقة: يلتقط "للنوم"/"بالنوم"/"ألمي" كموضوع نوم/ألم
+            // (كانت المطابقة حرفية تامة فقط فيفشل أي سؤال فيه سابقة مثل "عشبة للنوم").
+            for (t in toks) out.addAll(ArabicLexicon.formsOf(t))
+            return out
+        }
 
         fun clusterMentionedIn(qNorm: String): Set<String>? {
             val qWords = wordTokensOf(qNorm)
@@ -872,59 +1070,6 @@ object HerbAssistant {
         if (unionWeight == 0.0) return 0.0
         val interWeight = (a intersect b).sumOf { index.weightOf(it) }
         return interWeight / unionWeight
-    }
-
-    /**
-     * "تغطية" غير متماثلة: أي نسبة من *وزن كلمات السؤال* (وليس الجملة كاملة)
-     * وُجدت فعلياً ضمن نقطة نص معيّنة. الفارق الجوهري عن [weightedSimilarity]
-     * أعلاه أن المقام هنا هو وزن كلمات *السؤال فقط*، لا وزن كل الكلمات
-     * المجتمعة (سؤال + نقطة) — فنقطة نص طويلة ومفصّلة من الموسوعة (كما هو
-     * شائع في حقل الفوائد) لا تُعاقَب لمجرد طولها طالما أنها تحوي فعلاً
-     * كلمات سؤال المستخدم؛ هذا بالضبط ما كان يجعل أسئلة قصيرة عن مواضيع
-     * مذكورة فعلاً في الموسوعة (مثل "فوائد بذور الكتان" أو "عشبة لتحسين
-     * النوم") لا تظهر أي نتيجة رغم وجود البيانات فعلياً، لأن Jaccard
-     * المتماثل وحده كان يُذيب المطابقة الحقيقية داخل بقية كلمات النقطة
-     * الطويلة. يبقى [weightedSimilarity] كما هو ويُستخدم فقط في مقارنة
-     * نص-بنص بين أعشاب مختلفة ([compareField]/[buildOverview]) حيث الطرفان
-     * متكافئان بالطول عادةً، وهو السياق الصحيح لمقياس متماثل.
-     */
-    private fun queryCoverage(index: CorpusIndex, queryWords: Set<String>, pointWords: Set<String>): Double {
-        if (queryWords.isEmpty() || pointWords.isEmpty()) return 0.0
-        val queryWeight = queryWords.sumOf { index.weightOf(it) }
-        if (queryWeight == 0.0) return 0.0
-        val matchedWeight = (queryWords intersect pointWords).sumOf { index.weightOf(it) }
-        return matchedWeight / queryWeight
-    }
-
-    /** أي نسبة من كلمات السؤال (النصية الخام، بلا وزن) موجودة حرفياً كسلسلة
-     * فرعية داخل نص النقطة المُطبَّع — شبكة أمان أخيرة مستقلة تماماً عن أي
-     * تقطيع كلمات أو قواميس، لضمان أن "البحث الحقيقي بكل البيانات" الذي
-     * يطلبه المستخدم يلتقط حتى الحالات التي يفشل فيها تقطيع الكلمات لأي سبب. */
-    private fun rawContainmentRatio(queryWords: Set<String>, pointNormalized: String): Double {
-        if (queryWords.isEmpty()) return 0.0
-        val matched = queryWords.count { it.length > 1 && pointNormalized.contains(it) }
-        return matched.toDouble() / queryWords.size
-    }
-
-    /**
-     * الدرجة النهائية المستخدمة فعلياً لمطابقة سؤال المستخدم بنقطة نص واحدة
-     * في البحث الحر والاقتراح: أعلى قيمة بين المقاييس الثلاثة أعلاه، بحيث لا
-     * يفوّت سيمو مطابقة حقيقية بسبب ضعف مقياس واحد بعينه في حالة معيّنة.
-     *
-     * [queryWords] يُصفَّى هنا عبر [CorpusIndex.filterKnown] قبل تمريره
-     * لِـ[weightedSimilarity] و[queryCoverage] تحديداً (انظر توثيق
-     * [CorpusIndex.filterKnown] لسبب هذا الإصلاح) — أما [rawContainmentRatio]
-     * فيستمر باستخدام المجموعة الكاملة غير المصفّاة، لأنه يعمل على احتواء
-     * نصّي خام لا على تقاطع مجموعات كلمات، فلا يعاني من نفس مشكلة التخفيف.
-     */
-    private fun matchScore(index: CorpusIndex, queryWords: Set<String>, point: String): Double {
-        val pointWords = wordsOf(point)
-        val knownQueryWords = index.filterKnown(queryWords)
-        return maxOf(
-            weightedSimilarity(index, knownQueryWords, pointWords),
-            queryCoverage(index, knownQueryWords, pointWords),
-            rawContainmentRatio(queryWords, normalize(point))
-        )
     }
 
     /**
@@ -1115,7 +1260,7 @@ object HerbAssistant {
                 usedFlags[hi][pi] = true
                 val point = points[pi]
                 val matched = mutableListOf(herbId)
-                val pw = wordsOf(point)
+                val pw = pointInfo(point).words
                 for (hj in herbs.indices) {
                     if (hj == hi) continue
                     val (otherId, otherPoints) = perHerbPoints[hj]
@@ -1132,7 +1277,7 @@ object HerbAssistant {
                     var bestSim = 0.0
                     for (pj in otherPoints.indices) {
                         if (usedFlags[hj][pj]) continue
-                        val sim = weightedSimilarity(index, pw, wordsOf(otherPoints[pj]))
+                        val sim = weightedSimilarity(index, pw, pointInfo(otherPoints[pj]).words)
                         if (sim >= threshold && sim > bestSim) {
                             bestSim = sim
                             bestPj = pj
@@ -1219,78 +1364,313 @@ object HerbAssistant {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // التعرّف على الأعشاب المذكورة في السؤال (أسماء بديلة + أخطاء إملائية)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** الأعشاب المقصودة + تصحيحات إملائية أُجريت على أسمائها (للإعلان عنها للمستخدم). */
+    class HerbResolution(val herbs: List<Herb>, val corrections: List<Pair<String, String>>)
+
     /**
-     * يبحث عن الأعشاب المذكورة صراحةً باسمها داخل نص السؤال الحر، على
-     * مستويين متتاليين (الأدق أولاً) بدل اشتراط تطابق حرفي تام لاسم العشبة
-     * كاملاً كما كان سابقاً — وهو ما كان يفشل بأي فرق بسيط في الصياغة (مثل
-     * "ال" التعريف، أو ترتيب كلمات مختلف، أو ذكر الاسم ضمن عبارة أطول)
-     * فيُحوّل سؤالاً واضحاً عن عشبة محدَّدة إلى بحث عام غامض ضمن كل الموسوعة:
-     * 1) احتواء حرفي كامل لاسم العشبة ضمن نص السؤال (الأدق، وكما كان سابقاً).
-     * 2) إن لم يوجد ذلك: تطابق *كل* كلمات اسم العشبة، كلمة كلمة (باحتواء كل
-     *    كلمة ضمن الأخرى، فيلتقط تلقائياً فرق "ال" التعريف أو صيغة الجمع/
-     *    المفرد)، ضمن كلمات السؤال — يكفي أن تكون كل كلمات الاسم مذكورة
-     *    بأي صيغة قريبة، ولا يشترط ترتيبها أو تطابقها حرفياً بالكامل.
+     * أسماء بديلة/عامية/أجنبية شائعة لنفس العشبة (كل مجموعة = عشبة واحدة). يفيد حين
+     * يكتب المستخدم اسماً مختلفاً عن المسجَّل بالموسوعة ("الشونيز" بدل "حبة
+     * البركة"، "ينسون" بدل "يانسون"): تُطابَق العشبة إن ورد في السؤال أي اسم من
+     * مجموعتها وكان أي اسم آخر من نفس المجموعة ضمن اسم العشبة بالموسوعة.
      */
-    /**
-     * ═══ إصلاح خلل حقيقي أُبلغ عنه ("سألت عن فوائد الكركديه فرد بأعشاب
-     * غير متعلقة إطلاقاً، رغم أن الكركديه موجود فعلاً بالموسوعة") ═══
-     * السبب الأرجح: كثير من أسماء الأعشاب بالموسوعة مكتوبة مع اسمها
-     * العلمي/الإنجليزي بين قوسين للتوضيح (مثال: "الكركديه (Hibiscus)").
-     * المطابقة أدناه (سواء الاحتواء الحرفي الكامل أو تقسيم الاسم لكلمات)
-     * كانت تتعامل مع اسم العشبة *كاملاً بما فيه القوس الإنجليزي* ككتلة
-     * واحدة يجب أن تتطابق كل كلماتها مع كلمات السؤال — فسؤال عربي بحت لا
-     * يذكر الكلمة الإنجليزية إطلاقاً (وهذا الحال الطبيعي لأي سؤال عربي)
-     * يفشل بمطابقة تلك العشبة تحديداً بصمت تام، فتسقط للبحث الحر العام
-     * الذي قد يُرجع أعشاباً أخرى غير متعلّقة أصلاً بالسؤال. الإصلاح:
-     * [arabicMatchableCore] يحذف أي محتوى بين قوسين (عادة الاسم العلمي/
-     * الإنجليزي) وأي كلمة مكتوبة بحروف لاتينية بالكامل قبل المطابقة، فيبقى
-     * فقط الاسم العربي الفعلي هو ما يُقارَن بكلمات السؤال — يؤثر هذا على
-     * *كل* عشبة بالموسوعة مكتوب اسمها بهذا النمط الشائع، لا الكركديه فقط.
-     */
-    private fun arabicMatchableCore(name: String): String {
-        val withoutParens = name.replace(Regex("[\\(\\[][^)\\]]*[\\)\\]]"), " ")
-        val arabicOnlyTokens = withoutParens.split(Regex("\\s+"))
-            .filterNot { token -> token.isNotEmpty() && token.none { ch -> ch in '\u0600'..'\u06FF' } }
-        return arabicOnlyTokens.joinToString(" ").ifBlank { name }
+    private val herbAliasGroups: List<List<String>> by lazy {
+        listOf(
+            listOf("حبة البركة", "الحبة السوداء", "حبة سوداء", "الشونيز", "nigella", "black seed"),
+            listOf("يانسون", "ينسون", "أنيسون", "انيسون", "anise", "aniseed"),
+            listOf("قرفة", "دارسين", "cinnamon"),
+            listOf("كركديه", "كركدية", "ورد النيل", "hibiscus"),
+            listOf("بابونج", "بابونك", "كاموميل", "chamomile", "camomile", "matricaria"),
+            listOf("نعناع", "نعنع", "mint", "peppermint"),
+            listOf("زنجبيل", "جنزبيل", "ginger", "zingiber"),
+            listOf("كمون", "cumin"),
+            listOf("كزبرة", "كسبرة", "coriander"),
+            listOf("حلبة", "fenugreek"),
+            listOf("شمر", "شومر", "fennel"),
+            listOf("مريمية", "ميرمية", "مرمرية", "salvia", "sage"),
+            listOf("زعتر", "صعتر", "thyme", "thymus"),
+            listOf("إكليل الجبل", "اكليل الجبل", "روزماري", "rosemary"),
+            listOf("خزامى", "لافندر", "lavender"),
+            listOf("قرنفل", "clove"),
+            listOf("هيل", "حبهان", "cardamom"),
+            listOf("زعفران", "saffron"),
+            listOf("كركم", "تورمريك", "turmeric", "curcuma"),
+            listOf("ثوم", "garlic"),
+            listOf("عرق سوس", "سوس", "licorice", "liquorice"),
+            listOf("ريحان", "حبق", "basil"),
+            listOf("كينا", "أوكالبتوس", "اوكاليبتوس", "eucalyptus"),
+            listOf("جنسنغ", "جينسنغ", "ginseng"),
+            listOf("كراوية", "كراويا", "caraway"),
+            listOf("لسان الحمل", "قطونة", "بزر قطونة", "plantain", "psyllium"),
+            listOf("بذور الكتان", "بزر الكتان", "كتان", "flaxseed", "flax"),
+            listOf("شيح", "artemisia", "wormwood"),
+            listOf("ورق الغار", "غار", "laurel", "bay leaf"),
+            listOf("هندباء", "هندبا", "chicory", "dandelion"),
+            listOf("حشيشة الليمون", "عشبة الليمون", "ليمون غراس", "lemongrass"),
+            listOf("عناب", "jujube"),
+            listOf("لبان", "لبان دكر", "frankincense"),
+            listOf("سنا مكي", "سنامكي", "senna"),
+            listOf("صبار", "ألوفيرا", "الوفيرا", "aloe vera", "aloe"),
+            listOf("مورينجا", "مورنجا", "moringa"),
+            listOf("بادرنجبويه", "ترنجان", "melissa", "lemon balm"),
+            listOf("شبت", "dill"),
+            listOf("عرعر", "juniper"),
+            listOf("تمر هندي", "tamarind"),
+            listOf("جنكة", "جنكو", "ginkgo")
+        )
     }
 
-    fun relevantHerbs(question: String, allHerbs: List<Herb>): List<Herb> {
-        val qNorm = normalize(question)
-        if (qNorm.isBlank()) return emptyList()
-
-        val literal = allHerbs.filter { herb ->
-            herb.name.isNotBlank() && qNorm.contains(normalize(arabicMatchableCore(herb.name)))
+    /** هل تظهر كلمات [seq] متتابعة داخل كلمات السؤال (كل كلمة بأشكالها [qSets])؟ */
+    private fun containsSequence(seq: List<String>, qSets: List<Set<String>>): Boolean {
+        if (seq.isEmpty() || seq.size > qSets.size) return false
+        for (start in 0..(qSets.size - seq.size)) {
+            var ok = true
+            for (j in seq.indices) {
+                if (seq[j] !in qSets[start + j]) { ok = false; break }
+            }
+            if (ok) return true
         }
-        if (literal.isNotEmpty()) return literal
+        return false
+    }
 
-        val qTokens = qNorm.split(Regex("\\s+")).filter { it.length > 1 }
-        if (qTokens.isEmpty()) return emptyList()
+    private val NAME_ALT_SPLIT = Regex("\\s*[/،,|]\\s*|\\s+(?:أو|او)\\s+")
 
-        // مشكلة حقيقية أُبلغ عنها ("سيمو يخربط"): مطابقة الاحتواء المتبادل
-        // (qt.contains(nt) || nt.contains(qt)) كانت مقبولة لأي طول كلمة، فكلمة
-        // قصيرة جداً ضمن اسم عشبة (مثل حرفين أو ثلاثة) تتكرر بالصدفة داخل كلمة
-        // عادية غير متعلّقة إطلاقاً بالسؤال (كلمة قصيرة يسهل ورودها كجزء من
-        // كلمات كثيرة) كانت تكفي وحدها لنسب السؤال بالكامل لعشبة لم يقصدها
-        // المستخدم أبداً — فتُبنى الإجابة على سياق العشبة الخطأ بصمت (خطأ لا
-        // يظهر كرسالة "لم أجد"، بل كإجابة تبدو صحيحة لكنها عن الموضوع الخطأ).
-        // الحل: يُشترط الآن طول لا يقل عن ٣ أحرف لقبول الاحتواء الجزئي بين
-        // كلمة من اسم العشبة وكلمة من السؤال؛ الكلمات الأقصر (حرفان) تحتاج
-        // تطابقاً تاماً فقط. هذا يبقي التقاط فروق "ال" التعريف وصيغ الجمع/
-        // المفرد كما هو (الفارق عادة حرف أو حرفان في كلمة لا تزال طويلة بما
-        // يكفي) بينما يمنع تطابقات عابرة لا معنى لها بين كلمتين قصيرتين جداً.
-        return allHerbs.filter { herb ->
-            if (herb.name.isBlank()) return@filter false
-            // راجع توثيق [arabicMatchableCore] أعلاه: نطابق على الاسم
-            // العربي الفعلي فقط، لا الاسم كاملاً بقوسه الإنجليزي إن وُجد.
-            val nameTokens = normalize(arabicMatchableCore(herb.name)).split(Regex("\\s+")).filter { it.length > 1 }
-            if (nameTokens.isEmpty()) return@filter false
-            nameTokens.all { nt ->
-                qTokens.any { qt ->
-                    qt == nt || (nt.length >= 3 && qt.length >= 3 && (qt.contains(nt) || nt.contains(qt)))
-                }
+    /**
+     * أسماء العشبة البديلة كما كُتبت بالموسوعة ("الكزبرة / الكسبرة" = اسمان)،
+     * كل اسم كقائمة كلمات عربية مُطبَّعة بلا "ال" وبلا الاسم العلمي بين القوسين.
+     */
+    private fun nameAlternatives(herb: Herb): List<List<String>> {
+        val parts = herb.name.split(NAME_ALT_SPLIT)
+        val out = ArrayList<List<String>>(parts.size)
+        for (part in parts) {
+            val toks = tokensOf(normalize(ArabicLexicon.arabicNameCore(part)))
+                .map { ArabicLexicon.stripAl(it) }
+                .filter { it.length >= 2 }
+            if (toks.isNotEmpty()) out.add(toks)
+        }
+        return out
+    }
+
+    private fun memberTokens(member: String): List<String> =
+        tokensOf(normalize(member)).map { ArabicLexicon.stripAl(it) }.filter { it.isNotBlank() }
+
+    private fun aliasMemberInQuestion(member: String, qSets: List<Set<String>>, qFlat: Set<String>): Boolean {
+        val toks = memberTokens(member)
+        if (toks.isEmpty()) return false
+        return if (toks.size == 1) toks[0] in qFlat else containsSequence(toks, qSets)
+    }
+
+    private fun herbNameHasAlias(herb: Herb, group: List<String>): Boolean {
+        val nameLoose = tokensOf(normalize(herb.name)).joinToString(" ") { ArabicLexicon.stripAl(it) }
+        if (nameLoose.isBlank()) return false
+        val nameTokens = tokensOf(nameLoose).toSet()
+        val padded = " $nameLoose "
+        return group.any { member ->
+            val m = memberTokens(member).joinToString(" ")
+            when {
+                m.isBlank() -> false
+                m.contains(' ') -> padded.contains(" $m ")
+                else -> m in nameTokens
             }
         }
     }
+
+    /** كلمات أدوات/نيّات/مواضيع شائعة — لا تُعامَل أبداً كاسم عشبة مكتوب بخطأ إملائي. */
+    private val queryFillerWords: Set<String> by lazy {
+        normSet(
+            "ممكن", "بدي", "عندي", "اريد", "ابغى", "ابي", "اعطني", "اعطيني", "قولي", "خبرني", "ساعدني",
+            "سمحت", "رجاء", "فضلك", "الله", "يعطيك", "العافية", "هاي", "هذه", "هذا", "هيك", "اللي", "الي",
+            "انا", "انت", "لو", "يعني", "طيب", "بس", "كمان", "شوي", "كتير", "ضروري", "اعرف", "معلومات"
+        )
+    }
+
+    private val nonHerbWords: Set<String> by lazy {
+        val all = ArrayList<String>()
+        all.addAll(combineIntentWords); all.addAll(planIntentWords); all.addAll(safetyIntentWords)
+        all.addAll(usageIntentWords); all.addAll(compareIntentWords); all.addAll(benefitsIntentWords)
+        all.addAll(HealthTopicSynonyms.allWords)
+        all.addAll(suggestionFillerWords)
+        val s = HashSet<String>()
+        for (w in all) {
+            for (p in tokensOf(normalize(w))) {
+                s.add(p)
+                s.add(ArabicLexicon.stripAl(p))
+            }
+        }
+        s.addAll(baseStopWordsNorm)
+        s.addAll(queryFillerWords)
+        s
+    }
+
+    private fun fuzzyTokenMatch(qt: String, nt: String): Boolean {
+        if (nt.length < 4 || qt.length < 4 || qt[0] != nt[0]) return false
+        val limit = if (maxOf(qt.length, nt.length) >= 7) 2 else 1
+        return ArabicLexicon.editDistanceAtMost(qt, nt, limit) <= limit
+    }
+
+    /**
+     * يبحث عن الأعشاب المذكورة في نص السؤال على أربعة مستويات (الأدق أولاً)،
+     * بدل تطابق حرفي تام لاسم العشبة كاملاً بقوسه الإنجليزي كما كان سابقاً:
+     * 1) الاسم العربي مذكور صراحةً ككلمات متتابعة (بأشكال الكلمة: "للزنجبيل"،
+     *    "بالبابونج"، جمع/مفرد، "ال" التعريف...).
+     * 2) اسم بديل/عامي/أجنبي معروف ([herbAliasGroups]) — مثال: "الشونيز" ↔
+     *    "حبة البركة".
+     * 3) كل كلمات الاسم مذكورة بأي ترتيب (لأسماء من كلمتين فأكثر).
+     * 4) خطأ إملائي بسيط في الاسم (حرف زائد/ناقص/مبدَّل)، مع إعادة الكلمة
+     *    المصحَّحة كي يُعلَن عنها للمستخدم ("هل تقصد؟").
+     * الأسماء العلمية/الإنجليزية بين الأقواس تُتجاهَل عند المطابقة (راجع
+     * [ArabicLexicon.arabicNameCore]) — يؤثر هذا على *كل* عشبة بالموسوعة
+     * مكتوب اسمها مع اسم علمي بين قوسين، وهو نمط شائع جداً بهذه الموسوعة.
+     */
+    fun resolveHerbs(question: String, allHerbs: List<Herb>): HerbResolution {
+        val empty = HerbResolution(emptyList(), emptyList())
+        val qNorm = normalize(question)
+        if (qNorm.isBlank() || allHerbs.isEmpty()) return empty
+        val qTokens = tokensOf(qNorm)
+        if (qTokens.isEmpty()) return empty
+        val qSets = qTokens.map { tokenVariants(it) }
+        val qFlat = HashSet<String>()
+        for (s in qSets) qFlat.addAll(s)
+
+        val alts = allHerbs.map { it to nameAlternatives(it) }
+        val found = LinkedHashSet<Herb>()
+
+        for ((herb, altList) in alts) {
+            if (altList.any { containsSequence(it, qSets) }) found.add(herb)
+        }
+        val aliasGroups = herbAliasGroups.filter { g -> g.any { m -> aliasMemberInQuestion(m, qSets, qFlat) } }
+        if (aliasGroups.isNotEmpty()) {
+            for (herb in allHerbs) {
+                if (aliasGroups.any { g -> herbNameHasAlias(herb, g) }) found.add(herb)
+            }
+        }
+        if (found.isNotEmpty()) return HerbResolution(found.toList(), emptyList())
+
+        for ((herb, altList) in alts) {
+            if (altList.any { alt -> alt.size >= 2 && alt.all { it in qFlat } }) found.add(herb)
+        }
+        if (found.isNotEmpty()) return HerbResolution(found.toList(), emptyList())
+
+        val candidates = qTokens.map { ArabicLexicon.stripAl(it) }.filter { it.length >= 4 && it !in nonHerbWords }
+        if (candidates.isEmpty()) return empty
+        val corrections = ArrayList<Pair<String, String>>(2)
+        for ((herb, altList) in alts) {
+            for (alt in altList) {
+                var allMatched = true
+                var used: Pair<String, String>? = null
+                for (nt in alt) {
+                    if (nt in qFlat) continue
+                    val hit = candidates.firstOrNull { qt -> fuzzyTokenMatch(qt, nt) }
+                    if (hit == null) { allMatched = false; break }
+                    used = hit to nt
+                }
+                if (allMatched && used != null) {
+                    found.add(herb)
+                    corrections.add(used.first to ArabicLexicon.arabicNameCore(herb.name))
+                    break
+                }
+            }
+        }
+        return HerbResolution(found.toList(), corrections.distinct())
+    }
+
+    /** توافقاً مع الاستدعاءات القديمة: الأعشاب فقط بلا تفاصيل تصحيح الإملاء. */
+    fun relevantHerbs(question: String, allHerbs: List<Herb>): List<Herb> =
+        resolveHerbs(question, allHerbs).herbs
+
+    // ═══════════════════════════════════════════════════════════════════
+    // فهرسة نقاط النص مرة واحدة (أداء) — أساس [CorpusIndex] و[matchScore]
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** نقطة نص مُحلَّلة مرة واحدة: نصها المُطبَّع، كلماتها، وكلماتها مع أشكالها الصرفية. */
+    private class PointInfo(val norm: String, val words: Set<String>, val expanded: Set<String>)
+
+    private val pointCache = HashMap<String, PointInfo>()
+    private var pointCacheSyn: Map<String, String>? = null
+    private var pointCacheStop: Set<String>? = null
+
+    /**
+     * تحليل النقطة النصية مخزَّن حسب نصها نفسه: كان كل استعلام يعيد تطبيع وتقطيع
+     * كل نقاط كل الأعشاب من الصفر (آلاف مرات لكل سؤال، ومرات عدة عبر المحاولات
+     * المتدرجة في [buildGeneralSearchAnswer]) — أكبر سبب لبطء "التفكير". يُفرَّغ
+     * الكاش عند تغيّر مرادفات/كلمات إيقاف المطوّر لأنها تغيّر ناتج [wordsOf].
+     */
+    @Synchronized
+    private fun pointInfo(point: String): PointInfo {
+        if (pointCacheSyn !== AiConfig.synonyms || pointCacheStop !== AiConfig.extraStopWords) {
+            pointCache.clear()
+            pointCacheSyn = AiConfig.synonyms
+            pointCacheStop = AiConfig.extraStopWords
+        }
+        pointCache[point]?.let { return it }
+        if (pointCache.size > 30_000) pointCache.clear()
+        val words = wordsOf(point)
+        val info = PointInfo(normalize(point), words, words + ArabicLexicon.expandForms(words))
+        pointCache[point] = info
+        return info
+    }
+
+    /**
+     * إصلاح خلل حقيقي أُبلغ عنه ("سألت عن فوائد الزنجبيل للنوم فما لقى شي رغم
+     * وجود نقطة نوم بالموسوعة"): العربية تلصق حروف الجر/العطف مباشرة بالكلمة
+     * ("للنوم"، "بالنوم"، "ونوم") بلا مسافة، فتبقى كلمة السؤال ("للنوم") مختلفة
+     * حرفياً عن كلمة الموسوعة ("النوم") رغم أنهما نفس المعنى تماماً — لا تطابق
+     * حرفي ولا حتى Jaccard يلتقط هذا. الإصلاح: كلمات السؤال تُوسَّع بأشكالها
+     * الصرفية ([ArabicLexicon.formsOf]) قبل المقارنة، وتُقارَن بأشكال كلمات
+     * النقطة أيضاً ([PointInfo.expanded]، محسوبة مسبقاً هناك) — فتلتقي "نوم"
+     * القادمة من الطرفين بصرف النظر عن أي سابقة/لاحقة كانت ملتصقة بأيّهما.
+     */
+    private fun queryCoverage(index: CorpusIndex, queryWords: Set<String>, pointWords: Set<String>): Double {
+        if (queryWords.isEmpty() || pointWords.isEmpty()) return 0.0
+        val queryWeight = queryWords.sumOf { index.weightOf(it) }
+        if (queryWeight == 0.0) return 0.0
+        val matchedWeight = (queryWords intersect pointWords).sumOf { index.weightOf(it) }
+        return matchedWeight / queryWeight
+    }
+
+    /** أي نسبة من كلمات السؤال الخام موجودة حرفياً كسلسلة فرعية داخل نص النقطة — شبكة أمان أخيرة. */
+    private fun rawContainmentRatio(queryWords: Set<String>, pointNormalized: String): Double {
+        if (queryWords.isEmpty()) return 0.0
+        val matched = queryWords.count { it.length > 1 && pointNormalized.contains(it) }
+        return matched.toDouble() / queryWords.size
+    }
+
+    /**
+     * الدرجة النهائية لمطابقة سؤال المستخدم بنقطة نص واحدة، مستخدمة في البحث
+     * الحر والاقتراح: أعلى قيمة بين ثلاثة مقاييس (تشابه موزون، تغطية، احتواء
+     * خام)، بعد توسيع كلمات السؤال بأشكالها الصرفية (راجع توثيق [queryCoverage]
+     * أعلاه) ومقارنتها بأشكال كلمات النقطة المخزَّنة مسبقاً عبر [pointInfo].
+     */
+    private fun matchScore(index: CorpusIndex, queryWords: Set<String>, point: String): Double {
+        if (queryWords.isEmpty()) return 0.0
+        val info = pointInfo(point)
+        val expandedQuery = HashSet<String>(queryWords.size * 3)
+        expandedQuery.addAll(queryWords)
+        for (w in queryWords) expandedQuery.addAll(ArabicLexicon.formsOf(w))
+        val knownQuery = expandedQuery.filter { index.isKnown(it) }.toSet().ifEmpty { expandedQuery }
+        return maxOf(
+            weightedSimilarity(index, knownQuery, info.expanded),
+            queryCoverage(index, knownQuery, info.expanded),
+            rawContainmentRatio(queryWords, info.norm)
+        )
+    }
+
+    /** يُبقي فقط نقاطاً مختلفة فعلياً عن بعضها (Jaccard كلماتها < 0.8) — يمنع تكرار نفس الفكرة بصياغتين قريبتين ضمن نفس الرد. */
+    private fun <T> dedupeByText(items: List<T>, textOf: (T) -> String): List<T> {
+        val seen = ArrayList<Set<String>>()
+        val out = ArrayList<T>()
+        for (item in items) {
+            val w = pointInfo(textOf(item)).words
+            if (w.isNotEmpty() && seen.any { jaccard(it, w) >= 0.8 }) continue
+            seen.add(w)
+            out.add(item)
+        }
+        return out
+    }
+
 
     /**
      * أسئلة سريعة مقترحة تُعرض كأزرار فوق مربع الدردشة.
@@ -1447,7 +1827,23 @@ object HerbAssistant {
      * تلقائياً بين عشرات الأعشاب التي لم يطلبها أحد — تماماً كما لا يقارن
      * إلا إذا طُلب منه ذلك صراحة.
      */
+    /**
+     * ═══ ميزة جديدة: أولوية مطلقة لحالات الطوارئ/الأزمات ═══
+     * قبل أي منطق آخر (حتى الحالات المدرَّبة): سؤال يحمل إشارة واضحة لإيذاء
+     * النفس يُقابَل برد داعم يوجّه لطلب مساعدة حقيقية بدل أي محاولة إجابة عن
+     * الأعشاب ([crisisReply])؛ وسؤال يحمل أعراضاً قد تكون طارئة طبياً يُسبَق
+     * الجواب العادي بتنبيه صريح ([redFlagNotice]) بدل تجاهلها والإجابة كالمعتاد.
+     * التفويض الفعلي هنا لـ[answerDetailedCore] (المنطق الأصلي كاملاً بلا تغيير).
+     */
     fun answerDetailed(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): AssistantReply {
+        val qNormSafety = normalize(question)
+        crisisReply(qNormSafety)?.let { return AssistantReply(it, false) }
+        val reply = answerDetailedCore(question, herbs, allowCompare, blends)
+        val notice = redFlagNotice(qNormSafety)
+        return if (notice != null) AssistantReply("$notice\n\n${reply.text}", false) else reply
+    }
+
+    private fun answerDetailedCore(question: String, herbs: List<Herb>, allowCompare: Boolean = true, blends: List<Blend> = emptyList()): AssistantReply {
         val qNorm = normalize(question)
         if (qNorm.isBlank()) {
             return AssistantReply("تفضّل، اسأل سيمو عن أي عشبة: فوائدها، طريقة استخدامها، أو تحذيراتها.", false)
@@ -1548,10 +1944,10 @@ object HerbAssistant {
         for (intent in ranked) {
             when (intent) {
                 "combine" -> if (allowCompare && specific && herbs.size >= 2) {
-                    return AssistantReply(withContextHint(buildCombineAnswer(herbs), question), false)
+                    return AssistantReply(withContextHint(buildCombineAnswer(herbs), question, herbs), false)
                 }
                 "plan" -> if (specific) {
-                    return AssistantReply(withContextHint(buildPlanAnswer(herbs), question), false)
+                    return AssistantReply(withContextHint(buildPlanAnswer(herbs), question, herbs), false)
                 }
             }
         }
@@ -1570,7 +1966,7 @@ object HerbAssistant {
                 }
             }
         if (combinable.size >= 2) {
-            return AssistantReply(withContextHint(buildCombinedAnswer(combinable.take(3), herbs, qNorm), question), false)
+            return AssistantReply(withContextHint(buildCombinedAnswer(combinable.take(3), herbs, qNorm), question, herbs), false)
         }
         if (combinable.size == 1) {
             val text = when (combinable.first()) {
@@ -1579,7 +1975,7 @@ object HerbAssistant {
                 "compare" -> buildOverview(herbs)
                 else -> buildBenefitsAnswer(herbs, qNorm)
             }
-            return AssistantReply(withContextHint(text, question), false)
+            return AssistantReply(withContextHint(text, question, herbs), false)
         }
 
         // "اقترح/رشّح/انصحني بعشبة": فقط عندما لا توجد عشبة محدَّدة سلفاً
@@ -1589,11 +1985,11 @@ object HerbAssistant {
         // (فتُغطّى أصلاً عبر فروع الفائدة/الاستخدام أعلاه) بدل خطفها هنا.
         if (!specific && isSuggestionIntent(qNorm)) {
             val (text, learnable) = buildSuggestionAnswer(question, herbs)
-            return AssistantReply(withContextHint(text, question), learnable)
+            return AssistantReply(withContextHint(text, question, herbs), learnable)
         }
 
         val (text, learnable) = buildGeneralSearchAnswer(question, herbs, blends)
-        return AssistantReply(withContextHint(text, question), learnable)
+        return AssistantReply(withContextHint(text, question, herbs), learnable)
     }
 
     /**
@@ -2025,12 +2421,20 @@ object HerbAssistant {
         return hits
     }
 
+    /**
+     * إصلاح تكرار حقيقي: نقطتان مختلفتان نصياً لكن متقاربتان جداً بالمعنى (مثال:
+     * نفس الفائدة مذكورة بصياغتين قريبتين ضمن حقلين مختلفين) كانتا تظهران معاً
+     * كأنهما معلومتان منفصلتان. تُستبعَد النقاط شديدة التشابه ([dedupeByText])
+     * *قبل* أخذ أفضل ٣، فتُستغَل الحصة الكاملة بمعلومات فعلاً متنوعة.
+     */
     private fun organizeBlendHits(hits: List<BlendHit>): Map<Blend, List<BlendHit>> =
         hits.groupBy { it.blend }
             .entries
             .sortedByDescending { (_, blendHits) -> blendHits.maxOf { it.score } }
             .take(2)
-            .associate { (blend, blendHits) -> blend to blendHits.sortedByDescending { it.score }.take(3) }
+            .associate { (blend, blendHits) ->
+                blend to dedupeByText(blendHits.sortedByDescending { it.score }) { it.text }.take(3)
+            }
 
     /**
      * يختار أهمّ [take] كلمات من كلمات السؤال حسب وزنها الفعلي في الموسوعة
@@ -2187,12 +2591,15 @@ object HerbAssistant {
      * "التحليل" الفعلي لبيانات الموسوعة بدل عرض أول ٤ نقاط بغضّ النظر عن
      * مصدرها.
      */
+    /** راجع توثيق [organizeBlendHits] أعلاه — نفس إصلاح تكرار النقاط المتقاربة، للأعشاب هنا. */
     private fun organizeHits(hits: List<SearchHit>): Map<Herb, List<SearchHit>> =
         hits.groupBy { it.herb }
             .entries
             .sortedByDescending { (_, herbHits) -> herbHits.maxOf { it.score } }
             .take(3)
-            .associate { (herb, herbHits) -> herb to herbHits.sortedByDescending { it.score }.take(3) }
+            .associate { (herb, herbHits) ->
+                herb to dedupeByText(herbHits.sortedByDescending { it.score }) { it.text }.take(3)
+            }
 
     /**
      * إصلاح عرض حقيقي أُبلغ عنه: كانت كل نقطة تُعرض بصيغة "[التصنيف] النص"
