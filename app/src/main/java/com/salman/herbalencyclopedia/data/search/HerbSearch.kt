@@ -2,6 +2,7 @@ package com.salman.herbalencyclopedia.data.search
 
 import com.salman.herbalencyclopedia.data.ai.ArabicLexicon
 import com.salman.herbalencyclopedia.data.ai.DictionaryLexicon
+import com.salman.herbalencyclopedia.data.ai.HerbCategoryLookup
 import com.salman.herbalencyclopedia.data.model.Herb
 
 /**
@@ -14,37 +15,48 @@ import com.salman.herbalencyclopedia.data.model.Herb
  *
  * هذا المحرك محلي بالكامل (بلا إنترنت، بلا مفتاح API، بلا تكلفة، يعمل دوماً
  * حتى بلا اتصال — "مضمون ومجاني" تماماً كباقي التطبيق) ويحسّن المطابقة عبر
- * مرحلتين إضافيتين فوق المطابقة النصية المباشرة:
- * 1) **تطبيع عربي** (نفس قواعد `normalize()` في [HerbAssistant]): إزالة
- *    التشكيل، توحيد صور الألف/الياء/التاء المربوطة، فتُطابق "الزعتر" و
- *    "زعتر" و"الزّعتر" ككلمة واحدة.
- * 2) **توسيع بمرادفات القاموس** ([DictionaryLexicon]، من Rabih Dictionary
+ * عدة مراحل فوق المطابقة النصية المباشرة:
+ * 1) **تطبيع عربي موحَّد** — يستخدم الآن [ArabicLexicon.normalizeText] نفسه
+ *    المستخدم في سيمو (بدل نسخة محلية أضعف هنا كانت لا تُزيل التطويل ولا
+ *    توحّد الياء/الكاف الفارسيتين)، فتُطابق "الزعتر" و"زعتر" و"الزّعتر"
+ *    و"الــزعتر" ككلمة واحدة، وتبقى النتيجة متطابقة تماماً مع ما يفهمه سيمو.
+ * 2) **أشكال الكلمة الصرفية** ([ArabicLexicon.formsOf]): يزيل سوابق ولواحق
+ *    شائعة (لل/بال/ها/ين...) بدل جذع تقريبي واحد فقط، فتُطابق "للنوم" مع
+ *    "النوم" مثلاً — بدل الاكتفاء بجذع واحد قد لا يطابق شيئاً.
+ * 3) **أسماء بديلة معروفة** ([ArabicLexicon.herbAliasGroups]، نفس القائمة
+ *    التي يعتمدها سيمو): "الشونيز" يجد "حبة البركة"، "ينسون" يجد "يانسون"…
+ * 4) **توسيع بمرادفات القاموس** ([DictionaryLexicon]، من Rabih Dictionary
  *    وArabic WordNet): تبحث عن اسم بديل أو مرادف شائع لما كتبه المستخدم
  *    ضمن اسم العشبة أو نصوصها، لا حرفياً فقط.
+ * 5) **تصنيف العشبة جزء من نصها القابل للبحث** ([HerbCategoryLookup]): سؤال
+ *    عن اسم فئة كاملة ("أعشاب الجهاز الهضمي") يظهر أعشاب تلك الفئة حتى لو لم
+ *    يحوِ نصها الفعلي هذه الكلمات بالذات.
  *
  * الترتيب: مطابقة الاسم أولاً (الأهم للمستخدم)، ثم مطابقة داخل نصوص العشبة
- * (الفوائد/الاستخدام/الملاحظات)، بحيث تظهر أدق النتائج أولاً بدل ترتيب عشوائي.
+ * (الفوائد/الاستخدام/الملاحظات/التصنيف)، بحيث تظهر أدق النتائج أولاً بدل
+ * ترتيب عشوائي.
  */
 object HerbSearch {
 
-    private val HARAKAT = Regex("[\u064B-\u0652]")
-    private val NON_WORD = Regex("[^\\p{L}\\p{N}\\s]")
     private val SPACES = Regex("\\s+")
 
-    /** نفس منطق التطبيع المستخدم في [HerbAssistant] (مكرَّر عمداً هنا كي يبقى
-     * هذا الملف مستقلاً وقابلاً لإعادة الاستخدام من أي شاشة بلا اعتمادية
-     * إضافية على تفاصيل سيمو الداخلية). */
-    fun normalize(text: String): String {
-        var t = text
-        t = t.replace(HARAKAT, "")
-        t = t.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
-        t = t.replace('ى', 'ي').replace('ة', 'ه')
-        t = t.replace(NON_WORD, " ")
-        return t.trim().lowercase()
-    }
+    /**
+     * تطبيع موحَّد مع سيمو: مفوَّض بالكامل الآن لـ[ArabicLexicon.normalizeText]
+     * بدل نسخة محلية مكرَّرة كانت أضعف (لا تُزيل التطويل "ـ"، ولا تحوّل الأرقام
+     * العربية-الهندية، ولا توحّد "ی"/"ک" الفارسيتين مع "ي"/"ك" العربيتين).
+     * إبقاء الاسم `normalize` واستمرار كونها `fun` عامة يحافظ على توافق أي كود
+     * خارجي يستدعيها مباشرة (مثال: [findMatchSnippet] وشاشات العرض).
+     */
+    fun normalize(text: String): String = ArabicLexicon.normalizeText(text)
 
     private fun tokens(normalizedText: String): List<String> =
         normalizedText.split(SPACES).filter { it.length > 1 }
+
+    /** هل يُعتبر [a] و[b] "نفس الكلمة تقريباً"؟ تطابق تام دوماً، أو احتواء فرعي
+     * فقط إن كان طرفا الاحتواء ≥ 3 أحرف — يمنع كلمة قصيرة (حرفين) من "اختطاف"
+     * أي كلمة أطول تحويها بالصدفة (كان هذا يُنتج نتائج بحث غير مرتبطة إطلاقاً). */
+    private fun looseWordMatch(a: String, b: String): Boolean =
+        a == b || (a.length >= 3 && b.length >= 3 && (a.contains(b) || b.contains(a)))
 
     private data class Scored(
         val herb: Herb,
@@ -54,24 +66,29 @@ object HerbSearch {
         val matchSnippet: String? = null
     )
 
+    private fun categoryOf(herb: Herb): String =
+        herb.categoryId?.let { HerbCategoryLookup.categoryNames[it] } ?: ""
+
     /** حقول العشبة النصية (غير الاسم)، بترتيب الأولوية عند شرح "أين وُجدت المطابقة" —
      * الفوائد أولاً لأنها الأكثر أهمية للمستخدم، ثم الاستخدام، فالتحذيرات/الأضرار،
-     * فالملاحظات أخيراً. الاسم العربي في كل زوج هو ما يُعرض فعلياً في واجهة نتائج البحث. */
+     * فالملاحظات، وأخيراً التصنيف (قدرة جديدة: راجع توثيق [HerbCategoryLookup]
+     * أعلى الملف). الاسم العربي في كل زوج هو ما يُعرض فعلياً في واجهة نتائج البحث. */
     private val LABELED_FIELDS: List<Pair<String, (Herb) -> String>> = listOf(
         "الفوائد" to Herb::benefits,
         "طريقة الاستخدام" to Herb::usage,
         "التحذيرات" to Herb::warnings,
         "الأضرار" to Herb::harms,
-        "ملاحظات" to Herb::notes
+        "ملاحظات" to Herb::notes,
+        "التصنيف" to ::categoryOf
     )
 
     private const val SNIPPET_MAX_LEN = 90
 
     /**
      * عندما تُطابق عشبة بحثاً ما دون أن يحتوي اسمها على أي جزء من الاستعلام (أي أن
-     * المطابقة جاءت من الفوائد/الاستخدام/التحذيرات إلخ)، يبحث هذا عن أول حقل يحتوي
-     * فعلياً كلمة من الاستعلام (أو مرادفها) ويقتطع منه مقطعاً قصيراً — كي تشرح واجهة
-     * البحث للمستخدم *لماذا* ظهرت هذه العشبة، بدل عرضها بلا أي تفسير.
+     * المطابقة جاءت من الفوائد/الاستخدام/التحذيرات/التصنيف إلخ)، يبحث هذا عن أول
+     * حقل يحتوي فعلياً كلمة من الاستعلام (أو مرادفها) ويقتطع منه مقطعاً قصيراً —
+     * كي تشرح واجهة البحث للمستخدم *لماذا* ظهرت هذه العشبة، بدل عرضها بلا تفسير.
      */
     private fun findMatchSnippet(herb: Herb, qNorm: String, expandedTokens: Set<String>): Pair<String, String>? {
         for ((label, getter) in LABELED_FIELDS) {
@@ -79,7 +96,7 @@ object HerbSearch {
             if (raw.isBlank()) continue
             val norm = normalize(raw)
             val matches = norm.contains(qNorm) || tokens(norm).any { ft ->
-                expandedTokens.any { et -> et == ft || ft.contains(et) || et.contains(ft) }
+                expandedTokens.any { et -> looseWordMatch(et, ft) }
             }
             if (matches) {
                 val snippet = if (raw.length > SNIPPET_MAX_LEN) raw.take(SNIPPET_MAX_LEN).trimEnd() + "…" else raw
@@ -100,7 +117,8 @@ object HerbSearch {
      * الاستعلام مباشرة — وهذا يشمل غالبية الأعشاب في أي بحث نموذجي (يبحث
      * الناس عادة بعرَض/فائدة لا باسم العشبة). النتيجة: كلفة تتضاعف مع طول
      * الموسوعة، مكرَّرة بلا داعٍ لأن نصوص العشبة نفسها لا تتغيّر بين ضغطتي
-     * حرف متتاليتين إطلاقاً.
+     * حرف متتاليتين إطلاقاً. تصنيف العشبة (اسم الفئة) صار الآن جزءاً من
+     * `fieldsNorm`/`fieldTokens` أيضاً — قدرة جديدة، راجع توثيق الملف أعلاه.
      */
     private data class HerbIndex(
         val nameNorm: String,
@@ -112,17 +130,20 @@ object HerbSearch {
     // ذاكرة تخزين مؤقت بنفس أسلوب [HerbAssistant] (فحص مرجع القائمة، لا
     // محتواها — تُنشئ شاشات التطبيق قائمة جديدة فقط عند تغيّر فعلي للبيانات
     // من Firestore، فمقارنة المرجع (`===`) كافية ورخيصة لاكتشاف "لا تغيير").
+    // يُفرَّغ الفهرس أيضاً عند تغيّر خريطة أسماء التصنيفات (قد تصل من Firestore
+    // بعد الأعشاب نفسها) كي لا يبقى فهرس مبني قبل معرفة اسم أي تصنيف.
     private var cachedHerbsRef: List<Herb>? = null
+    private var cachedCategoriesRef: Map<String, String>? = null
     private var cachedIndexById: Map<String, HerbIndex> = emptyMap()
 
     private fun indexFor(herbs: List<Herb>): Map<String, HerbIndex> {
-        val current = cachedHerbsRef
-        if (current === herbs) return cachedIndexById
+        val categories = HerbCategoryLookup.categoryNames
+        if (cachedHerbsRef === herbs && cachedCategoriesRef === categories) return cachedIndexById
         val built = herbs.associate { herb ->
             val nameNorm = normalize(herb.name)
             val fieldsNorm = normalize(
                 herb.benefits + " " + herb.usage + " " + herb.warnings + " " +
-                    herb.harms + " " + herb.notes
+                    herb.harms + " " + herb.notes + " " + categoryOf(herb)
             )
             herb.id to HerbIndex(
                 nameNorm = nameNorm,
@@ -132,31 +153,32 @@ object HerbSearch {
             )
         }
         cachedHerbsRef = herbs
+        cachedCategoriesRef = categories
         cachedIndexById = built
         return built
     }
 
     /**
-     * مسافة تحرير (Levenshtein) محدودة الحجم — تُستخدم فقط لالتقاط خطأ
-     * إملائي بسيط في اسم عشبة (حرف زائد/ناقص/مبدَّل) عندما تفشل كل مطابقة
-     * نصية أو بمرادف أخرى. الكلمات هنا قصيرة دوماً (أسماء أعشاب مفردة) لذا
-     * التكلفة مهملة حتى بخوارزمية DP الكاملة البسيطة.
+     * أسماء بديلة/عامية معروفة لنفس العشبة ([ArabicLexicon.herbAliasGroups]،
+     * نفس القائمة التي يعتمدها سيمو). عند ذكر أي اسم من مجموعة، تُضاف كلمات
+     * كل الأسماء الأخرى بنفس المجموعة إلى كلمات البحث الموسَّعة — فيُطابق
+     * "الشونيز" اسمَ "حبة البركة" رغم اختلافهما تماماً حرفياً.
      */
-    private fun editDistance(a: String, b: String): Int {
-        if (a == b) return 0
-        val dp = Array(a.length + 1) { IntArray(b.length + 1) }
-        for (i in 0..a.length) dp[i][0] = i
-        for (j in 0..b.length) dp[0][j] = j
-        for (i in 1..a.length) {
-            for (j in 1..b.length) {
-                dp[i][j] = if (a[i - 1] == b[j - 1]) {
-                    dp[i - 1][j - 1]
-                } else {
-                    1 + minOf(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-                }
+    private val normalizedAliasGroups: List<List<String>> by lazy {
+        ArabicLexicon.herbAliasGroups.map { group -> group.map { normalize(it) }.filter { it.isNotBlank() } }
+    }
+
+    private fun expandWithAliases(base: Set<String>): Set<String> {
+        if (base.isEmpty()) return base
+        val out = LinkedHashSet<String>(base)
+        for (group in normalizedAliasGroups) {
+            val mentioned = group.any { member ->
+                val memberTokens = tokens(member)
+                if (memberTokens.size <= 1) member in base else base.containsAll(memberTokens)
             }
+            if (mentioned) for (member in group) out.addAll(tokens(member))
         }
-        return dp[a.length][b.length]
+        return out
     }
 
     /** نتيجة بحث واحدة: العشبة نفسها، وهل طابقتها بالاسم مباشرة، وإن لم يكن كذلك —
@@ -174,20 +196,29 @@ object HerbSearch {
      * المطابقة. يعيد قائمة فارغة إن كان الاستعلام فارغاً (بدل كل الأعشاب)،
      * كي تستمر شاشات البحث بعرض "اكتب للبحث" كما كانت.
      *
-     * محسَّن على ثلاث جبهات فوق النسخة السابقة (كانت تتطلب مطابقة الجملة
+     * محسَّن على عدة جبهات فوق النسخة السابقة (كانت تتطلب مطابقة الجملة
      * كاملة حرفياً ضمن نصوص العشبة، فتفشل مع أي سؤال طبيعي متعدد الكلمات):
-     * 1) **توسيع الكلمات بجذورها التقريبية** ([ArabicLexicon.lightStem])
-     *    بالإضافة لمرادفات القاموس الخارجي، فتُطابق "بينفع" مع "نافع" مثلاً.
+     * 1) **توسيع الكلمات بأشكالها الصرفية** ([ArabicLexicon.formsOf] بدل جذع
+     *    تقريبي واحد فقط) + **أسماء بديلة معروفة** ([expandWithAliases]) +
+     *    مرادفات القاموس الخارجي، فتُطابق "للنوم" مع "النوم"، و"الشونيز" مع
+     *    "حبة البركة"، و"بينفع" مع "نافع".
      * 2) **مطابقة على مستوى الكلمات لا الجملة كاملة**: يُحسب عدد كلمات
      *    الاستعلام (بعد التوسيع) الموجودة فعلياً في اسم العشبة أو نصوصها،
      *    وتُرجَّح النتيجة حسب *نسبة* الكلمات المطابقة، بدل اشتراط وجود
      *    الجملة بالضبط.
-     * 3) **تسامح مع خطأ إملائي بسيط** في اسم العشبة (مسافة تحرير ≤ 1) عند
-     *    عدم وجود أي تطابق نصي أو بمرادف بعد كل المحاولات السابقة.
-     * 4) **فهرسة مُخزَّنة مؤقتاً لكل عشبة** ([indexFor]) بدل إعادة تطبيع كل
+     * 3) **احتواء جزئي آمن**: أي مطابقة "تحتوي إحداها الأخرى" (لالتقاط جمع/
+     *    تصغير بسيط) تشترط الآن ≥ 3 أحرف بالطرفين ([looseWordMatch]) — كلمة
+     *    من حرفين كانت تُطابق أي كلمة أطول تحويها بالصدفة فتُظهر نتائج لا
+     *    علاقة لها بالبحث إطلاقاً.
+     * 4) **تسامح مع خطأ إملائي بسيط** في اسم العشبة، بسقف مسافة تحرير يتّسع
+     *    قليلاً مع طول الكلمة (حرف واحد للكلمات القصيرة، حرفان للكلمات من ٧
+     *    أحرف فأكثر) عبر [ArabicLexicon.editDistanceAtMost] المحدود مسبقاً —
+     *    بدل حساب DP كامل دوماً بسقف واحد يساوي ١ مهما طال اسم العشبة.
+     * 5) **فهرسة مُخزَّنة مؤقتاً لكل عشبة** ([indexFor]) بدل إعادة تطبيع كل
      *    نصوصها من الصفر مع كل استدعاء — أهم تحسين أداء هنا، انظر توثيق
      *    [HerbIndex].
-     * 5) **شرح المطابقة**: عندما تُطابق عشبة بحثاً عبر حقولها الأخرى لا
+     * 6) **تصنيف العشبة قابل للبحث** (راجع توثيق الملف أعلاه و[categoryOf]).
+     * 7) **شرح المطابقة**: عندما تُطابق عشبة بحثاً عبر حقولها الأخرى لا
      *    اسمها، تحمل نتيجتها ([HerbSearchResult.matchLabel]/[matchSnippet])
      *    الحقل الفعلي الذي وُجدت فيه المطابقة، بدل تركها بلا تفسير في
      *    الواجهة. أعشاب الاسم المطابق تبقى دوماً أعلى الترتيب (نقاطها
@@ -200,9 +231,10 @@ object HerbSearch {
         val qTokens = tokens(qNorm)
         if (qTokens.isEmpty()) return emptyList()
 
-        val stemmedTokens = qTokens.map { ArabicLexicon.lightStem(it) }.filter { it.length > 1 }
-        val dictSynonyms = (qTokens + stemmedTokens).flatMap { DictionaryLexicon.synonymsOf(it) }.toSet()
-        val expandedTokens = (qTokens + stemmedTokens).toSet() + dictSynonyms
+        val withForms = qTokens.toSet() + qTokens.flatMap { ArabicLexicon.formsOf(it) }
+        val withAliases = expandWithAliases(withForms)
+        val dictSynonyms = withAliases.flatMap { DictionaryLexicon.synonymsOf(it) }.toSet()
+        val expandedTokens = withAliases + dictSynonyms
 
         val index = indexFor(herbs)
         val scored = herbs.mapNotNull { herb ->
@@ -215,24 +247,25 @@ object HerbSearch {
                 nameNorm.isBlank() -> {}
                 nameNorm == qNorm -> score = 100
                 nameNorm.contains(qNorm) || qNorm.contains(nameNorm) -> score = 70
-                expandedTokens.any { it.length > 1 && nameNorm.contains(it) } -> score = 45
+                expandedTokens.any { it.length >= 3 && nameNorm.contains(it) } -> score = 45
                 else -> {
                     // مطابقة جزئية على مستوى الكلمات بين اسم العشبة والاستعلام
                     // الموسّع: كل كلمة مشتركة (أو تحتوي إحداهما الأخرى، لالتقاط
-                    // جمع/تصغير بسيط) ترفع الدرجة تدريجياً بدل رفض النتيجة كلياً.
-                    val overlap = nameTokens.count { nt ->
-                        expandedTokens.any { et -> et == nt || nt.contains(et) || et.contains(nt) }
-                    }
+                    // جمع/تصغير بسيط، بشرط ≥ 3 أحرف — راجع [looseWordMatch])
+                    // ترفع الدرجة تدريجياً بدل رفض النتيجة كلياً.
+                    val overlap = nameTokens.count { nt -> expandedTokens.any { et -> looseWordMatch(et, nt) } }
                     if (overlap > 0) score = 30 + (overlap * 6).coerceAtMost(20)
                 }
             }
 
             // تسامح مع خطأ إملائي بسيط في الاسم (حرف مبدَّل/زائد/ناقص) فقط إن
-            // فشلت كل المطابقات النصية والمرادفات أعلاه.
+            // فشلت كل المطابقات النصية والمرادفات أعلاه. السقف يتّسع مع طول
+            // الكلمة كي لا يبقى اسم عشبة طويل صعب التصحيح بسقف حرف واحد فقط.
             if (score == 0 && qTokens.size == 1 && qNorm.length >= 3) {
+                val limit = if (qNorm.length >= 7) 2 else 1
                 val hasCloseTypo = nameTokens.any { nt ->
-                    nt.length >= 3 && kotlin.math.abs(nt.length - qNorm.length) <= 1 &&
-                        editDistance(nt, qNorm) <= 1
+                    nt.length >= 3 && kotlin.math.abs(nt.length - qNorm.length) <= limit &&
+                        ArabicLexicon.editDistanceAtMost(nt, qNorm, limit) <= limit
                 }
                 if (hasCloseTypo) score = 55
             }
@@ -244,7 +277,7 @@ object HerbSearch {
                     score = 20
                 } else {
                     val matchedCount = expandedTokens.count { et ->
-                        et.length > 1 && idx.fieldTokens.any { it == et || it.contains(et) || et.contains(it) }
+                        et.length >= 2 && idx.fieldTokens.any { looseWordMatch(et, it) }
                     }
                     if (matchedCount > 0) {
                         // كلما زادت نسبة كلمات الاستعلام المطابَقة فعلياً داخل
