@@ -143,6 +143,58 @@ internal object ArabicLexicon {
 
     // سوابق ولواحق عربية شائعة بعد التطبيع (ة→ه، ى→ي، أإآ→ا) — لا تُنسخ من أي مشروع
     // GPL (انظر ملاحظة الترخيص أعلى الملف)، بل قواعد صرفية عامة.
+    /**
+     * أسماء بديلة/عامية/أجنبية شائعة لنفس العشبة (كل مجموعة = عشبة واحدة)، مشتركة
+     * الآن بين سيمو ([com.salman.herbalencyclopedia.data.ai.HerbAssistant]) ومحرك
+     * البحث المباشر ([com.salman.herbalencyclopedia.data.search.HerbSearch]) —
+     * قائمة واحدة بدل نسختين كانتا لتنحرفا عن بعضهما مع أي تحديث مستقبلي. القيم
+     * هنا نصوص خام غير مُطبَّعة عمداً؛ كل مستخدم للقائمة يطبّعها بدالة normalize
+     * الخاصة به (كلا الملفين يعتمدان فعلياً على [normalizeText] أعلاه).
+     */
+    val herbAliasGroups: List<List<String>> = listOf(
+        listOf("حبة البركة", "الحبة السوداء", "حبة سوداء", "الشونيز", "nigella", "black seed"),
+        listOf("يانسون", "ينسون", "أنيسون", "انيسون", "anise", "aniseed"),
+        listOf("قرفة", "دارسين", "cinnamon"),
+        listOf("كركديه", "كركدية", "ورد النيل", "hibiscus"),
+        listOf("بابونج", "بابونك", "كاموميل", "chamomile", "camomile", "matricaria"),
+        listOf("نعناع", "نعنع", "mint", "peppermint"),
+        listOf("زنجبيل", "جنزبيل", "ginger", "zingiber"),
+        listOf("كمون", "cumin"),
+        listOf("كزبرة", "كسبرة", "coriander"),
+        listOf("حلبة", "fenugreek"),
+        listOf("شمر", "شومر", "fennel"),
+        listOf("مريمية", "ميرمية", "مرمرية", "salvia", "sage"),
+        listOf("زعتر", "صعتر", "thyme", "thymus"),
+        listOf("إكليل الجبل", "اكليل الجبل", "روزماري", "rosemary"),
+        listOf("خزامى", "لافندر", "lavender"),
+        listOf("قرنفل", "clove"),
+        listOf("هيل", "حبهان", "cardamom"),
+        listOf("زعفران", "saffron"),
+        listOf("كركم", "تورمريك", "turmeric", "curcuma"),
+        listOf("ثوم", "garlic"),
+        listOf("عرق سوس", "سوس", "licorice", "liquorice"),
+        listOf("ريحان", "حبق", "basil"),
+        listOf("كينا", "أوكالبتوس", "اوكاليبتوس", "eucalyptus"),
+        listOf("جنسنغ", "جينسنغ", "ginseng"),
+        listOf("كراوية", "كراويا", "caraway"),
+        listOf("لسان الحمل", "قطونة", "بزر قطونة", "plantain", "psyllium"),
+        listOf("بذور الكتان", "بزر الكتان", "كتان", "flaxseed", "flax"),
+        listOf("شيح", "artemisia", "wormwood"),
+        listOf("ورق الغار", "غار", "laurel", "bay leaf"),
+        listOf("هندباء", "هندبا", "chicory", "dandelion"),
+        listOf("حشيشة الليمون", "عشبة الليمون", "ليمون غراس", "lemongrass"),
+        listOf("عناب", "jujube"),
+        listOf("لبان", "لبان دكر", "frankincense"),
+        listOf("سنا مكي", "سنامكي", "senna"),
+        listOf("صبار", "ألوفيرا", "الوفيرا", "aloe vera", "aloe"),
+        listOf("مورينجا", "مورنجا", "moringa"),
+        listOf("بادرنجبويه", "ترنجان", "melissa", "lemon balm"),
+        listOf("شبت", "dill"),
+        listOf("عرعر", "juniper"),
+        listOf("تمر هندي", "tamarind"),
+        listOf("جنكة", "جنكو", "ginkgo")
+    )
+
     private val formPrefixes = listOf(
         "وبال", "فبال", "كبال", "وكال", "فكال", "وال", "فال", "بال", "كال", "لل", "ال",
         "و", "ف", "ب", "ك", "ل"

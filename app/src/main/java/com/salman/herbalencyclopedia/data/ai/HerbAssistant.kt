@@ -1377,52 +1377,6 @@ object HerbAssistant {
      * البركة"، "ينسون" بدل "يانسون"): تُطابَق العشبة إن ورد في السؤال أي اسم من
      * مجموعتها وكان أي اسم آخر من نفس المجموعة ضمن اسم العشبة بالموسوعة.
      */
-    private val herbAliasGroups: List<List<String>> by lazy {
-        listOf(
-            listOf("حبة البركة", "الحبة السوداء", "حبة سوداء", "الشونيز", "nigella", "black seed"),
-            listOf("يانسون", "ينسون", "أنيسون", "انيسون", "anise", "aniseed"),
-            listOf("قرفة", "دارسين", "cinnamon"),
-            listOf("كركديه", "كركدية", "ورد النيل", "hibiscus"),
-            listOf("بابونج", "بابونك", "كاموميل", "chamomile", "camomile", "matricaria"),
-            listOf("نعناع", "نعنع", "mint", "peppermint"),
-            listOf("زنجبيل", "جنزبيل", "ginger", "zingiber"),
-            listOf("كمون", "cumin"),
-            listOf("كزبرة", "كسبرة", "coriander"),
-            listOf("حلبة", "fenugreek"),
-            listOf("شمر", "شومر", "fennel"),
-            listOf("مريمية", "ميرمية", "مرمرية", "salvia", "sage"),
-            listOf("زعتر", "صعتر", "thyme", "thymus"),
-            listOf("إكليل الجبل", "اكليل الجبل", "روزماري", "rosemary"),
-            listOf("خزامى", "لافندر", "lavender"),
-            listOf("قرنفل", "clove"),
-            listOf("هيل", "حبهان", "cardamom"),
-            listOf("زعفران", "saffron"),
-            listOf("كركم", "تورمريك", "turmeric", "curcuma"),
-            listOf("ثوم", "garlic"),
-            listOf("عرق سوس", "سوس", "licorice", "liquorice"),
-            listOf("ريحان", "حبق", "basil"),
-            listOf("كينا", "أوكالبتوس", "اوكاليبتوس", "eucalyptus"),
-            listOf("جنسنغ", "جينسنغ", "ginseng"),
-            listOf("كراوية", "كراويا", "caraway"),
-            listOf("لسان الحمل", "قطونة", "بزر قطونة", "plantain", "psyllium"),
-            listOf("بذور الكتان", "بزر الكتان", "كتان", "flaxseed", "flax"),
-            listOf("شيح", "artemisia", "wormwood"),
-            listOf("ورق الغار", "غار", "laurel", "bay leaf"),
-            listOf("هندباء", "هندبا", "chicory", "dandelion"),
-            listOf("حشيشة الليمون", "عشبة الليمون", "ليمون غراس", "lemongrass"),
-            listOf("عناب", "jujube"),
-            listOf("لبان", "لبان دكر", "frankincense"),
-            listOf("سنا مكي", "سنامكي", "senna"),
-            listOf("صبار", "ألوفيرا", "الوفيرا", "aloe vera", "aloe"),
-            listOf("مورينجا", "مورنجا", "moringa"),
-            listOf("بادرنجبويه", "ترنجان", "melissa", "lemon balm"),
-            listOf("شبت", "dill"),
-            listOf("عرعر", "juniper"),
-            listOf("تمر هندي", "tamarind"),
-            listOf("جنكة", "جنكو", "ginkgo")
-        )
-    }
-
     /** هل تظهر كلمات [seq] متتابعة داخل كلمات السؤال (كل كلمة بأشكالها [qSets])؟ */
     private fun containsSequence(seq: List<String>, qSets: List<Set<String>>): Boolean {
         if (seq.isEmpty() || seq.size > qSets.size) return false
@@ -1511,12 +1465,26 @@ object HerbAssistant {
         return ArabicLexicon.editDistanceAtMost(qt, nt, limit) <= limit
     }
 
+    /** كل "أشكال" كلمة سؤال واحدة (هي نفسها + بلا "ال" + أشكالها الصرفية بلا سوابق/
+     * لواحق شائعة، مع/بلا "ال" لكل شكل) — أساس مطابقة [containsSequence] كلمة
+     * بكلمة داخل [resolveHerbs] بدل تطابق حرفي تام لا يلتقط "للزنجبيل"/"بالبابونج". */
+    private fun tokenVariants(t: String): Set<String> {
+        val s = LinkedHashSet<String>()
+        s.add(t)
+        s.add(ArabicLexicon.stripAl(t))
+        for (f in ArabicLexicon.formsOf(t)) {
+            s.add(f)
+            s.add(ArabicLexicon.stripAl(f))
+        }
+        return s
+    }
+
     /**
      * يبحث عن الأعشاب المذكورة في نص السؤال على أربعة مستويات (الأدق أولاً)،
      * بدل تطابق حرفي تام لاسم العشبة كاملاً بقوسه الإنجليزي كما كان سابقاً:
      * 1) الاسم العربي مذكور صراحةً ككلمات متتابعة (بأشكال الكلمة: "للزنجبيل"،
      *    "بالبابونج"، جمع/مفرد، "ال" التعريف...).
-     * 2) اسم بديل/عامي/أجنبي معروف ([herbAliasGroups]) — مثال: "الشونيز" ↔
+     * 2) اسم بديل/عامي/أجنبي معروف ([ArabicLexicon.herbAliasGroups]) — مثال: "الشونيز" ↔
      *    "حبة البركة".
      * 3) كل كلمات الاسم مذكورة بأي ترتيب (لأسماء من كلمتين فأكثر).
      * 4) خطأ إملائي بسيط في الاسم (حرف زائد/ناقص/مبدَّل)، مع إعادة الكلمة
@@ -1541,7 +1509,7 @@ object HerbAssistant {
         for ((herb, altList) in alts) {
             if (altList.any { containsSequence(it, qSets) }) found.add(herb)
         }
-        val aliasGroups = herbAliasGroups.filter { g -> g.any { m -> aliasMemberInQuestion(m, qSets, qFlat) } }
+        val aliasGroups = ArabicLexicon.herbAliasGroups.filter { g -> g.any { m -> aliasMemberInQuestion(m, qSets, qFlat) } }
         if (aliasGroups.isNotEmpty()) {
             for (herb in allHerbs) {
                 if (aliasGroups.any { g -> herbNameHasAlias(herb, g) }) found.add(herb)
